@@ -7,8 +7,13 @@ import StatusBanner from '@/components/StatusBanner';
 import styles from './ImportPage.module.css';
 
 export default function ImportPage() {
+  const [mounted, setMounted] = useState(false);
   const { startIngestion, abortIngestion, status, progress, error } = useIngestion();
   const [fileType, setFileType] = useState<'quran' | 'hadith'>('quran');
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -16,6 +21,8 @@ export default function ImportPage() {
       startIngestion(file, fileType);
     }
   };
+
+  if (!mounted) return null;
 
   return (
     <main className="container">

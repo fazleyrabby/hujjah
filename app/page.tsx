@@ -10,15 +10,20 @@ import { useDatabase } from '@/hooks/useDatabase';
 import { seedDatabase } from '@/lib/seed';
 
 export default function Home() {
+  const [mounted, setMounted] = useState(false);
   const [systemState, setSystemState] = useState('CHECKING');
   const [statusMessage, setStatusMessage] = useState('Checking your device...');
   const { results, loading: searchLoading, error: searchError, performSearch } = useSearch();
   const { db, loading: dbLoading, error: dbError } = useDatabase();
 
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted || dbLoading) return;
+    
     async function init() {
-      if (dbLoading) return;
-      
       if (dbError) {
         setSystemState('ERROR');
         setStatusMessage('Could not initialize database. Try reloading.');
@@ -44,7 +49,7 @@ export default function Home() {
       }
     }
     init();
-  }, [dbLoading, dbError]);
+  }, [mounted, dbLoading, dbError]);
 
   const handleSearch = (query: string) => {
     setSystemState('SEARCHING');
@@ -54,6 +59,8 @@ export default function Home() {
       setStatusMessage('Ready to search');
     });
   };
+
+  if (!mounted) return null;
 
   return (
     <main className="container">
