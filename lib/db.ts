@@ -1,12 +1,12 @@
-import { PGLite } from '@electric-sql/pglite';
+import { PGlite } from '@electric-sql/pglite';
 import { vector } from '@electric-sql/pglite/vector';
 
-let dbInstance: PGLite | null = null;
+let dbInstance: PGlite | null = null;
 
 export async function getDatabase() {
   if (dbInstance) return dbInstance;
 
-  dbInstance = await PGLite.create({
+  dbInstance = await PGlite.create({
     dataDir: 'idb://hujjah-vault',
     relaxedDurability: true,
     extensions: {

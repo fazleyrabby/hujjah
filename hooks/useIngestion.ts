@@ -87,7 +87,7 @@ export function useIngestion() {
                  worker.addEventListener('message', handler);
               });
 
-              // 4. PGLite Batch Insert
+              // 4. PGlite Batch Insert
               for (let j = 0; j < chunk.length; j++) {
                 await db.query(
                   'INSERT INTO knowledge (content, source_ref, category, embedding) VALUES ($1, $2, $3, $4)',

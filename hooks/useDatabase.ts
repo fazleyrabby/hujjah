@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { getDatabase } from '@/lib/db';
-import type { PGLite } from '@electric-sql/pglite';
+import type { PGlite } from '@electric-sql/pglite';
 
 export function useDatabase() {
-  const [db, setDb] = useState<PGLite | null>(null);
+  const [db, setDb] = useState<PGlite | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 

@@ -17,7 +17,7 @@ Hujjah is designed with a **Soft-Brutalist** aesthetic. It moves away from the c
 ## 🛠️ Technology Stack
 
 - **Framework**: [Next.js 15+](https://nextjs.org) (App Router)
-- **Database**: [PGLite](https://pglite.dev) (Postgres in WASM) with `pgvector` support.
+- **Database**: [PGlite](https://pglite.dev) (Postgres in WASM) with `pgvector` support.
 - **Embeddings**: [Transformers.js v3](https://huggingface.co/docs/transformers.js) using the `all-MiniLM-L6-v2` model.
 - **Acceleration**: **WebGPU** for blazing fast on-device vector generation.
 - **Persistence**: IndexedDB-backed storage via `idb://hujjah-vault`.
