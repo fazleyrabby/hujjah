@@ -51,7 +51,7 @@ export async function seedDatabase(onProgress?: ProgressCallback) {
       } else if (type === 'EMBEDDING_COMPLETE') {
         const { embeddings } = payload;
         
-        // 4. Batch insert into PGLite (batches of 50)
+        // 4. Batch insert into PGlite (batches of 50)
         const batchSize = 50;
         for (let i = 0; i < data.length; i += batchSize) {
           const batchData = data.slice(i, i + batchSize);

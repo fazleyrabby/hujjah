@@ -27,7 +27,7 @@ export async function semanticSearch(userQuery: string, limit = 3): Promise<Sear
     worker.postMessage({ type: 'LOAD' });
   });
 
-  // 2. Query PGLite using cosine distance (<=>)
+  // 2. Query PGlite using cosine distance (<=>)
   const db = await getDatabase();
   const results = await db.query(`
     SELECT content, source_ref, embedding <=> $1::vector AS distance
