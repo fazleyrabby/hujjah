@@ -1,66 +1,73 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+'use client';
+
+import { useState, useEffect } from 'react';
+import SearchBox from '@/components/SearchBox';
+import ResultsPanel from '@/components/ResultsPanel';
+import ModeIndicator from '@/components/ModeIndicator';
+import StatusBanner from '@/components/StatusBanner';
+import { useSearch } from '@/hooks/useSearch';
+import { useDatabase } from '@/hooks/useDatabase';
+import { seedDatabase } from '@/lib/seed';
 
 export default function Home() {
+  const [systemState, setSystemState] = useState('CHECKING');
+  const [statusMessage, setStatusMessage] = useState('Checking your device...');
+  const { results, loading: searchLoading, error: searchError, performSearch } = useSearch();
+  const { db, loading: dbLoading, error: dbError } = useDatabase();
+
+  useEffect(() => {
+    async function init() {
+      if (dbLoading) return;
+      
+      if (dbError) {
+        setSystemState('ERROR');
+        setStatusMessage('Could not initialize database. Try reloading.');
+        return;
+      }
+
+      const isSeeded = localStorage.getItem('hujjah_seeded') === 'true';
+      if (!isSeeded) {
+        setSystemState('SEEDING');
+        try {
+          await seedDatabase((phase, current, total) => {
+            setStatusMessage(`Loading knowledge base... (${current} of ${total})`);
+          });
+          setSystemState('READY');
+          setStatusMessage('Ready to search');
+        } catch (err) {
+          setSystemState('ERROR');
+          setStatusMessage('Could not load knowledge base. Check your connection.');
+        }
+      } else {
+        setSystemState('READY');
+        setStatusMessage('Ready to search');
+      }
+    }
+    init();
+  }, [dbLoading, dbError]);
+
+  const handleSearch = (query: string) => {
+    setSystemState('SEARCHING');
+    setStatusMessage('Searching...');
+    performSearch(query).then(() => {
+      setSystemState('READY');
+      setStatusMessage('Ready to search');
+    });
+  };
+
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>To get started, edit the page.tsx file.</h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+    <main className="container">
+      <ModeIndicator />
+      
+      <h1 style={{ marginBottom: 'var(--space-xl)', fontSize: 'var(--font-size-xxl)' }}>Hujjah</h1>
+      
+      <SearchBox onSearch={handleSearch} loading={searchLoading || systemState === 'SEEDING'} />
+      
+      <div style={{ display: 'flex', gap: 'var(--space-2xl)', flexDirection: 'column' }}>
+        <ResultsPanel results={results} />
+      </div>
+
+      <StatusBanner message={statusMessage} />
+    </main>
   );
 }

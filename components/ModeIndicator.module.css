@@ -1,0 +1,14 @@
+.container {
+    position: absolute;
+    top: var(--space-lg);
+    right: var(--space-lg);
+}
+
+.label {
+    font-size: var(--font-size-base);
+    color: var(--color-text-muted);
+    border: var(--border-light);
+    padding: var(--space-xs) var(--space-sm);
+    text-transform: uppercase;
+    font-weight: var(--font-weight-medium);
+}

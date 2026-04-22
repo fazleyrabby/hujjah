@@ -1,0 +1,18 @@
+.container {
+    flex: 1;
+}
+
+.heading {
+    font-size: var(--font-size-xl);
+    margin-bottom: var(--space-lg);
+    text-transform: uppercase;
+}
+
+.answerText {
+    font-size: var(--font-size-base);
+    line-height: 1.75;
+}
+
+.loading {
+    color: var(--color-text-muted);
+}

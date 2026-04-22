@@ -1,36 +1,71 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Hujjah — Local-First Islamic Research
 
-## Getting Started
+Hujjah is a privacy-focused, offline-capable AI research tool designed for exploring Islamic knowledge. It runs entirely in your browser using on-device embeddings and a local vector database.
 
-First, run the development server:
+![Aesthetic](https://img.shields.io/badge/Aesthetic-Soft--Brutalist-F9F7F2?labelColor=1A1A1A)
+![Local First](https://img.shields.io/badge/Architecture-Local--First-2D5F2D)
+![WebGPU](https://img.shields.io/badge/Inference-WebGPU-orange)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## 📖 Philosophy: The Digital Manuscript
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Hujjah is designed with a **Soft-Brutalist** aesthetic. It moves away from the cluttered, high-frequency interfaces of modern apps and embraces the calm, intentional feel of a high-end physical manuscript.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- **Paper & Ink**: A restricted palette of Paper (`#F9F7F2`) and Ink (`#1A1A1A`).
+- **Minimal Interaction**: No hidden menus, no jargon, no distracting animations.
+- **Privacy by Default**: Your queries and knowledge base never leave your device.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🛠️ Technology Stack
 
-## Learn More
+- **Framework**: [Next.js 15+](https://nextjs.org) (App Router)
+- **Database**: [PGLite](https://pglite.dev) (Postgres in WASM) with `pgvector` support.
+- **Embeddings**: [Transformers.js v3](https://huggingface.co/docs/transformers.js) using the `all-MiniLM-L6-v2` model.
+- **Acceleration**: **WebGPU** for blazing fast on-device vector generation.
+- **Persistence**: IndexedDB-backed storage via `idb://hujjah-vault`.
 
-To learn more about Next.js, take a look at the following resources:
+## 🚀 Key Features
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- **Semantic Search**: Find relevant verses and hadiths based on meaning, not just keywords.
+- **Ingestion Pipeline**: Import large datasets directly from your local machine:
+  - **Quran**: Parse `.sql` dumps (Tanzil style).
+  - **Hadith**: Ingest large `.csv` datasets (Sanadset) with tag-aware cleaning.
+- **Hardware Adaptive**: Detects device capabilities to run in `FULL_LOCAL`, `HYBRID`, or `LITE` modes, ensuring smooth performance even on low-end Android devices.
+- **Zero Latency**: Once seeded, searches happen in milliseconds without any network round-trips.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 📥 Getting Started
 
-## Deploy on Vercel
+### Prerequisites
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- Node.js 18+
+- A WebGPU-capable browser (Chrome, Edge, or recent Firefox)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Installation
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/fazleyrabby/hujjah.git
+   cd hujjah
+   ```
+
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+3. Run the development server:
+   ```bash
+   npm run dev
+   ```
+
+4. Open [http://localhost:3000](http://localhost:3000) and wait for the initial knowledge base to seed.
+
+## 🏗️ Ingesting Data
+
+Navigate to `/import` to migrate your verified Islamic datasets.
+- For Quran: Upload `quran-uthmani.sql`.
+- For Hadith: Upload `Sanadset.csv`.
+
+Data is processed in batches to ensure the UI remains responsive and memory stable.
+
+## 📜 License
+
+This project is licensed under the MIT License - see the `LICENSE` file for details.

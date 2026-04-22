@@ -1,0 +1,30 @@
+.uploadArea {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: var(--space-2xl);
+    border: 2px dashed var(--color-divider);
+    margin: var(--space-lg) 0;
+}
+
+.fileInput {
+    display: none;
+}
+
+.progressTrack {
+    width: 100%;
+    height: 12px;
+    background: var(--color-paper);
+    border: var(--border);
+    position: relative;
+    overflow: hidden;
+}
+
+.progressBar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    background: var(--color-ink);
+    transition: width 0.3s ease-out;
+}
