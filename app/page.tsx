@@ -11,6 +11,7 @@ import {
   type SurahVerse,
   type QuranStats,
 } from '@/lib/db';
+import { useQuranAudio } from '@/hooks/useQuranAudio';
 
 const SUPPORTED_LANGS = [
   { code: 'en', label: 'English' },
@@ -32,6 +33,7 @@ export default function Home() {
   const [searchMode, setSearchMode] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
+  const { play: playAudio, isPlaying: isAudioPlaying, current: currentAudio } = useQuranAudio();
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -259,7 +261,7 @@ export default function Home() {
                 onChange={(e) => handleQueryChange(e.target.value)}
                 placeholder={lang === 'bn' ? 'কুরআন অনুসন্ধান...' : 'Search the Quran...'}
                 disabled={loading}
-                className="w-full px-5 py-4 pr-24 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-shadow disabled:opacity-50 text-base"
+                className="w-full px-5 py-4 pr-32 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-shadow disabled:opacity-50 text-base"
               />
               {query.trim() && (
                 <button
@@ -270,7 +272,7 @@ export default function Home() {
                     setSurahVerses(null);
                     setSelectedSurah(null);
                   }}
-                  className="absolute right-20 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                  className="absolute right-[5.5rem] top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors z-10"
                   title="Clear search"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -281,7 +283,7 @@ export default function Home() {
               <button
                 type="submit"
                 disabled={loading || !query.trim()}
-                className="absolute right-2 top-1/2 -translate-y-1/2 px-5 py-2.5 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                className="absolute right-2 top-1/2 -translate-y-1/2 px-5 py-2.5 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed z-0"
               >
                 {loading ? '...' : lang === 'bn' ? 'খুঁজুন' : 'Search'}
               </button>
@@ -313,63 +315,93 @@ export default function Home() {
           {/* Search Results */}
           {searchMode && results && results.length > 0 && (
             <div className="space-y-4">
-              {results.map((r, i) => (
-                <article
-                  key={`${r.surah}-${r.ayah}-${r.translator_slug}-${i}`}
-                  onClick={() => handleSurahClick(r.surah)}
-                  className="bg-white border border-gray-200 rounded-xl p-5 hover:shadow-subtle hover:border-teal-200 transition-all cursor-pointer"
-                  title={`Go to ${r.surah_name} ${r.surah}:${r.ayah}`}
-                >
-                  {/* Type Badge + Meta */}
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="text-xs font-bold text-white bg-gray-900 px-2 py-0.5 rounded">
-                      {r.label}
-                    </span>
-                    <span className="text-xs font-semibold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-full">
-                      {r.surah}:{r.ayah}
-                    </span>
-                    <span className="text-xs font-medium text-gray-600">
-                      {r.surah_name}
-                    </span>
-                    <span className="text-xs text-gray-400 capitalize">
-                      {r.translator_slug}
-                    </span>
-                    {r.rank !== 0 && (
-                      <span className="text-xs text-gray-300 ml-auto">
-                        rank {r.rank.toFixed(4)}
-                      </span>
+              {results.map((r, i) => {
+                const isPlayingThis = isAudioPlaying && currentAudio?.surah === r.surah && currentAudio?.ayah === r.ayah;
+                return (
+                  <article
+                    key={`${r.surah}-${r.ayah}-${r.translator_slug}-${i}`}
+                    className="bg-white border border-gray-200 rounded-xl p-5 hover:shadow-subtle hover:border-teal-200 transition-all"
+                    title={`Go to ${r.surah_name} ${r.surah}:${r.ayah}`}
+                  >
+                    {/* Type Badge + Meta */}
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-white bg-gray-900 px-2 py-0.5 rounded">
+                          {r.label}
+                        </span>
+                        <span className="text-xs font-semibold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-full">
+                          {r.surah}:{r.ayah}
+                        </span>
+                        <span className="text-xs font-medium text-gray-600">
+                          {r.surah_name}
+                        </span>
+                        <span className="text-xs text-gray-400 capitalize">
+                          {r.translator_slug}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {r.rank !== 0 && (
+                          <span className="text-xs text-gray-300">
+                            rank {r.rank.toFixed(4)}
+                          </span>
+                        )}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            playAudio({ surah: r.surah, ayah: r.ayah, autoPlay: false });
+                          }}
+                          className={`p-1.5 rounded-full transition-colors ${
+                            isPlayingThis
+                              ? 'bg-teal-100 text-teal-700'
+                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                          }`}
+                          title={isPlayingThis ? 'Playing...' : 'Play audio'}
+                        >
+                          {isPlayingThis ? (
+                            <svg className="w-3.5 h-3.5 animate-pulse" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M8 5v14l11-7z" />
+                            </svg>
+                          ) : (
+                            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M8 5v14l11-7z" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                  <div onClick={() => handleSurahClick(r.surah)} className="cursor-pointer">
+                    {/* Arabic */}
+                    {r.text_ar && (
+                      <p
+                        className="text-lg font-arabic text-gray-900 leading-relaxed mb-3"
+                        dir="rtl"
+                      >
+                        {r.text_ar}
+                      </p>
                     )}
-                  </div>
 
-                  {/* Arabic */}
-                  {r.text_ar && (
-                    <p
-                      className="text-lg font-arabic text-gray-900 leading-relaxed mb-3"
-                      dir="rtl"
-                    >
-                      {r.text_ar}
+                    {/* Snippet / Translation */}
+                    {r.snippet ? (
+                      <p
+                        className="text-sm text-gray-700 leading-relaxed"
+                        dangerouslySetInnerHTML={{ __html: r.snippet }}
+                      />
+                    ) : (
+                      <p className="text-sm text-gray-700 leading-relaxed">{r.text}</p>
+                    )}
+
+                    {/* Click hint */}
+                    <p className="text-xs text-teal-600 mt-3 flex items-center gap-1">
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                      </svg>
+                      {lang === 'bn' ? 'সূরায় যান' : 'Go to surah'}
                     </p>
-                  )}
-
-                  {/* Snippet / Translation */}
-                  {r.snippet ? (
-                    <p
-                      className="text-sm text-gray-700 leading-relaxed"
-                      dangerouslySetInnerHTML={{ __html: r.snippet }}
-                    />
-                  ) : (
-                    <p className="text-sm text-gray-700 leading-relaxed">{r.text}</p>
-                  )}
-
-                  {/* Click hint */}
-                  <p className="text-xs text-teal-600 mt-3 flex items-center gap-1">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                    </svg>
-                    {lang === 'bn' ? 'সূরায় যান' : 'Go to surah'}
-                  </p>
+                  </div>
                 </article>
-              ))}
+              );
+            })}
             </div>
           )}
 
@@ -416,28 +448,52 @@ export default function Home() {
               </div>
 
               <div className="space-y-6">
-                {surahVerses.map((v, i) => (
-                  <div
-                    key={`${v.id}-${v.translator_slug}-${i}`}
-                    className="bg-white border border-gray-200 rounded-xl p-5"
-                  >
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="text-xs font-semibold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-full">
-                        {v.surah}:{v.ayah}
-                      </span>
-                      <span className="text-xs text-gray-400 capitalize">
-                        {v.translator_slug}
-                      </span>
-                    </div>
-                    <p
-                      className="text-lg font-arabic text-gray-900 leading-relaxed mb-3"
-                      dir="rtl"
+                {surahVerses.map((v, i) => {
+                  const isPlayingThis = isAudioPlaying && currentAudio?.surah === v.surah && currentAudio?.ayah === v.ayah;
+                  return (
+                    <div
+                      key={`${v.id}-${v.translator_slug}-${i}`}
+                      className="bg-white border border-gray-200 rounded-xl p-5"
                     >
-                      {v.text_ar}
-                    </p>
-                    <p className="text-sm text-gray-700 leading-relaxed">{v.text}</p>
-                  </div>
-                ))}
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-full">
+                            {v.surah}:{v.ayah}
+                          </span>
+                          <span className="text-xs text-gray-400 capitalize">
+                            {v.translator_slug}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => playAudio({ surah: v.surah, ayah: v.ayah, autoPlay: false })}
+                          className={`p-2 rounded-full transition-colors ${
+                            isPlayingThis
+                              ? 'bg-teal-100 text-teal-700'
+                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                          }`}
+                          title={isPlayingThis ? 'Playing...' : 'Play audio'}
+                        >
+                          {isPlayingThis ? (
+                            <svg className="w-4 h-4 animate-pulse" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M8 5v14l11-7z" />
+                            </svg>
+                          ) : (
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M8 5v14l11-7z" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                      <p
+                        className="text-lg font-arabic text-gray-900 leading-relaxed mb-3"
+                        dir="rtl"
+                      >
+                        {v.text_ar}
+                      </p>
+                      <p className="text-sm text-gray-700 leading-relaxed">{v.text}</p>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
