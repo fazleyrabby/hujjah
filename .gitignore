@@ -52,3 +52,14 @@ CLAUDE.md
 DATAIMPORT.md
 dist/
 *.db
+
+# Tauri build artifacts
+/src-tauri/target/
+/src-tauri/gen/
+/src-tauri/Cargo.lock
+
+# Model files (large binaries)
+/src-tauri/resources/models/
+
+# macOS
+.DS_Store

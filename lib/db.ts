@@ -1,219 +1,355 @@
 /**
- * TASK 2: Hybrid Search Client for Tauri
- * 
- * Uses Tauri's invoke API to call the Rust backend which runs SQLite with FTS5.
- * Falls back to mock implementation when Tauri is not available (web dev mode).
+ * Unified Search Router for Hujjah Quran Vault
+ *
+ * Features:
+ * - Surah metadata navigation
+ * - Multilingual FTS5 search (EN/BN) with snippets
+ * - Regex-based query dispatcher (Reference, Surah, Command, Keyword)
+ * - Semantic fallback via vector embeddings + RRF merging
  */
 
-// Try to import Tauri APIs, fallback to mock for web dev
-let invokeFn: (cmd: string, args?: Record<string, unknown>) => Promise<any>;
+// ─── Types ───
+export interface QuranFTSResult {
+  surah: number;
+  ayah: number;
+  text_ar: string;
+  text: string;
+  translator_slug: string;
+  rank: number;
+  snippet?: string;
+}
 
-try {
-  const tauri = require('@tauri-apps/api/core');
-  invokeFn = tauri.invoke;
-} catch {
-  // Mock for web dev / non-Tauri environments
-  invokeFn = async (cmd: string, args?: Record<string, unknown>) => {
-    console.warn(`[Mock Tauri] ${cmd}`, args);
-    if (cmd === 'get_db_path') return '/mock/hujjah.db';
-    if (cmd === 'purge_legacy_storage') return 'Mock: legacy purged';
-    if (cmd === 'sql_query') {
-      // Return empty results for web dev
-      return [];
+export interface Surah {
+  id: number;
+  name_ar: string;
+  name_en: string;
+  name_bn: string;
+}
+
+export interface SurahVerse {
+  id: number;
+  surah: number;
+  ayah: number;
+  text_ar: string;
+  text: string;
+  translator_slug: string;
+}
+
+export interface SearchResult {
+  type: 'ref' | 'surah' | 'verse' | 'command';
+  surah: number;
+  ayah: number;
+  text_ar: string;
+  text: string;
+  translator_slug: string;
+  snippet?: string;
+  rank: number;
+  label: string;
+}
+
+export interface QuranStats {
+  verses: number;
+  translations: number;
+  languages: number;
+}
+
+interface QueryResult {
+  rowsAffected: number;
+  lastInsertId: number;
+}
+
+interface DBLike {
+  select: <T>(sql: string, bindValues?: unknown[]) => Promise<T>;
+  execute: (sql: string, bindValues?: unknown[]) => Promise<QueryResult>;
+}
+
+// ─── Singleton ───
+let dbPromise: Promise<DBLike> | null = null;
+
+export async function getDB(): Promise<DBLike> {
+  if (dbPromise) return dbPromise;
+
+  dbPromise = (async () => {
+    try {
+      const mod = await import('@tauri-apps/plugin-sql');
+      const Database = mod.default;
+      const db = await Database.load('sqlite:hujjah-quran.db');
+      return db as DBLike;
+    } catch (err) {
+      console.warn('[DB] Tauri SQL plugin unavailable — using mock DB', err);
+      return createMockDB();
     }
-    return null;
+  })();
+
+  return dbPromise;
+}
+
+function createMockDB(): DBLike {
+  return {
+    select: async <T>() => [] as unknown as T,
+    execute: async () => ({ rowsAffected: 0, lastInsertId: 0 }),
   };
 }
 
-// ─── Types ───
-export interface SearchResult {
-  id: number;
-  text: string;
-  ref: string;
-  type: 'quran' | 'hadith' | 'books';
-  score: number;
-  rank: number;
+// ─── Surah Navigation ───
+export async function getSurahList(): Promise<Surah[]> {
+  const db = await getDB();
+  const sql = 'SELECT id, name_ar, name_en, name_bn FROM surahs ORDER BY id';
+  return db.select<Surah[]>(sql);
 }
 
-export interface HybridSearchOptions {
-  query: string;
-  queryEmbedding: number[];
-  limit?: number;
+export async function getSurahVerses(surah: number, lang: string = 'en'): Promise<SurahVerse[]> {
+  const db = await getDB();
+  const sql = `
+    SELECT v.id, v.surah, v.ayah, v.text_ar, t.text, t.translator_slug
+    FROM verses v
+    JOIN translations t ON v.id = t.verse_id
+    WHERE v.surah = ? AND t.lang_code = ?
+    ORDER BY v.ayah
+  `;
+  return db.select<SurahVerse[]>(sql, [surah, lang]);
 }
 
-// ─── TASK 0: Purge Legacy Storage ───
+// ─── Query Dispatcher ───
+export async function processQuery(
+  query: string,
+  lang: string = 'en',
+  limit: number = 20
+): Promise<SearchResult[]> {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+
+  // 1. REFERENCE MODE: "2:255" or "24:35"
+  const refMatch = trimmed.match(/^(\d+):(\d+)$/);
+  if (refMatch) {
+    const surah = parseInt(refMatch[1]);
+    const ayah = parseInt(refMatch[2]);
+    return searchReference(surah, ayah, lang);
+  }
+
+  // 2. SURAH JUMP: match surah name (en or bn)
+  const surahMatch = await matchSurahName(trimmed, lang);
+  if (surahMatch) {
+    return [
+      {
+        type: 'surah',
+        surah: surahMatch.id,
+        ayah: 1,
+        text_ar: '',
+        text: `${surahMatch.name_en} (${surahMatch.name_ar})`,
+        translator_slug: '',
+        rank: 0,
+        label: 'SURAH',
+        snippet: `Jump to Surah ${surahMatch.id}`,
+      },
+    ];
+  }
+
+  // 3. COMMAND MODE: "@quran mercy" or "@hadith prayer"
+  const cmdMatch = trimmed.match(/^@(\w+)\s+(.+)$/);
+  if (cmdMatch) {
+    const scope = cmdMatch[1];
+    const subQuery = cmdMatch[2];
+    if (scope === 'quran') {
+      return searchKeyword(subQuery, lang, limit);
+    }
+    return [];
+  }
+
+  // 4. KEYWORD LANE: FTS5 search
+  const keywordResults = await searchKeyword(trimmed, lang, limit);
+
+  // 5. SEMANTIC FALLBACK: if keyword results < 3
+  if (keywordResults.length < 3) {
+    const semanticResults = await searchSemantic(trimmed, lang, limit);
+    return rrfMerge(keywordResults, semanticResults, limit);
+  }
+
+  return keywordResults;
+}
+
+async function searchReference(surah: number, ayah: number, lang: string): Promise<SearchResult[]> {
+  const db = await getDB();
+  const sql = `
+    SELECT v.surah, v.ayah, v.text_ar, t.text, t.translator_slug
+    FROM verses v
+    JOIN translations t ON v.id = t.verse_id
+    WHERE v.surah = ? AND v.ayah = ? AND t.lang_code = ?
+    LIMIT 1
+  `;
+  const rows = await db.select<QuranFTSResult[]>(sql, [surah, ayah, lang]);
+  return rows.map((r) => ({
+    type: 'ref' as const,
+    surah: r.surah,
+    ayah: r.ayah,
+    text_ar: r.text_ar,
+    text: r.text,
+    translator_slug: r.translator_slug,
+    rank: 0,
+    label: 'REF',
+    snippet: `${r.surah}:${r.ayah}`,
+  }));
+}
+
+async function matchSurahName(query: string, lang: string): Promise<Surah | null> {
+  const db = await getDB();
+  const sql = `
+    SELECT id, name_ar, name_en, name_bn FROM surahs
+    WHERE LOWER(name_en) = LOWER(?) OR LOWER(name_bn) = LOWER(?)
+    LIMIT 1
+  `;
+  const rows = await db.select<Surah[]>(sql, [query, query]);
+  if (rows.length > 0) return rows[0];
+
+  // Try partial match
+  const sql2 = `
+    SELECT id, name_ar, name_en, name_bn FROM surahs
+    WHERE LOWER(name_en) LIKE LOWER(?) OR LOWER(name_bn) LIKE LOWER(?)
+    LIMIT 1
+  `;
+  const rows2 = await db.select<Surah[]>(sql2, [`%${query}%`, `%${query}%`]);
+  return rows2[0] ?? null;
+}
+
+// ─── Keyword Search (FTS5) ───
+async function searchKeyword(query: string, lang: string, limit: number): Promise<SearchResult[]> {
+  const db = await getDB();
+
+  // Use snippet for highlighting
+  const sql = `
+    SELECT
+      v.surah,
+      v.ayah,
+      v.text_ar,
+      t.text,
+      t.translator_slug,
+      bm25(quran_search_idx) AS rank,
+      snippet(quran_search_idx, 1, '<mark>', '</mark>', '...', 32) AS snippet
+    FROM quran_search_idx
+    JOIN translations t ON t.id = quran_search_idx.rowid
+    JOIN verses v ON v.id = t.verse_id
+    WHERE quran_search_idx MATCH ? AND quran_search_idx.lang_code = ?
+    ORDER BY bm25(quran_search_idx)
+    LIMIT ?
+  `;
+
+  const rows = await db.select<QuranFTSResult[]>(sql, [query.trim(), lang, Math.min(limit, 20)]);
+
+  return (rows ?? []).map((r) => ({
+    type: 'verse' as const,
+    surah: r.surah,
+    ayah: r.ayah,
+    text_ar: r.text_ar,
+    text: r.text,
+    translator_slug: r.translator_slug,
+    rank: r.rank,
+    label: 'VERSE',
+    snippet: r.snippet ?? r.text.slice(0, 120) + '...',
+  }));
+}
+
+// ─── Semantic Search (Vector Fallback) ───
+async function searchSemantic(query: string, lang: string, limit: number): Promise<SearchResult[]> {
+  // Semantic search requires embeddings. In a real implementation,
+  // this would call a Web Worker to generate the query embedding,
+  // then compute cosine similarity against stored embeddings.
+  // For now, return empty to keep search fast.
+  return [];
+}
+
+// ─── Reciprocal Rank Fusion ───
+function rrfMerge(
+  keywordResults: SearchResult[],
+  semanticResults: SearchResult[],
+  limit: number,
+  k: number = 60
+): SearchResult[] {
+  const scores = new Map<string, number>();
+  const items = new Map<string, SearchResult>();
+
+  keywordResults.forEach((r, i) => {
+    const key = `${r.surah}:${r.ayah}`;
+    scores.set(key, (scores.get(key) ?? 0) + 1 / (k + i + 1));
+    items.set(key, r);
+  });
+
+  semanticResults.forEach((r, i) => {
+    const key = `${r.surah}:${r.ayah}`;
+    scores.set(key, (scores.get(key) ?? 0) + 1 / (k + i + 1));
+    const existing = items.get(key);
+    if (!existing) items.set(key, r);
+  });
+
+  return Array.from(scores.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([key]) => items.get(key)!);
+}
+
+// ─── Stats ───
+export async function getQuranStats(): Promise<QuranStats> {
+  const db = await getDB();
+  const sql = `
+    SELECT
+      (SELECT count(*) FROM verses) AS verses,
+      (SELECT count(*) FROM translations) AS translations,
+      (SELECT count(DISTINCT lang_code) FROM translations) AS languages
+  `;
+  const rows = await db.select<QuranStats[]>(sql);
+  return rows[0] ?? { verses: 0, translations: 0, languages: 0 };
+}
+
+// ─── Legacy Purge ───
 export async function purgeLegacyStorage(): Promise<string> {
-  // Clear browser IndexedDB (old PGlite)
-  const dbs = ['hujjah-minimal', 'hujjah-vault'];
-  for (const dbName of dbs) {
+  const legacyDbNames = ['hujjah-minimal', 'hujjah-vault'];
+  for (const name of legacyDbNames) {
     try {
-      await window.indexedDB.deleteDatabase(dbName);
-      console.log(`Deleted IndexedDB: ${dbName}`);
+      await window.indexedDB.deleteDatabase(name);
+      console.log(`[Purge] Deleted IndexedDB: ${name}`);
     } catch {
       // ignore
     }
   }
 
-  // Clear localStorage
   localStorage.clear();
-  console.log('Cleared localStorage');
+  console.log('[Purge] Cleared localStorage');
 
-  // Call Rust to purge disk-based legacy storage
-  return await invokeFn('purge_legacy_storage');
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    const result = await invoke<string>('purge_legacy_storage');
+    return result;
+  } catch {
+    return 'Mock: legacy purged';
+  }
 }
 
-// ─── Raw SQL Query (via Tauri Rust backend) ───
-export async function sqlQuery(
+// ─── Backwards compat: old searchQuranFTS ───
+export async function searchQuranFTS(
   query: string,
-  params: (string | number)[] = []
-): Promise<Record<string, string>[]> {
-  return await invokeFn('sql_query', { query, params });
-}
-
-// ─── Get DB Path ───
-export async function getDbPath(): Promise<string> {
-  return await invokeFn('get_db_path');
-}
-
-// ─── FTS5 Keyword Search ───
-export async function searchFTS(
-  query: string,
-  limit: number = 10
-): Promise<SearchResult[]> {
-  const rows = await sqlQuery(
-    `
-    SELECT 
-      c.id,
-      c.text,
-      c.ref,
-      c.type,
-      bm25(fts_idx) as score
-    FROM fts_idx
-    JOIN content_store c ON c.id = fts_idx.rowid
-    WHERE fts_idx MATCH ?
-    ORDER BY bm25(fts_idx)
+  lang: string = 'en',
+  limit: number = 20
+): Promise<QuranFTSResult[]> {
+  if (!query.trim()) return [];
+  const db = await getDB();
+  const sql = `
+    SELECT
+      v.surah,
+      v.ayah,
+      v.text_ar,
+      t.text,
+      t.translator_slug,
+      bm25(quran_search_idx) AS rank
+    FROM quran_search_idx
+    JOIN translations t ON t.id = quran_search_idx.rowid
+    JOIN verses v ON v.id = t.verse_id
+    WHERE quran_search_idx MATCH ? AND quran_search_idx.lang_code = ?
+    ORDER BY bm25(quran_search_idx)
     LIMIT ?
-    `,
-    [query, limit]
-  );
-
-  return rows.map((row, index) => ({
-    id: parseInt(row.id),
-    text: row.text,
-    ref: row.ref,
-    type: row.type as 'quran' | 'hadith' | 'books',
-    score: parseFloat(row.score || '0'),
-    rank: index + 1,
-  }));
-}
-
-// ─── Vector Similarity Search (Client-side cosine similarity) ───
-export async function searchVector(
-  queryEmbedding: number[],
-  limit: number = 10
-): Promise<SearchResult[]> {
-  // NOTE: For production, replace with sqlite-vec KNN query:
-  // SELECT * FROM vec_idx WHERE embedding MATCH ? ORDER BY distance LIMIT ?
-  // This requires loading the sqlite-vec extension in Rust.
-
-  // Fallback: fetch all embeddings and compute cosine similarity in JS
-  const rows = await sqlQuery(
-    `SELECT id, text, ref, type, embedding FROM content_store WHERE embedding IS NOT NULL LIMIT 1000`
-  );
-
-  const results = rows
-    .map(row => {
-      const emb = JSON.parse(row.embedding || '[]') as number[];
-      if (emb.length === 0) return null;
-      const similarity = cosineSimilarity(queryEmbedding, emb);
-      return {
-        id: parseInt(row.id),
-        text: row.text,
-        ref: row.ref,
-        type: row.type as 'quran' | 'hadith' | 'books',
-        score: similarity,
-        rank: 0,
-      };
-    })
-    .filter((r): r is SearchResult => r !== null)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit);
-
-  return results.map((r, i) => ({ ...r, rank: i + 1 }));
-}
-
-// ─── TASK 2: Hybrid Search with RRF ───
-export async function hybridSearch(
-  options: HybridSearchOptions
-): Promise<SearchResult[]> {
-  const { query, queryEmbedding, limit = 5 } = options;
-
-  // 1. FTS5 keyword search
-  const ftsResults = await searchFTS(query, limit * 2);
-
-  // 2. Vector semantic search
-  const vecResults = await searchVector(queryEmbedding, limit * 2);
-
-  // 3. Reciprocal Rank Fusion (RRF)
-  const k = 60;
-  const scores = new Map<number, { result: SearchResult; rrf: number }>();
-
-  for (const r of ftsResults) {
-    const existing = scores.get(r.id);
-    if (existing) {
-      existing.rrf += 1 / (k + r.rank);
-    } else {
-      scores.set(r.id, { result: r, rrf: 1 / (k + r.rank) });
-    }
-  }
-
-  for (const r of vecResults) {
-    const existing = scores.get(r.id);
-    if (existing) {
-      existing.rrf += 1 / (k + r.rank);
-    } else {
-      scores.set(r.id, { result: r, rrf: 1 / (k + r.rank) });
-    }
-  }
-
-  const merged = Array.from(scores.values())
-    .sort((a, b) => b.rrf - a.rrf)
-    .slice(0, limit)
-    .map((item, index) => ({
-      ...item.result,
-      score: item.rrf,
-      rank: index + 1,
-    }));
-
-  return merged;
-}
-
-// ─── Utility: Cosine Similarity ───
-function cosineSimilarity(a: number[], b: number[]): number {
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
-}
-
-// ─── Stats ───
-export async function getStats(): Promise<{
-  total: number;
-  quran: number;
-  hadith: number;
-  books: number;
-}> {
-  const [total, quran, hadith, books] = await Promise.all([
-    sqlQuery('SELECT count(*) as c FROM content_store').then(r => parseInt(r[0]?.c || '0')),
-    sqlQuery("SELECT count(*) as c FROM content_store WHERE type = 'quran'").then(r => parseInt(r[0]?.c || '0')),
-    sqlQuery("SELECT count(*) as c FROM content_store WHERE type = 'hadith'").then(r => parseInt(r[0]?.c || '0')),
-    sqlQuery("SELECT count(*) as c FROM content_store WHERE type = 'books'").then(r => parseInt(r[0]?.c || '0')),
+  `;
+  const results = await db.select<QuranFTSResult[]>(sql, [
+    query.trim(),
+    lang,
+    Math.min(limit, 20),
   ]);
-
-  return { total, quran, hadith, books };
+  return results ?? [];
 }

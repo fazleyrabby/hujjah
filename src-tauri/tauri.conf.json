@@ -35,7 +35,7 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "resources/hujjah.db": "resources/hujjah.db"
+      "resources/hujjah-quran.db": "resources/hujjah-quran.db"
     }
   }
 }

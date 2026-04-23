@@ -8,6 +8,7 @@
     "shell:allow-open",
     "dialog:allow-open",
     "fs:allow-appdata-read",
-    "fs:allow-appdata-write"
+    "fs:allow-appdata-write",
+    "sql:default"
   ]
 }
