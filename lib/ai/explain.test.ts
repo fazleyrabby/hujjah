@@ -7,9 +7,9 @@ describe('explain module (architecture)', () => {
     expect(typeof mod.explainQuery).toBe('function');
   });
 
-  it('explainVerse returns insufficient context for empty input', async () => {
+  it('explainVerse returns helpful message for empty input', async () => {
     const { explainVerse } = await import('./explain');
-    const result = await explainVerse([]);
-    expect(result).toContain('Insufficient context');
+    const result = await explainVerse('test query', []);
+    expect(result).toContain("couldn't find");
   });
 });

@@ -70,47 +70,74 @@ async function generate(prompt: string, maxNewTokens = 80): Promise<string> {
 }
 
 /**
- * Build a strict prompt that only uses provided verses.
+ * Detect casual greetings / chitchat so we can reply naturally
+ * without running the LLM on empty verse context.
+ */
+function detectChitchat(query: string): string | null {
+  const q = query.toLowerCase().trim();
+  const greetings = ['hi', 'hello', 'hey', 'salam', 'as-salamu alaykum', 'assalamualaikum'];
+  const howAreYou = ['how are you', 'how r u', 'how is it going', 'how are things'];
+  const identity = ['who are you', 'who am i talking to', 'what is your name', 'what are you'];
+  const thanks = ['thank you', 'thanks', 'shukran', 'jazakallah'];
+
+  if (greetings.some((g) => q.includes(g))) {
+    return "Salam! I'm Hujjah AI, your companion for exploring the Quran. Ask me about any topic, verse, or surah — I'm here to help!";
+  }
+  if (howAreYou.some((h) => q.includes(h))) {
+    return "I'm doing well, Alhamdulillah! Ready to explore the Quran with you. What would you like to know?";
+  }
+  if (identity.some((i) => q.includes(i))) {
+    return "I'm Hujjah AI — a local, offline assistant built to help you understand and reflect on the Quran. Everything I share is grounded directly in Quranic verses.";
+  }
+  if (thanks.some((t) => q.includes(t))) {
+    return "You're welcome! May Allah bless your journey with the Quran. Feel free to ask anytime.";
+  }
+  return null;
+}
+
+/**
+ * Build a warm, conversational prompt grounded in retrieved verses.
  */
 function buildPrompt(verses: VerseContext[]): string {
   const context = verses
     .map((v) => `[${v.surah}:${v.ayah}] ${v.text}`)
     .join('\n');
 
-  return `You are a Quran research assistant.
+  return `You are a warm, knowledgeable Islamic research companion. Your tone is friendly, humble, and conversational — like a thoughtful friend or teacher sharing insights from the Quran.
 
-ONLY use the provided verses.
+Instructions:
+- Use ONLY the verses provided below.
+- Write 2-4 sentences that feel natural and human, not robotic.
+- Gently weave in the verse references (e.g., "as mentioned in Surah Al-Baqarah [2:255]...").
+- If the context is limited, acknowledge it honestly rather than making things up.
+- Avoid sounding like a textbook. Use words like "Allah tells us," "the Quran reminds us," or "we find guidance in."
 
-Summarize in 3 short sentences.
-
-Rules:
-- Do NOT add external knowledge
-- Do NOT interpret beyond text
-- If unclear, say "Insufficient context"
-- Include references like [2:255]
-
-Context:
+Provided verses:
 ${context}
 
-Explanation:`;
+Your response:`;
 }
 
 /**
- * Generate a 3-sentence explanation strictly from retrieved verses.
+ * Generate a warm explanation from retrieved verses.
  */
-export async function explainVerse(verses: VerseContext[]): Promise<string> {
+export async function explainVerse(query: string, verses: VerseContext[]): Promise<string> {
+  // Handle greetings / small talk instantly without LLM
+  const chitchat = detectChitchat(query);
+  if (chitchat) return chitchat;
+
   if (verses.length === 0) {
-    return 'Insufficient context to provide an explanation.';
+    return "I couldn't find any verses closely related to that. Could you try rephrasing or asking about a specific topic from the Quran?";
   }
 
   try {
     const prompt = buildPrompt(verses);
-    const text = await generate(prompt, 80);
-    return text || 'Insufficient context.';
+    const text = await generate(prompt, 100);
+    return text || "Here's what I found from the verses above. Let me know if you'd like to explore further!";
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[Explain] Generation failed:', message);
-    return `Unable to generate explanation: ${message}`;
+    return "Hmm, I'm having trouble thinking that through right now. Could you try again in a moment?";
   }
 }
 
@@ -167,7 +194,7 @@ export async function explainQuery(
     .slice(0, 5);
 
   // Step 4: Generate explanation
-  const explanation = await explainVerse(scored);
+  const explanation = await explainVerse(query, scored);
 
   return { explanation, verses: scored };
 }
