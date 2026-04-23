@@ -101,16 +101,65 @@ export async function getSurahList(): Promise<Surah[]> {
   return db.select<Surah[]>(sql);
 }
 
-export async function getSurahVerses(surah: number, lang: string = 'en'): Promise<SurahVerse[]> {
+export async function getSurahTranslators(surah: number, lang: string = 'en'): Promise<{ translator_slug: string; count: number }[]> {
   const db = await getDB();
+  const sql = `
+    SELECT t.translator_slug, COUNT(*) as count
+    FROM translations t
+    JOIN verses v ON v.id = t.verse_id
+    WHERE v.surah = ? AND t.lang_code = ?
+    GROUP BY t.translator_slug
+    ORDER BY t.translator_slug
+  `;
+  return db.select<{ translator_slug: string; count: number }[]>(sql, [surah, lang]);
+}
+
+export async function getSurahVerses(
+  surah: number,
+  lang: string = 'en',
+  translatorSlug?: string
+): Promise<SurahVerse[]> {
+  const db = await getDB();
+
+  if (translatorSlug) {
+    const sql = `
+      SELECT v.id, v.surah, v.ayah, v.text_ar, t.text, t.translator_slug
+      FROM verses v
+      JOIN translations t ON v.id = t.verse_id
+      WHERE v.surah = ? AND t.lang_code = ? AND t.translator_slug = ?
+      ORDER BY v.ayah
+    `;
+    return db.select<SurahVerse[]>(sql, [surah, lang, translatorSlug]);
+  }
+
+  // Default: pick one translation per verse deterministically
   const sql = `
     SELECT v.id, v.surah, v.ayah, v.text_ar, t.text, t.translator_slug
     FROM verses v
     JOIN translations t ON v.id = t.verse_id
     WHERE v.surah = ? AND t.lang_code = ?
+      AND t.rowid = (
+        SELECT rowid FROM translations
+        WHERE verse_id = v.id AND lang_code = ?
+        ORDER BY CASE translator_slug
+          WHEN 'sahih' THEN 1
+          WHEN 'bengali' THEN 1
+          WHEN 'pickthall' THEN 2
+          WHEN 'yusufali' THEN 3
+          WHEN 'arberry' THEN 4
+          WHEN 'shakir' THEN 5
+          WHEN 'hilali' THEN 6
+          WHEN 'itani' THEN 7
+          WHEN 'maududi' THEN 8
+          WHEN 'sarwar' THEN 9
+          WHEN 'hoque' THEN 2
+          ELSE 10
+        END, translator_slug
+        LIMIT 1
+      )
     ORDER BY v.ayah
   `;
-  return db.select<SurahVerse[]>(sql, [surah, lang]);
+  return db.select<SurahVerse[]>(sql, [surah, lang, lang]);
 }
 
 // ─── Query Dispatcher ───
@@ -262,11 +311,26 @@ async function searchKeyword(query: string, lang: string, limit: number): Promis
 
 // ─── Semantic Search (Vector Fallback) ───
 async function searchSemantic(query: string, lang: string, limit: number): Promise<SearchResult[]> {
-  // Semantic search requires embeddings. In a real implementation,
-  // this would call a Web Worker to generate the query embedding,
-  // then compute cosine similarity against stored embeddings.
-  // For now, return empty to keep search fast.
-  return [];
+  try {
+    const { retrieveHybrid } = await import('./ai/retrieve');
+    const results = await retrieveHybrid(query, lang, limit);
+    
+    return results.map(r => ({
+      type: 'verse' as const,
+      surah: r.surah,
+      surah_name: lang === 'bn' ? r.surah_name_bn : r.surah_name_en,
+      ayah: r.ayah,
+      text_ar: r.text_ar,
+      text: r.text,
+      translator_slug: r.translator_slug,
+      rank: r.similarity,
+      label: 'SEMANTIC',
+      snippet: r.text.slice(0, 160) + '...'
+    }));
+  } catch (err) {
+    console.error('[Search] Semantic fallback failed:', err);
+    return [];
+  }
 }
 
 // ─── Reciprocal Rank Fusion ───

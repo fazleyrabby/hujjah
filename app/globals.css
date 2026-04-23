@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   /* Custom colors used across the app */
   --color-base: #FDFDFB;
@@ -41,6 +43,27 @@
   --leading-relaxed: 1.625;
   --leading-loose: 1.75;
   --leading-arabic: 2.0;
+}
+
+.dark {
+  --color-base: #0F0F0F;
+  --color-base-secondary: #1A1A1A;
+  
+  --color-content: #FDFDFB;
+  --color-content-secondary: #A1A1AA;
+  --color-content-tertiary: #52525B;
+  
+  --color-accent: #14B8A6;
+  --color-accent-light: #2DD4BF;
+  --color-accent-dark: #0D9488;
+
+  --color-gray-100: #1A1A1A;
+  --color-gray-200: #27272A;
+  --color-gray-400: #71717A;
+  --color-gray-500: #A1A1AA;
+  --color-gray-600: #D4D4D8;
+  --color-gray-700: #E5E5E5;
+  --color-gray-900: #FFFFFF;
 }
 
 /* Base styles */

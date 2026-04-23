@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   getSurahList,
   getSurahVerses,
+  getSurahTranslators,
   processQuery,
   getQuranStats,
   type SearchResult,
@@ -12,6 +13,8 @@ import {
   type QuranStats,
 } from '@/lib/db';
 import { useQuranAudio } from '@/hooks/useQuranAudio';
+import { useRAG } from '@/hooks/useRAG';
+import { clsx } from 'clsx';
 
 const SUPPORTED_LANGS = [
   { code: 'en', label: 'English' },
@@ -30,10 +33,13 @@ export default function Home() {
   const [surahs, setSurahs] = useState<Surah[]>([]);
   const [selectedSurah, setSelectedSurah] = useState<number | null>(null);
   const [surahVerses, setSurahVerses] = useState<SurahVerse[] | null>(null);
+  const [availableTranslators, setAvailableTranslators] = useState<string[]>([]);
+  const [selectedTranslator, setSelectedTranslator] = useState<string>('');
   const [searchMode, setSearchMode] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
-  const { play: playAudio, isPlaying: isAudioPlaying, current: currentAudio } = useQuranAudio();
+  const { play: playAudio, pause: pauseAudio, resume: resumeAudio, stop: stopAudio, isPlaying: isAudioPlaying, current: currentAudio } = useQuranAudio();
+  const { askAI, explanation, loading: aiLoading, error: aiError, clearAI } = useRAG();
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -43,6 +49,16 @@ export default function Home() {
     getQuranStats().then(setStats).catch(console.error);
     getSurahList().then(setSurahs).catch(console.error);
   }, []);
+
+  // ─── Dark Mode Sync ───
+  useEffect(() => {
+    const root = document.documentElement;
+    if (darkMode) {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+  }, [darkMode]);
 
   // ─── Debounced Search ───
   const executeSearch = useCallback(
@@ -87,10 +103,40 @@ export default function Home() {
     [executeSearch, lang]
   );
 
+  // ─── Surah Selection ───
+  const loadSurah = useCallback(async (surahId: number, activeLang: string, translatorSlug?: string) => {
+    setLoading(true);
+    setSearchMode(false);
+    setResults(null);
+    setError(null);
+    try {
+      const [verses, translators] = await Promise.all([
+        getSurahVerses(surahId, activeLang, translatorSlug),
+        getSurahTranslators(surahId, activeLang),
+      ]);
+      setSurahVerses(verses);
+      setSelectedSurah(surahId);
+      setAvailableTranslators(translators.map((t) => t.translator_slug));
+      if (translatorSlug) {
+        setSelectedTranslator(translatorSlug);
+      } else if (verses.length > 0) {
+        setSelectedTranslator(verses[0].translator_slug);
+      } else {
+        setSelectedTranslator('');
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   // ─── Language Toggle ───
   const handleLangChange = useCallback(
     (newLang: string) => {
       setLang(newLang);
+      setSelectedTranslator('');
       if (query.trim()) {
         if (debounceRef.current) clearTimeout(debounceRef.current);
         debounceRef.current = setTimeout(() => {
@@ -101,26 +147,8 @@ export default function Home() {
         loadSurah(selectedSurah, newLang);
       }
     },
-    [query, selectedSurah, executeSearch]
+    [query, selectedSurah, executeSearch, loadSurah]
   );
-
-  // ─── Surah Selection ───
-  const loadSurah = useCallback(async (surahId: number, activeLang: string) => {
-    setLoading(true);
-    setSearchMode(false);
-    setResults(null);
-    setError(null);
-    try {
-      const verses = await getSurahVerses(surahId, activeLang);
-      setSurahVerses(verses);
-      setSelectedSurah(surahId);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
   const handleSurahClick = useCallback(
     (surahId: number) => {
@@ -141,25 +169,25 @@ export default function Home() {
       <div className="min-h-screen bg-base flex items-center justify-center">
         <div className="text-center">
           <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-sm text-gray-500">Loading Hujjah...</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Loading Hujjah...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-base flex">
+    <div className={clsx('min-h-screen bg-base flex transition-colors duration-300', darkMode && 'dark')}>
       {/* ─── Sidebar: Toggleable, Sticky, Scrollable ─── */}
       {sidebarOpen && (
-        <aside className="w-64 bg-white border-r border-gray-200 flex-shrink-0 flex flex-col h-screen sticky top-0">
-          <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+        <aside className="w-64 bg-white dark:bg-zinc-900 border-r border-gray-200 dark:border-zinc-800 flex-shrink-0 flex flex-col h-screen sticky top-0">
+          <div className="p-4 border-b border-gray-100 dark:border-zinc-800 flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">Surahs</h2>
-              <p className="text-xs text-gray-400 mt-1">{surahs.length} chapters</p>
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wider">Surahs</h2>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{surahs.length} chapters</p>
             </div>
             <button
               onClick={() => setSidebarOpen(false)}
-              className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+              className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
               title="Close sidebar"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -174,16 +202,16 @@ export default function Home() {
                 onClick={() => handleSurahClick(s.id)}
                 className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
                   selectedSurah === s.id
-                    ? 'bg-teal-50 text-teal-900'
-                    : 'text-gray-700 hover:bg-gray-50'
+                    ? 'bg-teal-50 dark:bg-teal-900/20 text-teal-900 dark:text-teal-400'
+                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-800'
                 }`}
               >
-                <span className="text-xs font-mono text-gray-400 w-6">{s.id}</span>
+                <span className="text-xs font-mono text-gray-400 dark:text-gray-500 w-6">{s.id}</span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">
+                  <p className="text-sm font-medium truncate dark:text-gray-200">
                     {lang === 'bn' ? s.name_bn : s.name_en}
                   </p>
-                  <p className="text-xs text-gray-400 truncate" dir="rtl">
+                  <p className="text-xs text-gray-400 dark:text-gray-500 truncate" dir="rtl">
                     {s.name_ar}
                   </p>
                 </div>
@@ -194,16 +222,16 @@ export default function Home() {
       )}
 
       {/* ─── Main Content ─── */}
-      <main className="flex-1 min-w-0">
+      <main className="flex-1 min-w-0 bg-base">
         {/* Header with Language Toggle + Sidebar Toggle */}
-        <header className="bg-white border-b border-gray-200">
+        <header className="bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800 sticky top-0 z-50">
           <div className="max-w-3xl mx-auto px-6 py-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 {!sidebarOpen && (
                   <button
                     onClick={() => setSidebarOpen(true)}
-                    className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+                    className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
                     title="Open sidebar"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -212,8 +240,8 @@ export default function Home() {
                   </button>
                 )}
                 <div>
-                  <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">Hujjah</h1>
-                  <p className="text-sm text-gray-500 mt-1">
+                  <h1 className="text-2xl font-semibold text-gray-900 dark:text-white tracking-tight">Hujjah</h1>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                     {stats.verses > 0
                       ? `${stats.verses.toLocaleString()} verses · ${stats.translations.toLocaleString()} translations`
                       : 'Local Islamic Research Engine'}
@@ -223,15 +251,15 @@ export default function Home() {
 
               <div className="flex items-center gap-3">
                 {/* Language Toggle */}
-                <div className="flex items-center bg-gray-100 rounded-lg p-1">
+                <div className="flex items-center bg-gray-100 dark:bg-zinc-800 rounded-lg p-1">
                   {SUPPORTED_LANGS.map((l) => (
                     <button
                       key={l.code}
                       onClick={() => handleLangChange(l.code)}
                       className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
                         lang === l.code
-                          ? 'bg-white text-gray-900 shadow-sm'
-                          : 'text-gray-500 hover:text-gray-700'
+                          ? 'bg-white dark:bg-zinc-700 text-gray-900 dark:text-white shadow-sm'
+                          : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                       }`}
                     >
                       {l.label}
@@ -242,7 +270,7 @@ export default function Home() {
                 {/* Dark Mode Toggle */}
                 <button
                   onClick={() => setDarkMode((d) => !d)}
-                  className="p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+                  className="p-1.5 text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
                   title={darkMode ? 'Switch to light' : 'Switch to dark'}
                 >
                   {darkMode ? (
@@ -259,7 +287,7 @@ export default function Home() {
                 {/* About Link */}
                 <a
                   href="/about"
-                  className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
                 >
                   About
                 </a>
@@ -278,7 +306,7 @@ export default function Home() {
                 onChange={(e) => handleQueryChange(e.target.value)}
                 placeholder={lang === 'bn' ? 'কুরআন অনুসন্ধান...' : 'Search the Quran...'}
                 disabled={loading}
-                className="w-full px-5 py-4 pr-32 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-shadow disabled:opacity-50 text-base"
+                className="w-full px-5 py-4 pr-32 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-shadow disabled:opacity-50 text-base shadow-sm"
               />
               {query.trim() && (
                 <button
@@ -288,8 +316,9 @@ export default function Home() {
                     setResults(null);
                     setSurahVerses(null);
                     setSelectedSurah(null);
+                    clearAI();
                   }}
-                  className="absolute right-[5.5rem] top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors z-10"
+                  className="absolute right-[5.5rem] top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-md transition-colors z-10"
                   title="Clear search"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -300,12 +329,12 @@ export default function Home() {
               <button
                 type="submit"
                 disabled={loading || !query.trim()}
-                className="absolute right-2 top-1/2 -translate-y-1/2 px-5 py-2.5 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed z-0"
+                className="absolute right-2 top-1/2 -translate-y-1/2 px-5 py-2.5 bg-gray-900 dark:bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-gray-800 dark:hover:bg-teal-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed z-0"
               >
                 {loading ? '...' : lang === 'bn' ? 'খুঁজুন' : 'Search'}
               </button>
             </div>
-            <p className="text-xs text-gray-400 mt-2">
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
               {lang === 'bn'
                 ? 'সূরা নাম, আয়াত রেফারেন্স (২:২৫৫), বা কীওয়ার্ড দিয়ে খুঁজুন'
                 : 'Try surah names, references (2:255), or keywords like "mercy"'}
@@ -314,18 +343,75 @@ export default function Home() {
 
           {/* Error */}
           {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-red-700 text-sm">{error}</p>
+            <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+              <p className="text-red-700 dark:text-red-400 text-sm">{error}</p>
+            </div>
+          )}
+
+          {/* AI Explanation Section */}
+          {query.trim() && !loading && searchMode && results && results.length > 0 && (
+            <div className="mb-8">
+              {!explanation && !aiLoading && !aiError && (
+                <button
+                  onClick={() => askAI(query, lang)}
+                  className="flex items-center gap-2 px-4 py-2 bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-400 text-sm font-medium rounded-lg border border-teal-100 dark:border-teal-800 hover:bg-teal-100 dark:hover:bg-teal-900/30 transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  {lang === 'bn' ? 'এআই দিয়ে ব্যাখ্যা করুন' : 'Explain with AI'}
+                </button>
+              )}
+
+              {aiLoading && (
+                <div className="p-5 bg-white dark:bg-zinc-900 border border-teal-200 dark:border-teal-800 rounded-xl shadow-sm animate-pulse">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-4 h-4 bg-teal-200 dark:bg-teal-800 rounded-full" />
+                    <div className="h-4 w-32 bg-gray-200 dark:bg-zinc-800 rounded" />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="h-3 w-full bg-gray-100 dark:bg-zinc-800 rounded" />
+                    <div className="h-3 w-5/6 bg-gray-100 dark:bg-zinc-800 rounded" />
+                    <div className="h-3 w-4/6 bg-gray-100 dark:bg-zinc-800 rounded" />
+                  </div>
+                </div>
+              )}
+
+              {aiError && (
+                <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                  <p className="text-amber-700 dark:text-amber-400 text-xs">AI Error: {aiError}</p>
+                </div>
+              )}
+
+              {explanation && (
+                <div className="p-5 bg-teal-50/30 dark:bg-teal-900/10 border border-teal-100 dark:border-teal-800 rounded-xl relative animate-fade-in">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-teal-600 dark:text-teal-400 bg-teal-100/50 dark:bg-teal-900/30 px-2 py-0.5 rounded">
+                        AI Insights
+                      </span>
+                    </div>
+                    <button onClick={clearAI} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed italic">
+                    "{explanation}"
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
           {/* Results meta */}
           {results !== null && searchMode && (
             <div className="flex items-center justify-between mb-4">
-              <p className="text-xs text-gray-500 uppercase tracking-wider">
+              <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                 {results.length > 0 ? `${results.length} results` : 'No results'}
               </p>
-              {latency !== null && <p className="text-xs text-gray-400">{latency}ms</p>}
+              {latency !== null && <p className="text-xs text-gray-400 dark:text-gray-500">{latency}ms</p>}
             </div>
           )}
 
@@ -337,22 +423,22 @@ export default function Home() {
                 return (
                   <article
                     key={`${r.surah}-${r.ayah}-${r.translator_slug}-${i}`}
-                    className="bg-white border border-gray-200 rounded-xl p-5 hover:shadow-subtle hover:border-teal-200 transition-all"
+                    className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl p-5 hover:shadow-subtle hover:border-teal-200 dark:hover:border-teal-800 transition-all"
                     title={`Go to ${r.surah_name} ${r.surah}:${r.ayah}`}
                   >
                     {/* Type Badge + Meta */}
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-white bg-gray-900 px-2 py-0.5 rounded">
+                        <span className="text-xs font-bold text-white bg-gray-900 dark:bg-teal-700 px-2 py-0.5 rounded">
                           {r.label}
                         </span>
-                        <span className="text-xs font-semibold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-full">
+                        <span className="text-xs font-semibold text-teal-700 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/20 px-2 py-0.5 rounded-full">
                           {r.surah}:{r.ayah}
                         </span>
-                        <span className="text-xs font-medium text-gray-600">
+                        <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
                           {r.surah_name}
                         </span>
-                        <span className="text-xs text-gray-400 capitalize">
+                        <span className="text-xs text-gray-400 dark:text-gray-500 capitalize">
                           {r.translator_slug}
                         </span>
                       </div>
@@ -369,8 +455,8 @@ export default function Home() {
                           }}
                           className={`p-1.5 rounded-full transition-colors ${
                             isPlayingThis
-                              ? 'bg-teal-100 text-teal-700'
-                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                              ? 'bg-teal-100 dark:bg-teal-900 text-teal-700 dark:text-teal-400'
+                              : 'bg-gray-100 dark:bg-zinc-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-zinc-700'
                           }`}
                           title={isPlayingThis ? 'Playing...' : 'Play audio'}
                         >
@@ -391,7 +477,7 @@ export default function Home() {
                     {/* Arabic */}
                     {r.text_ar && (
                       <p
-                        className="text-lg font-arabic text-gray-900 leading-relaxed mb-3"
+                        className="text-lg font-arabic text-gray-900 dark:text-white leading-relaxed mb-3"
                         dir="rtl"
                       >
                         {r.text_ar}
@@ -399,14 +485,14 @@ export default function Home() {
                     )}
 
                     {/* Snippet / Translation */}
-                    {r.snippet ? (
-                      <p
-                        className="text-sm text-gray-700 leading-relaxed"
-                        dangerouslySetInnerHTML={{ __html: r.snippet }}
-                      />
-                    ) : (
-                      <p className="text-sm text-gray-700 leading-relaxed">{r.text}</p>
-                    )}
+                     {r.snippet ? (
+                       <p
+                         className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed"
+                         dangerouslySetInnerHTML={{ __html: r.snippet }}
+                       />
+                     ) : (
+                       <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{r.text}</p>
+                     )}
 
                     {/* Click hint */}
                     <p className="text-xs text-teal-600 mt-3 flex items-center gap-1">
@@ -427,19 +513,19 @@ export default function Home() {
             <div className="space-y-6">
               <div className="flex items-center justify-between mb-6">
                 <div className="space-y-2">
-                  <div className="h-6 w-48 bg-gray-200 rounded animate-pulse" />
-                  <div className="h-4 w-32 bg-gray-200 rounded animate-pulse" />
+                  <div className="h-6 w-48 bg-gray-200 dark:bg-zinc-800 rounded animate-pulse" />
+                  <div className="h-4 w-32 bg-gray-200 dark:bg-zinc-800 rounded animate-pulse" />
                 </div>
-                <div className="h-4 w-20 bg-gray-200 rounded animate-pulse" />
+                <div className="h-4 w-20 bg-gray-200 dark:bg-zinc-800 rounded animate-pulse" />
               </div>
               {[...Array(7)].map((_, i) => (
-                <div key={i} className="bg-white border border-gray-200 rounded-xl p-5 space-y-3">
+                <div key={i} className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl p-5 space-y-3">
                   <div className="flex items-center gap-2">
-                    <div className="h-5 w-16 bg-gray-200 rounded-full animate-pulse" />
-                    <div className="h-4 w-24 bg-gray-200 rounded animate-pulse" />
+                    <div className="h-5 w-16 bg-gray-200 dark:bg-zinc-800 rounded-full animate-pulse" />
+                    <div className="h-4 w-24 bg-gray-200 dark:bg-zinc-800 rounded animate-pulse" />
                   </div>
-                  <div className="h-8 w-full bg-gray-200 rounded animate-pulse" />
-                  <div className="h-16 w-full bg-gray-200 rounded animate-pulse" />
+                  <div className="h-8 w-full bg-gray-200 dark:bg-zinc-800 rounded animate-pulse" />
+                  <div className="h-16 w-full bg-gray-200 dark:bg-zinc-800 rounded animate-pulse" />
                 </div>
               ))}
             </div>
@@ -450,19 +536,105 @@ export default function Home() {
             <div>
               <div className="flex items-center justify-between mb-6">
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-900">
+                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
                     {lang === 'bn'
                       ? surahs.find((s) => s.id === selectedSurah)?.name_bn
                       : surahs.find((s) => s.id === selectedSurah)?.name_en}
                   </h2>
-                  <p className="text-sm text-gray-500" dir="rtl">
+                  <p className="text-sm text-gray-500 dark:text-gray-400" dir="rtl">
                     {surahs.find((s) => s.id === selectedSurah)?.name_ar}
                   </p>
                 </div>
-                <span className="text-xs text-gray-400">
-                  {surahVerses.length} verses
-                </span>
+                <div className="flex items-center gap-3">
+                  {/* Audio Controls */}
+                  <div className="flex items-center gap-1.5">
+                    {/* Play */}
+                    {(!isAudioPlaying || currentAudio?.surah !== selectedSurah) && (
+                      <button
+                        onClick={() => playAudio({ surah: selectedSurah, ayah: 1, autoPlay: true })}
+                        className="flex items-center gap-2 px-4 py-2 bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-400 text-sm font-medium rounded-lg border border-teal-100 dark:border-teal-800 hover:bg-teal-100 dark:hover:bg-teal-900/30 transition-colors"
+                        title={lang === 'bn' ? 'সূরা প্লে করুন' : 'Play surah'}
+                      >
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                        {lang === 'bn' ? 'সূরা শুনুন' : 'Play Surah'}
+                      </button>
+                    )}
+
+                    {/* Pause */}
+                    {isAudioPlaying && currentAudio?.surah === selectedSurah && (
+                      <button
+                        onClick={pauseAudio}
+                        className="flex items-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 text-sm font-medium rounded-lg border border-amber-100 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors"
+                        title={lang === 'bn' ? 'বিরতি' : 'Pause'}
+                      >
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
+                        </svg>
+                        {lang === 'bn' ? 'বিরতি' : 'Pause'}
+                      </button>
+                    )}
+
+                    {/* Resume */}
+                    {!isAudioPlaying && currentAudio?.surah === selectedSurah && currentAudio && (
+                      <button
+                        onClick={resumeAudio}
+                        className="flex items-center gap-2 px-4 py-2 bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-400 text-sm font-medium rounded-lg border border-teal-100 dark:border-teal-800 hover:bg-teal-100 dark:hover:bg-teal-900/30 transition-colors"
+                        title={lang === 'bn' ? 'আবার শুনুন' : 'Resume'}
+                      >
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                        {lang === 'bn' ? 'আবার শুনুন' : 'Resume'}
+                      </button>
+                    )}
+
+                    {/* Stop */}
+                    {currentAudio?.surah === selectedSurah && (
+                      <button
+                        onClick={stopAudio}
+                        className="flex items-center gap-2 px-3 py-2 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 text-sm font-medium rounded-lg border border-red-100 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+                        title={lang === 'bn' ? 'থামুন' : 'Stop'}
+                      >
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M6 6h12v12H6z" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+
+                  <span className="text-xs text-gray-400 dark:text-gray-500">
+                    {surahVerses.length} verses
+                  </span>
+                </div>
               </div>
+
+              {/* Translator Selector */}
+              {availableTranslators.length > 1 && (
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    {lang === 'bn' ? 'অনুবাদক:' : 'Translator:'}
+                  </span>
+                  <select
+                    value={selectedTranslator}
+                    onChange={(e) => {
+                      const slug = e.target.value;
+                      setSelectedTranslator(slug);
+                      if (selectedSurah) {
+                        loadSurah(selectedSurah, lang, slug);
+                      }
+                    }}
+                    className="text-sm bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500 capitalize"
+                  >
+                    {availableTranslators.map((slug) => (
+                      <option key={slug} value={slug}>
+                        {slug}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div className="space-y-6">
                 {surahVerses.map((v, i) => {
@@ -470,23 +642,23 @@ export default function Home() {
                   return (
                     <div
                       key={`${v.id}-${v.translator_slug}-${i}`}
-                      className="bg-white border border-gray-200 rounded-xl p-5"
+                      className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl p-5"
                     >
                       <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-semibold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-full">
-                            {v.surah}:{v.ayah}
-                          </span>
-                          <span className="text-xs text-gray-400 capitalize">
-                            {v.translator_slug}
-                          </span>
-                        </div>
+                         <div className="flex items-center gap-2">
+                           <span className="text-xs font-semibold text-teal-700 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/20 px-2 py-0.5 rounded-full">
+                             {v.surah}:{v.ayah}
+                           </span>
+                           <span className="text-xs text-gray-400 dark:text-gray-500 capitalize">
+                             {v.translator_slug}
+                           </span>
+                         </div>
                         <button
                           onClick={() => playAudio({ surah: v.surah, ayah: v.ayah, autoPlay: false })}
                           className={`p-2 rounded-full transition-colors ${
                             isPlayingThis
-                              ? 'bg-teal-100 text-teal-700'
-                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                              ? 'bg-teal-100 dark:bg-teal-900 text-teal-700 dark:text-teal-400'
+                              : 'bg-gray-100 dark:bg-zinc-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-zinc-700'
                           }`}
                           title={isPlayingThis ? 'Playing...' : 'Play audio'}
                         >
@@ -501,13 +673,13 @@ export default function Home() {
                           )}
                         </button>
                       </div>
-                      <p
-                        className="text-lg font-arabic text-gray-900 leading-relaxed mb-3"
-                        dir="rtl"
-                      >
-                        {v.text_ar}
-                      </p>
-                      <p className="text-sm text-gray-700 leading-relaxed">{v.text}</p>
+                       <p
+                         className="text-lg font-arabic text-gray-900 dark:text-white leading-relaxed mb-3"
+                         dir="rtl"
+                       >
+                         {v.text_ar}
+                       </p>
+                       <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{v.text}</p>
                     </div>
                   );
                 })}
@@ -518,15 +690,15 @@ export default function Home() {
           {/* Empty state */}
           {!loading && results === null && surahVerses === null && (
             <div className="text-center py-20">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
-                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 dark:bg-zinc-800 flex items-center justify-center">
+                <svg className="w-8 h-8 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
-                {lang === 'bn' ? 'কুরআন অনুসন্ধান' : 'Search the Quran'}
-              </h3>
-              <p className="text-gray-500 max-w-md mx-auto text-sm">
+               <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                 {lang === 'bn' ? 'কুরআন অনুসন্ধান' : 'Search the Quran'}
+               </h3>
+               <p className="text-gray-500 dark:text-gray-400 max-w-md mx-auto text-sm">
                 {lang === 'bn'
                   ? 'সূরা নাম, আয়াত রেফারেন্স, বা কীওয়ার্ড দিয়ে খুঁজুন'
                   : 'Type a topic like "mercy", "prayer", or "patience" to find relevant verses.'}
@@ -546,9 +718,9 @@ export default function Home() {
           )}
 
           {/* Disclaimer */}
-          <div className="mt-12 pt-6 border-t border-gray-200">
-            <p className="text-xs text-gray-400 leading-relaxed">
-              <span className="font-medium text-gray-500">Disclaimer:</span> Any AI-generated summary or analysis may not be 100% correct. Please cross-check with qualified scholars or other authentic sources using the verse references provided.
+          <div className="mt-12 pt-6 border-t border-gray-200 dark:border-zinc-800">
+            <p className="text-xs text-gray-400 dark:text-gray-500 leading-relaxed">
+              <span className="font-medium text-gray-500 dark:text-gray-400">Disclaimer:</span> Any AI-generated summary or analysis may not be 100% correct. Please cross-check with qualified scholars or other authentic sources using the verse references provided.
             </p>
           </div>
         </div>

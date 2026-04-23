@@ -15,6 +15,8 @@ import { embedOne, cosineSimilarity, type EmbeddingVector } from './embedding';
 export interface RetrievedVerse {
   id: number;
   surah: number;
+  surah_name_en: string;
+  surah_name_bn: string;
   ayah: number;
   text_ar: string;
   text: string;
@@ -48,6 +50,8 @@ export async function retrieveRelevantVerses(
     SELECT
       t.id,
       v.surah,
+      s.name_en AS surah_name_en,
+      s.name_bn AS surah_name_bn,
       v.ayah,
       v.text_ar,
       t.text,
@@ -55,6 +59,7 @@ export async function retrieveRelevantVerses(
       t.embedding
     FROM translations t
     JOIN verses v ON v.id = t.verse_id
+    JOIN surahs s ON s.id = v.surah
     WHERE t.lang_code = ? AND t.embedding IS NOT NULL
   `;
 
@@ -62,6 +67,8 @@ export async function retrieveRelevantVerses(
     {
       id: number;
       surah: number;
+      surah_name_en: string;
+      surah_name_bn: string;
       ayah: number;
       text_ar: string;
       text: string;
@@ -79,6 +86,8 @@ export async function retrieveRelevantVerses(
     scored.push({
       id: row.id,
       surah: row.surah,
+      surah_name_en: row.surah_name_en,
+      surah_name_bn: row.surah_name_bn,
       ayah: row.ayah,
       text_ar: row.text_ar,
       text: row.text,
@@ -111,6 +120,8 @@ export async function retrieveHybrid(
     SELECT
       t.id,
       v.surah,
+      s.name_en AS surah_name_en,
+      s.name_bn AS surah_name_bn,
       v.ayah,
       v.text_ar,
       t.text,
@@ -119,6 +130,7 @@ export async function retrieveHybrid(
     FROM quran_search_idx
     JOIN translations t ON t.id = quran_search_idx.rowid
     JOIN verses v ON v.id = t.verse_id
+    JOIN surahs s ON s.id = v.surah
     WHERE quran_search_idx MATCH ? AND quran_search_idx.lang_code = ?
     ORDER BY bm25(quran_search_idx)
     LIMIT 50
@@ -128,6 +140,8 @@ export async function retrieveHybrid(
     {
       id: number;
       surah: number;
+      surah_name_en: string;
+      surah_name_bn: string;
       ayah: number;
       text_ar: string;
       text: string;
@@ -145,6 +159,8 @@ export async function retrieveHybrid(
     scored.push({
       id: row.id,
       surah: row.surah,
+      surah_name_en: row.surah_name_en,
+      surah_name_bn: row.surah_name_bn,
       ayah: row.ayah,
       text_ar: row.text_ar,
       text: row.text,

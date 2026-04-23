@@ -30,7 +30,7 @@ async function init() {
   if (!extractor) {
   extractor = await pipeline('feature-extraction', 'all-MiniLM-L6-v2', {
     quantized: true,
-  } as any);
+  } as Record<string, unknown>);
   }
 }
 

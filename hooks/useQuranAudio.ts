@@ -5,7 +5,7 @@
  * - Plays single ayah
  * - Auto-plays next ayah
  * - Caches audio locally via Tauri FS
- * - Streams fallback from alquran.cloud API
+ * - Streams from everyayah.com CDN (reliable, direct MP3)
  */
 
 import { useState, useRef, useCallback } from 'react';
@@ -25,69 +25,76 @@ export interface AudioState {
 
 let globalAudio: HTMLAudioElement | null = null;
 
+function pad3(n: number): string {
+  return n.toString().padStart(3, '0');
+}
+
+/**
+ * Build the direct CDN URL for a verse.
+ * Uses everyayah.com which serves MP3s directly with permissive CORS.
+ */
+function buildAudioUrl(surah: number, ayah: number): string {
+  return `https://everyayah.com/data/Alafasy_128kbps/${pad3(surah)}${pad3(ayah)}.mp3`;
+}
+
 /**
  * Resolve the local audio path for a verse.
- * Uses Tauri FS to check app data directory.
  */
 async function resolveLocalPath(surah: number, ayah: number): Promise<string | null> {
   try {
+    const { exists, BaseDirectory } = await import('@tauri-apps/plugin-fs');
+    const filename = `audio/${surah}_${ayah}.mp3`;
+    const found = await exists(filename, { baseDir: BaseDirectory.AppData });
+    if (!found) return null;
+
     const { appDataDir } = await import('@tauri-apps/api/path');
-    const { exists } = await import('@tauri-apps/plugin-fs');
     const dir = await appDataDir();
-    const filename = `${surah}_${ayah}.mp3`;
-    const path = `${dir}/audio/${filename}`;
-    const found = await exists(path);
-    return found ? path : null;
+    return `${dir}/audio/${surah}_${ayah}.mp3`;
   } catch {
     return null;
   }
 }
 
 /**
- * Download audio from alquran.cloud and cache it locally.
+ * Download audio from CDN and cache it locally.
  */
 async function downloadAndCache(surah: number, ayah: number): Promise<string> {
-  const url = `https://api.alquran.cloud/v1/ayah/${surah}:${ayah}/ar.alafasy`;
+  const audioUrl = buildAudioUrl(surah, ayah);
 
-  // Fetch the audio URL from the API
-  const resp = await fetch(url);
-  const data = await resp.json();
-  const audioUrl = data?.data?.audio as string;
-
-  if (!audioUrl) {
-    throw new Error(`No audio URL returned for ${surah}:${ayah}`);
-  }
-
-  // Fetch the actual MP3
-  const audioResp = await fetch(audioUrl);
-  const blob = await audioResp.blob();
-  const arrayBuffer = await blob.arrayBuffer();
-  const uint8 = new Uint8Array(arrayBuffer);
-
-  // Save to Tauri app data directory
+  // Try to download and cache
   try {
-    const { appDataDir } = await import('@tauri-apps/api/path');
-    const { mkdir, writeFile, BaseDirectory } = await import('@tauri-apps/plugin-fs');
-    const dir = await appDataDir();
-    const audioDir = `${dir}/audio`;
+    const audioResp = await fetch(audioUrl);
+    if (!audioResp.ok) {
+      throw new Error(`HTTP ${audioResp.status}`);
+    }
+    const blob = await audioResp.blob();
+    const arrayBuffer = await blob.arrayBuffer();
+    const uint8 = new Uint8Array(arrayBuffer);
 
-    // Ensure directory exists
+    // Save to Tauri app data directory
+    const { mkdir, writeFile, BaseDirectory } = await import('@tauri-apps/plugin-fs');
+    const filename = `audio/${surah}_${ayah}.mp3`;
+
     try {
-      await mkdir(audioDir, { recursive: true });
+      await mkdir('audio', { recursive: true, baseDir: BaseDirectory.AppData });
     } catch {
       // Directory may already exist
     }
 
-    const filename = `${surah}_${ayah}.mp3`;
     await writeFile(filename, uint8, {
-      dir: BaseDirectory.AppData,
-      baseDir: { appData: true },
+      baseDir: BaseDirectory.AppData,
     });
-  } catch (err) {
-    console.warn('[Audio] Failed to cache locally, using streamed URL:', err);
-  }
 
-  return audioUrl;
+    console.log(`[Audio] Cached ${surah}:${ayah}`);
+
+    // Return local path for immediate playback
+    const { appDataDir } = await import('@tauri-apps/api/path');
+    const dir = await appDataDir();
+    return `${dir}/audio/${surah}_${ayah}.mp3`;
+  } catch (err) {
+    console.warn('[Audio] Cache failed, using streamed URL:', err);
+    return audioUrl;
+  }
 }
 
 /**
@@ -95,7 +102,10 @@ async function downloadAndCache(surah: number, ayah: number): Promise<string> {
  */
 async function resolveAudioPath(surah: number, ayah: number): Promise<string> {
   const local = await resolveLocalPath(surah, ayah);
-  if (local) return local;
+  if (local) {
+    console.log(`[Audio] Using local cache ${surah}:${ayah}`);
+    return local;
+  }
 
   return downloadAndCache(surah, ayah);
 }
@@ -118,8 +128,10 @@ function cleanupAudio() {
   if (globalAudio) {
     globalAudio.pause();
     globalAudio.src = '';
+    globalAudio.load(); // Force release
     globalAudio.onended = null;
     globalAudio.onerror = null;
+    globalAudio.oncanplay = null;
     globalAudio = null;
   }
 }
@@ -137,9 +149,19 @@ export function useQuranAudio() {
 
     try {
       const path = await resolveAudioPath(surah, ayah);
+      console.log(`[Audio] Playing ${surah}:${ayah} from ${path}`);
 
       const audio = new Audio(path);
+      audio.preload = 'auto';
       globalAudio = audio;
+
+      // Wait for audio to be ready before playing
+      await new Promise<void>((resolve, reject) => {
+        audio.oncanplay = () => resolve();
+        audio.onerror = () => reject(new Error(`Failed to load audio for ${surah}:${ayah}`));
+        // Timeout fallback
+        setTimeout(() => reject(new Error('Audio load timeout')), 10000);
+      });
 
       audio.onended = async () => {
         setIsPlaying(false);
@@ -151,8 +173,8 @@ export function useQuranAudio() {
         }
       };
 
-      audio.onerror = () => {
-        console.error(`[Audio] Failed to play ${surah}:${ayah}`);
+      audio.onerror = (e) => {
+        console.error(`[Audio] Playback error for ${surah}:${ayah}`, e);
         setIsPlaying(false);
       };
 
@@ -162,6 +184,7 @@ export function useQuranAudio() {
     } catch (err) {
       console.error('[Audio] Playback error:', err);
       setIsPlaying(false);
+      setCurrent(null);
     }
   }, []);
 

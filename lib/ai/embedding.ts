@@ -58,7 +58,12 @@ export async function embed(texts: string[]): Promise<EmbeddingVector[]> {
   const w = getWorker();
 
   return new Promise((resolve, reject) => {
-    pending.set(id, { resolve, reject });
+    pending.set(id, {
+      resolve: (arrays: number[][]) => {
+        resolve(arrays.map((arr) => new Float32Array(arr)));
+      },
+      reject,
+    });
     w.postMessage({ id, type: 'embed', texts } as EmbedMessage);
   });
 }

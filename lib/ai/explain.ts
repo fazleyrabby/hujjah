@@ -4,16 +4,14 @@
  * Local AI Explanation Pipeline
  *
  * Generates a 3-sentence explanation strictly from retrieved verses.
- * Uses a lightweight text-generation model via Transformers.js.
+ * Uses a lightweight text-generation model via Transformers.js Web Worker.
  *
- * REQUIRED: Download a text generation model to src-tauri/resources/models/
- * Recommended: Qwen2.5-0.5B-Instruct or Gemma-3-1B-IT
+ * REQUIRED: qwen-onnx model in src-tauri/resources/models/qwen-onnx
+ * (symlinked to public/models for web access)
  */
 
-import { pipeline, env } from '@huggingface/transformers';
 import { getDB } from '@/lib/db';
-import { embedOne } from './embedding';
-import { cosineSimilarity } from './embedding';
+import { embedOne, cosineSimilarity } from './embedding';
 
 export interface VerseContext {
   surah: number;
@@ -23,42 +21,42 @@ export interface VerseContext {
   translator_slug: string;
 }
 
-let generator: Awaited<ReturnType<typeof pipeline>> | null = null;
-let modelLoading = false;
+let worker: Worker | null = null;
+const pending = new Map<string, { resolve: (v: string) => void; reject: (e: Error) => void }>();
+
+function getWorker(): Worker {
+  if (!worker) {
+    worker = new Worker(new URL('../../workers/generation.worker.ts', import.meta.url));
+    worker.addEventListener('message', (event: MessageEvent<{ id: string; type: string; text?: string; error?: string }>) => {
+      const { id, type, text, error } = event.data;
+      const handler = pending.get(id);
+      if (!handler) return;
+      pending.delete(id);
+      if (type === 'generate' && text !== undefined) {
+        handler.resolve(text);
+      } else {
+        handler.reject(new Error(error || 'Generation failed'));
+      }
+    });
+  }
+  return worker;
+}
+
+function makeId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
 
 /**
- * Initialize the text generation model (lazy loading).
+ * Generate text via the Web Worker.
  */
-async function initGenerator() {
-  if (generator) return generator;
-  if (modelLoading) {
-    // Wait for existing load
-    while (modelLoading) {
-      await new Promise((r) => setTimeout(r, 100));
-    }
-    return generator;
-  }
+async function generate(prompt: string, maxNewTokens = 120): Promise<string> {
+  const id = makeId();
+  const w = getWorker();
 
-  modelLoading = true;
-  try {
-    env.localModelPath = './src-tauri/resources/models';
-    env.allowRemoteModels = false;
-
-    // NOTE: Replace with your downloaded model name
-    // Options: 'Qwen/Qwen2.5-0.5B-Instruct', 'google/gemma-3-1b-it'
-    generator = await pipeline('text-generation', 'Qwen2.5-0.5B-Instruct', {
-      quantized: true,
-    } as any);
-
-    return generator;
-  } catch (err) {
-    console.error('[Explain] Failed to load model:', err);
-    throw new Error(
-      'Text generation model not found. Download Qwen2.5-0.5B-Instruct or Gemma-3-1B-IT to src-tauri/resources/models/'
-    );
-  } finally {
-    modelLoading = false;
-  }
+  return new Promise((resolve, reject) => {
+    pending.set(id, { resolve, reject });
+    w.postMessage({ id, type: 'generate', prompt, maxNewTokens });
+  });
 }
 
 /**
@@ -96,20 +94,9 @@ export async function explainVerse(verses: VerseContext[]): Promise<string> {
   }
 
   try {
-    const gen = await initGenerator();
     const prompt = buildPrompt(verses);
-
-    const output = await (gen as any)(prompt, {
-      max_new_tokens: 120,
-      temperature: 0.1, // Low temperature for determinism
-      do_sample: false,
-      return_full_text: false,
-    });
-
-    const text = output?.[0]?.generated_text as string;
-    if (!text) return 'Insufficient context.';
-
-    return text.trim();
+    const text = await generate(prompt, 120);
+    return text || 'Insufficient context.';
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[Explain] Generation failed:', message);
