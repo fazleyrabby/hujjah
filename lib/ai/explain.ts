@@ -149,6 +149,12 @@ export async function explainQuery(
   query: string,
   lang: string = 'en'
 ): Promise<{ explanation: string; verses: VerseContext[] }> {
+  // Fast path: greetings / small talk — no RAG needed
+  const chitchat = detectChitchat(query);
+  if (chitchat) {
+    return { explanation: chitchat, verses: [] };
+  }
+
   const db = await getDB();
 
   // Step 1: Embed the query

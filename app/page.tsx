@@ -12,7 +12,7 @@ import {
   type SurahVerse,
   type QuranStats,
 } from '@/lib/db';
-import { useQuranAudio } from '@/hooks/useQuranAudio';
+import { useQuranAudio } from '@/contexts/AudioContext';
 import { useRAG } from '@/hooks/useRAG';
 import ChatWidget from '@/components/ChatWidget';
 import { clsx } from 'clsx';
