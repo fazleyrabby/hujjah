@@ -14,6 +14,7 @@ import {
 } from '@/lib/db';
 import { useQuranAudio } from '@/hooks/useQuranAudio';
 import { useRAG } from '@/hooks/useRAG';
+import ChatWidget from '@/components/ChatWidget';
 import { clsx } from 'clsx';
 
 const SUPPORTED_LANGS = [
@@ -42,12 +43,44 @@ export default function Home() {
   const { askAI, explanation, loading: aiLoading, error: aiError, clearAI } = useRAG();
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const verseRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  // Scroll to currently playing verse
+  useEffect(() => {
+    if (currentAudio && selectedSurah === currentAudio.surah) {
+      const key = `${currentAudio.surah}-${currentAudio.ayah}`;
+      const el = verseRefs.current[key];
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [currentAudio, selectedSurah]);
+
+  // Highlight matching terms in text
+  const highlightTerms = useCallback((text: string, searchQuery: string) => {
+    if (!searchQuery.trim()) return text;
+    const terms = searchQuery.trim().split(/\s+/).filter((t) => t.length > 2);
+    if (terms.length === 0) return text;
+    const pattern = new RegExp(`(${terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi');
+    return text.replace(pattern, '<mark class="bg-amber-200 dark:bg-amber-700/60 px-0.5 rounded">$1</mark>');
+  }, []);
 
   // ─── Init ───
   useEffect(() => {
     setMounted(true);
     getQuranStats().then(setStats).catch(console.error);
-    getSurahList().then(setSurahs).catch(console.error);
+    getSurahList().then((list) => {
+      setSurahs(list);
+      // Auto-load surah from ?surah= query param
+      const params = new URLSearchParams(window.location.search);
+      const surahParam = params.get('surah');
+      if (surahParam) {
+        const id = parseInt(surahParam, 10);
+        if (!isNaN(id) && id >= 1 && id <= 114) {
+          loadSurah(id, lang);
+        }
+      }
+    }).catch(console.error);
   }, []);
 
   // ─── Dark Mode Sync ───
@@ -208,7 +241,7 @@ export default function Home() {
               >
                 <span className="text-xs font-mono text-gray-400 dark:text-gray-500 w-6">{s.id}</span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate dark:text-gray-200">
+                  <p className="text-sm font-medium truncate">
                     {lang === 'bn' ? s.name_bn : s.name_en}
                   </p>
                   <p className="text-xs text-gray-400 dark:text-gray-500 truncate" dir="rtl">
@@ -231,12 +264,13 @@ export default function Home() {
                 {!sidebarOpen && (
                   <button
                     onClick={() => setSidebarOpen(true)}
-                    className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
-                    title="Open sidebar"
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
+                    title="Show surah list"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h16" />
                     </svg>
+                    <span className="hidden sm:inline">Surahs</span>
                   </button>
                 )}
                 <div>
@@ -296,53 +330,57 @@ export default function Home() {
           </div>
         </header>
 
-        <div className="max-w-3xl mx-auto px-6 py-8">
-          {/* Search */}
-          <form onSubmit={handleSubmit} className="mb-8">
-            <div className="relative">
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => handleQueryChange(e.target.value)}
-                placeholder={lang === 'bn' ? 'কুরআন অনুসন্ধান...' : 'Search the Quran...'}
-                disabled={loading}
-                className="w-full px-5 py-4 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-shadow disabled:opacity-50 text-base shadow-sm"
-              />
-              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                {query.trim() && (
+        {/* Sticky Search Bar — full width */}
+        <div className="sticky top-[73px] z-40 bg-base/95 dark:bg-[#0a0a0a]/95 backdrop-blur-sm border-b border-gray-200/50 dark:border-zinc-800/50">
+          <div className="max-w-3xl mx-auto px-6 py-3">
+            <form onSubmit={handleSubmit}>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={query}
+                  onChange={(e) => handleQueryChange(e.target.value)}
+                  placeholder={lang === 'bn' ? 'কুরআন অনুসন্ধান...' : 'Search the Quran...'}
+                  disabled={loading}
+                  className="w-full px-5 py-3.5 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-shadow disabled:opacity-50 text-base shadow-sm"
+                />
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                  {query.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQuery('');
+                        setResults(null);
+                        setSurahVerses(null);
+                        setSelectedSurah(null);
+                        clearAI();
+                      }}
+                      className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
+                      title="Clear search"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
                   <button
-                    type="button"
-                    onClick={() => {
-                      setQuery('');
-                      setResults(null);
-                      setSurahVerses(null);
-                      setSelectedSurah(null);
-                      clearAI();
-                    }}
-                    className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
-                    title="Clear search"
+                    type="submit"
+                    disabled={loading || !query.trim()}
+                    className="px-4 py-2 bg-gray-900 dark:bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-gray-800 dark:hover:bg-teal-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
+                    {loading ? '...' : lang === 'bn' ? 'খুঁজুন' : 'Search'}
                   </button>
-                )}
-                <button
-                  type="submit"
-                  disabled={loading || !query.trim()}
-                  className="px-5 py-2.5 bg-gray-900 dark:bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-gray-800 dark:hover:bg-teal-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {loading ? '...' : lang === 'bn' ? 'খুঁজুন' : 'Search'}
-                </button>
+                </div>
               </div>
-            </div>
               <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
-              {lang === 'bn'
-                ? 'সূরা নাম, আয়াত রেফারেন্স (২:২৫৫), বা কীওয়ার্ড দিয়ে খুঁজুন'
-                : 'Try surah names, references (2:255), or keywords like "mercy"'}
-            </p>
-          </form>
+                {lang === 'bn'
+                  ? 'সূরা নাম, আয়াত রেফারেন্স (২:২৫৫), বা কীওয়ার্ড দিয়ে খুঁজুন'
+                  : 'Try surah names, references (2:255), or keywords like "mercy"'}
+              </p>
+            </form>
+          </div>
+        </div>
 
+        <div className="max-w-3xl mx-auto px-6 py-8">
           {/* Error */}
           {error && (
             <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
@@ -487,14 +525,22 @@ export default function Home() {
                     )}
 
                     {/* Snippet / Translation */}
-                     {r.snippet ? (
-                       <p
-                         className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed"
-                         dangerouslySetInnerHTML={{ __html: r.snippet }}
-                       />
-                     ) : (
-                       <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{r.text}</p>
-                     )}
+                    {r.snippet ? (
+                      <p
+                        className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed"
+                        dangerouslySetInnerHTML={{
+                          __html: r.snippet.replace(
+                            /<mark>/g,
+                            '<mark class="bg-amber-200 dark:bg-amber-700/60 px-0.5 rounded">'
+                          ),
+                        }}
+                      />
+                    ) : (
+                      <p
+                        className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed"
+                        dangerouslySetInnerHTML={{ __html: highlightTerms(r.text, query) }}
+                      />
+                    )}
 
                     {/* Click hint */}
                     <p className="text-xs text-teal-600 mt-3 flex items-center gap-1">
@@ -644,7 +690,13 @@ export default function Home() {
                   return (
                     <div
                       key={`${v.id}-${v.translator_slug}-${i}`}
-                      className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl p-5"
+                      ref={(el) => { verseRefs.current[`${v.surah}-${v.ayah}`] = el; }}
+                      className={clsx(
+                        'rounded-xl p-5 transition-all',
+                        isPlayingThis
+                          ? 'bg-teal-50/50 dark:bg-teal-900/10 border-2 border-teal-300 dark:border-teal-700 shadow-md'
+                          : 'bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800'
+                      )}
                     >
                       <div className="flex items-center justify-between mb-3">
                          <div className="flex items-center gap-2">
@@ -727,6 +779,8 @@ export default function Home() {
           </div>
         </div>
       </main>
+
+      <ChatWidget lang={lang} />
     </div>
   );
 }

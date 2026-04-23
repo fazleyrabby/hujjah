@@ -21,14 +21,21 @@ export default function AudioPlayer() {
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-sm border-t border-gray-200 dark:border-zinc-700 shadow-lg animate-slide-up">
       <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-4">
-        {/* Surah Info */}
-        <div className="flex-1 min-w-0">
+        {/* Surah Info — clickable to navigate back */}
+        <a
+          href={`/?surah=${current.surah}`}
+          className="flex-1 min-w-0 group"
+          title="Go to surah"
+        >
           <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-gray-900 dark:text-white truncate">
+            <span className="text-sm font-semibold text-gray-900 dark:text-white truncate group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors">
               {surahInfo ? surahInfo.name_en : `Surah ${current.surah}`}
             </span>
+            <svg className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 group-hover:text-teal-500 transition-colors flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
             {surahInfo && (
-              <span className="text-xs text-gray-500 dark:text-gray-400 truncate" dir="rtl">
+              <span className="text-xs text-gray-500 dark:text-gray-400 truncate hidden sm:inline" dir="rtl">
                 {surahInfo.name_ar}
               </span>
             )}
@@ -36,7 +43,7 @@ export default function AudioPlayer() {
           <p className="text-xs text-gray-500 dark:text-gray-400">
             Ayah {current.ayah}
           </p>
-        </div>
+        </a>
 
         {/* Controls */}
         <div className="flex items-center gap-2">
