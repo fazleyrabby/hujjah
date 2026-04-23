@@ -258,24 +258,23 @@ export default function Home() {
       <main className="flex-1 min-w-0 bg-base">
         {/* Header with Language Toggle + Sidebar Toggle */}
         <header className="bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800 sticky top-0 z-50">
-          <div className="max-w-3xl mx-auto px-6 py-4">
+          <div className="max-w-3xl mx-auto px-6 py-3">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
                 {!sidebarOpen && (
                   <button
                     onClick={() => setSidebarOpen(true)}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
+                    className="w-9 h-9 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
                     title="Show surah list"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h16" />
                     </svg>
-                    <span className="hidden sm:inline">Surahs</span>
                   </button>
                 )}
                 <div>
-                  <h1 className="text-2xl font-semibold text-gray-900 dark:text-white tracking-tight">Hujjah</h1>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  <h1 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">Hujjah</h1>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                     {stats.verses > 0
                       ? `${stats.verses.toLocaleString()} verses · ${stats.translations.toLocaleString()} translations`
                       : 'Local Islamic Research Engine'}
@@ -283,14 +282,14 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
                 {/* Language Toggle */}
-                <div className="flex items-center bg-gray-100 dark:bg-zinc-800 rounded-lg p-1">
+                <div className="flex items-center bg-gray-100 dark:bg-zinc-800 rounded-lg p-0.5">
                   {SUPPORTED_LANGS.map((l) => (
                     <button
                       key={l.code}
                       onClick={() => handleLangChange(l.code)}
-                      className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
                         lang === l.code
                           ? 'bg-white dark:bg-zinc-700 text-gray-900 dark:text-white shadow-sm'
                           : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
@@ -304,7 +303,7 @@ export default function Home() {
                 {/* Dark Mode Toggle */}
                 <button
                   onClick={() => setDarkMode((d) => !d)}
-                  className="p-1.5 text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
+                  className="w-9 h-9 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
                   title={darkMode ? 'Switch to light' : 'Switch to dark'}
                 >
                   {darkMode ? (

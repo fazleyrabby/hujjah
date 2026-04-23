@@ -147,7 +147,7 @@ export default function ChatWidget({ lang }: ChatWidgetProps) {
                     'max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed',
                     msg.role === 'user'
                       ? 'bg-teal-600 text-white rounded-br-md'
-                      : 'bg-gray-100 dark:bg-zinc-800 text-gray-800 dark:text-gray-200 rounded-bl-md'
+                      : 'bg-gray-100 dark:bg-zinc-700 text-gray-800 dark:text-gray-100 rounded-bl-md border border-gray-200 dark:border-zinc-600'
                   )}
                 >
                   <p>{msg.text}</p>

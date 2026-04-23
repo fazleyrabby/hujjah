@@ -47,9 +47,19 @@ function makeId(): string {
 }
 
 /**
+ * Pre-load the generation model in the background.
+ * Call this on app startup so the first query is fast.
+ */
+export function warmUpGenerationModel(): void {
+  const w = getWorker();
+  const id = makeId();
+  w.postMessage({ id, type: 'init' });
+}
+
+/**
  * Generate text via the Web Worker.
  */
-async function generate(prompt: string, maxNewTokens = 120): Promise<string> {
+async function generate(prompt: string, maxNewTokens = 80): Promise<string> {
   const id = makeId();
   const w = getWorker();
 
@@ -95,7 +105,7 @@ export async function explainVerse(verses: VerseContext[]): Promise<string> {
 
   try {
     const prompt = buildPrompt(verses);
-    const text = await generate(prompt, 120);
+    const text = await generate(prompt, 80);
     return text || 'Insufficient context.';
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
@@ -142,7 +152,7 @@ export async function explainQuery(
     }[]
   >(sql, [lang]);
 
-  // Step 3: Score by similarity
+  // Step 3: Score by similarity (limit to top 200 for speed)
   const scored = rows
     .filter((r) => r.embedding)
     .map((r) => ({

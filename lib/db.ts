@@ -217,16 +217,13 @@ export async function processQuery(
       break;
   }
 
-  // KEYWORD LANE: FTS5 search
-  const keywordResults = await searchKeyword(classification.raw, lang, limit);
+  // KEYWORD + SEMANTIC: run in parallel, merge with RRF
+  const [keywordResults, semanticResults] = await Promise.all([
+    searchKeyword(classification.raw, lang, limit),
+    searchSemantic(classification.raw, lang, limit),
+  ]);
 
-  // SEMANTIC FALLBACK: if keyword results < 3
-  if (keywordResults.length < 3) {
-    const semanticResults = await searchSemantic(classification.raw, lang, limit);
-    return rrfMerge(keywordResults, semanticResults, limit);
-  }
-
-  return keywordResults;
+  return rrfMerge(keywordResults, semanticResults, limit);
 }
 
 async function searchReference(surah: number, ayah: number, lang: string): Promise<SearchResult[]> {
@@ -316,12 +313,12 @@ async function searchKeyword(query: string, lang: string, limit: number): Promis
   }));
 }
 
-// ─── Semantic Search (Vector Fallback) ───
+// ─── Semantic Search (Vector Search) ───
 async function searchSemantic(query: string, lang: string, limit: number): Promise<SearchResult[]> {
   try {
-    const { retrieveHybrid } = await import('./ai/retrieve');
-    const results = await retrieveHybrid(query, lang, limit);
-    
+    const { retrieveRelevantVerses } = await import('./ai/retrieve');
+    const results = await retrieveRelevantVerses(query, lang, limit);
+
     return results.map(r => ({
       type: 'verse' as const,
       surah: r.surah,
@@ -335,7 +332,7 @@ async function searchSemantic(query: string, lang: string, limit: number): Promi
       snippet: r.text.slice(0, 160) + '...'
     }));
   } catch (err) {
-    console.error('[Search] Semantic fallback failed:', err);
+    console.error('[Search] Semantic search failed:', err);
     return [];
   }
 }
