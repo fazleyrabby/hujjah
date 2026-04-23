@@ -1,0 +1,27 @@
+[package]
+name = "hujjah"
+version = "0.1.0"
+description = "Local Islamic Research Engine"
+authors = ["fazleyrabby"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "hujjah_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.0.1", features = [] }
+
+[dependencies]
+tauri = { version = "2.0.6", features = [] }
+tauri-plugin-shell = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.32", features = ["bundled", "fts5"] }
+libsqlite3-sys = { version = "0.30", features = ["bundled"] }
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-single-instance = "2"

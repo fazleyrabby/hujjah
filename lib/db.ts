@@ -1,144 +1,219 @@
-import { PGlite } from '@electric-sql/pglite';
-import { vector } from '@electric-sql/pglite/vector';
-
-let dbInstance: PGlite | null = null;
-let initPromise: Promise<PGlite> | null = null;
-
-export interface DatabaseStatus {
-  status: 'loading' | 'ready' | 'error';
-  message?: string;
-}
-
-let statusCallback: ((status: DatabaseStatus) => void) | null = null;
-
-export function onDatabaseStatusChange(callback: (status: DatabaseStatus) => void) {
-  statusCallback = callback;
-}
-
 /**
- * Initialize PGlite with Quran-only schema.
- * Uses IndexedDB (idb://) for browser storage.
+ * TASK 2: Hybrid Search Client for Tauri
+ * 
+ * Uses Tauri's invoke API to call the Rust backend which runs SQLite with FTS5.
+ * Falls back to mock implementation when Tauri is not available (web dev mode).
  */
-export async function getDatabase(): Promise<PGlite> {
-  if (dbInstance) {
+
+// Try to import Tauri APIs, fallback to mock for web dev
+let invokeFn: (cmd: string, args?: Record<string, unknown>) => Promise<any>;
+
+try {
+  const tauri = require('@tauri-apps/api/core');
+  invokeFn = tauri.invoke;
+} catch {
+  // Mock for web dev / non-Tauri environments
+  invokeFn = async (cmd: string, args?: Record<string, unknown>) => {
+    console.warn(`[Mock Tauri] ${cmd}`, args);
+    if (cmd === 'get_db_path') return '/mock/hujjah.db';
+    if (cmd === 'purge_legacy_storage') return 'Mock: legacy purged';
+    if (cmd === 'sql_query') {
+      // Return empty results for web dev
+      return [];
+    }
+    return null;
+  };
+}
+
+// ─── Types ───
+export interface SearchResult {
+  id: number;
+  text: string;
+  ref: string;
+  type: 'quran' | 'hadith' | 'books';
+  score: number;
+  rank: number;
+}
+
+export interface HybridSearchOptions {
+  query: string;
+  queryEmbedding: number[];
+  limit?: number;
+}
+
+// ─── TASK 0: Purge Legacy Storage ───
+export async function purgeLegacyStorage(): Promise<string> {
+  // Clear browser IndexedDB (old PGlite)
+  const dbs = ['hujjah-minimal', 'hujjah-vault'];
+  for (const dbName of dbs) {
     try {
-      await dbInstance.query('SELECT 1');
-      return dbInstance;
-    } catch (e) {
-      dbInstance = null;
+      await window.indexedDB.deleteDatabase(dbName);
+      console.log(`Deleted IndexedDB: ${dbName}`);
+    } catch {
+      // ignore
     }
   }
 
-  if (initPromise) return initPromise;
+  // Clear localStorage
+  localStorage.clear();
+  console.log('Cleared localStorage');
 
-  initPromise = (async () => {
-    try {
-      if (statusCallback) statusCallback({ status: 'loading', message: 'Initializing database...' });
+  // Call Rust to purge disk-based legacy storage
+  return await invokeFn('purge_legacy_storage');
+}
 
-      dbInstance = await PGlite.create({
-        dataDir: 'idb://hujjah-minimal',
-        relaxedDurability: true,
-        extensions: { vector }
-      });
+// ─── Raw SQL Query (via Tauri Rust backend) ───
+export async function sqlQuery(
+  query: string,
+  params: (string | number)[] = []
+): Promise<Record<string, string>[]> {
+  return await invokeFn('sql_query', { query, params });
+}
 
-      await dbInstance.exec(`
-        CREATE EXTENSION IF NOT EXISTS vector;
+// ─── Get DB Path ───
+export async function getDbPath(): Promise<string> {
+  return await invokeFn('get_db_path');
+}
 
-        CREATE TABLE IF NOT EXISTS knowledge (
-          id        SERIAL PRIMARY KEY,
-          content   TEXT        NOT NULL,
-          surah     INTEGER     NOT NULL,
-          ayah      INTEGER     NOT NULL,
-          embedding VECTOR(384)
-        );
+// ─── FTS5 Keyword Search ───
+export async function searchFTS(
+  query: string,
+  limit: number = 10
+): Promise<SearchResult[]> {
+  const rows = await sqlQuery(
+    `
+    SELECT 
+      c.id,
+      c.text,
+      c.ref,
+      c.type,
+      bm25(fts_idx) as score
+    FROM fts_idx
+    JOIN content_store c ON c.id = fts_idx.rowid
+    WHERE fts_idx MATCH ?
+    ORDER BY bm25(fts_idx)
+    LIMIT ?
+    `,
+    [query, limit]
+  );
 
-        CREATE INDEX IF NOT EXISTS idx_knowledge_surah_ayah ON knowledge(surah, ayah);
-      `);
+  return rows.map((row, index) => ({
+    id: parseInt(row.id),
+    text: row.text,
+    ref: row.ref,
+    type: row.type as 'quran' | 'hadith' | 'books',
+    score: parseFloat(row.score || '0'),
+    rank: index + 1,
+  }));
+}
 
-      if (statusCallback) {
-        const result = await dbInstance.query('SELECT count(*) AS count FROM knowledge');
-        const count = parseInt((result.rows[0] as { count: string }).count);
-        statusCallback({ status: 'ready', message: `${count.toLocaleString()} ayahs loaded` });
-      }
+// ─── Vector Similarity Search (Client-side cosine similarity) ───
+export async function searchVector(
+  queryEmbedding: number[],
+  limit: number = 10
+): Promise<SearchResult[]> {
+  // NOTE: For production, replace with sqlite-vec KNN query:
+  // SELECT * FROM vec_idx WHERE embedding MATCH ? ORDER BY distance LIMIT ?
+  // This requires loading the sqlite-vec extension in Rust.
 
-      return dbInstance;
-    } catch (error) {
-      console.error('DB init failed:', error);
-      if (statusCallback) statusCallback({ status: 'error', message: error instanceof Error ? error.message : 'DB failed' });
-      throw error;
-    } finally {
-      initPromise = null;
+  // Fallback: fetch all embeddings and compute cosine similarity in JS
+  const rows = await sqlQuery(
+    `SELECT id, text, ref, type, embedding FROM content_store WHERE embedding IS NOT NULL LIMIT 1000`
+  );
+
+  const results = rows
+    .map(row => {
+      const emb = JSON.parse(row.embedding || '[]') as number[];
+      if (emb.length === 0) return null;
+      const similarity = cosineSimilarity(queryEmbedding, emb);
+      return {
+        id: parseInt(row.id),
+        text: row.text,
+        ref: row.ref,
+        type: row.type as 'quran' | 'hadith' | 'books',
+        score: similarity,
+        rank: 0,
+      };
+    })
+    .filter((r): r is SearchResult => r !== null)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+
+  return results.map((r, i) => ({ ...r, rank: i + 1 }));
+}
+
+// ─── TASK 2: Hybrid Search with RRF ───
+export async function hybridSearch(
+  options: HybridSearchOptions
+): Promise<SearchResult[]> {
+  const { query, queryEmbedding, limit = 5 } = options;
+
+  // 1. FTS5 keyword search
+  const ftsResults = await searchFTS(query, limit * 2);
+
+  // 2. Vector semantic search
+  const vecResults = await searchVector(queryEmbedding, limit * 2);
+
+  // 3. Reciprocal Rank Fusion (RRF)
+  const k = 60;
+  const scores = new Map<number, { result: SearchResult; rrf: number }>();
+
+  for (const r of ftsResults) {
+    const existing = scores.get(r.id);
+    if (existing) {
+      existing.rrf += 1 / (k + r.rank);
+    } else {
+      scores.set(r.id, { result: r, rrf: 1 / (k + r.rank) });
     }
-  })();
+  }
 
-  return initPromise;
+  for (const r of vecResults) {
+    const existing = scores.get(r.id);
+    if (existing) {
+      existing.rrf += 1 / (k + r.rank);
+    } else {
+      scores.set(r.id, { result: r, rrf: 1 / (k + r.rank) });
+    }
+  }
+
+  const merged = Array.from(scores.values())
+    .sort((a, b) => b.rrf - a.rrf)
+    .slice(0, limit)
+    .map((item, index) => ({
+      ...item.result,
+      score: item.rrf,
+      rank: index + 1,
+    }));
+
+  return merged;
 }
 
-/**
- * Vector similarity search — top K closest ayahs.
- */
-export async function searchVector(embedding: number[], limit: number = 5) {
-  const db = await getDatabase();
-  const embeddingStr = `[${embedding.join(',')}]`;
-
-  const result = await db.query(`
-    SELECT id, content, surah, ayah,
-           1 - (embedding <=> $1::vector) AS similarity
-    FROM knowledge
-    WHERE embedding IS NOT NULL
-    ORDER BY embedding <=> $1::vector
-    LIMIT $2
-  `, [embeddingStr, limit]);
-
-  return result.rows.map(row => {
-    const r = row as { id: number; content: string; surah: number; ayah: number; similarity: number };
-    return { id: r.id, content: r.content, surah: r.surah, ayah: r.ayah, similarity: r.similarity };
-  });
+// ─── Utility: Cosine Similarity ───
+function cosineSimilarity(a: number[], b: number[]): number {
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-/**
- * Simple text search (ILIKE) for fallback.
- */
-export async function searchText(query: string, limit: number = 5) {
-  const db = await getDatabase();
-  const term = `%${query}%`;
+// ─── Stats ───
+export async function getStats(): Promise<{
+  total: number;
+  quran: number;
+  hadith: number;
+  books: number;
+}> {
+  const [total, quran, hadith, books] = await Promise.all([
+    sqlQuery('SELECT count(*) as c FROM content_store').then(r => parseInt(r[0]?.c || '0')),
+    sqlQuery("SELECT count(*) as c FROM content_store WHERE type = 'quran'").then(r => parseInt(r[0]?.c || '0')),
+    sqlQuery("SELECT count(*) as c FROM content_store WHERE type = 'hadith'").then(r => parseInt(r[0]?.c || '0')),
+    sqlQuery("SELECT count(*) as c FROM content_store WHERE type = 'books'").then(r => parseInt(r[0]?.c || '0')),
+  ]);
 
-  const result = await db.query(`
-    SELECT id, content, surah, ayah
-    FROM knowledge
-    WHERE content ILIKE $1
-    LIMIT $2
-  `, [term, limit]);
-
-  return result.rows.map(row => {
-    const r = row as { id: number; content: string; surah: number; ayah: number };
-    return { id: r.id, content: r.content, surah: r.surah, ayah: r.ayah, similarity: 0 };
-  });
-}
-
-/**
- * Get total ayah count.
- */
-export async function getAyahCount(): Promise<number> {
-  const db = await getDatabase();
-  const res = await db.query('SELECT count(*) AS count FROM knowledge');
-  return parseInt((res.rows[0] as { count: string }).count);
-}
-
-/**
- * Reset database (drop & recreate schema).
- */
-export async function resetDatabase() {
-  const db = await getDatabase();
-  await db.exec(`
-    DROP TABLE IF EXISTS knowledge CASCADE;
-    CREATE TABLE knowledge (
-      id        SERIAL PRIMARY KEY,
-      content   TEXT        NOT NULL,
-      surah     INTEGER     NOT NULL,
-      ayah      INTEGER     NOT NULL,
-      embedding VECTOR(384)
-    );
-    CREATE INDEX idx_knowledge_surah_ayah ON knowledge(surah, ayah);
-  `);
+  return { total, quran, hadith, books };
 }
