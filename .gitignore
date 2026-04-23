@@ -50,3 +50,4 @@ next-env.d.ts
 # Dev notes (keep AGENTS.md for project rules)
 CLAUDE.md
 DATAIMPORT.md
+dist/
