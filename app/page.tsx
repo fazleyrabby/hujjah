@@ -31,6 +31,7 @@ export default function Home() {
   const [surahVerses, setSurahVerses] = useState<SurahVerse[] | null>(null);
   const [searchMode, setSearchMode] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [darkMode, setDarkMode] = useState(false);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -258,8 +259,25 @@ export default function Home() {
                 onChange={(e) => handleQueryChange(e.target.value)}
                 placeholder={lang === 'bn' ? 'কুরআন অনুসন্ধান...' : 'Search the Quran...'}
                 disabled={loading}
-                className="w-full px-5 py-4 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-shadow disabled:opacity-50 text-base"
+                className="w-full px-5 py-4 pr-24 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-shadow disabled:opacity-50 text-base"
               />
+              {query.trim() && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuery('');
+                    setResults(null);
+                    setSurahVerses(null);
+                    setSelectedSurah(null);
+                  }}
+                  className="absolute right-20 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                  title="Clear search"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
               <button
                 type="submit"
                 disabled={loading || !query.trim()}
