@@ -40,8 +40,13 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# Large pre-seeded database vault (generated, not source)
+/public/hujjah-vault/
+/public/hujjah-vault-manifest.json
 
-AGENT.md
-AGENTS.md 
+# Node.js seeding output
+/pglite_data/
+
+# Dev notes (keep AGENTS.md for project rules)
 CLAUDE.md
-DATAIMPORT.md 
+DATAIMPORT.md

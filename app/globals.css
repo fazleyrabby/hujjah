@@ -1,119 +1,88 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Noto+Naskh+Arabic&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Amiri:wght@400;700&display=swap');
 
-:root {
-  /* Paper & Ink — the only two colors that matter */
-  --color-paper:       #F9F7F2;
-  --color-ink:         #1A1A1A;
+@import "tailwindcss";
 
-  /* Derived from Paper & Ink */
-  --color-bg:          var(--color-paper);
-  --color-surface:     #FFFFFF;            /* cards float slightly above Paper */
-  --color-text:        var(--color-ink);
-  --color-text-muted:  #6B6B6B;            /* secondary text — use sparingly */
-  --color-border:      var(--color-ink);
-  --color-divider:     #D4D0C8;            /* subtle separators within cards */
-
-  /* Accent — deep green, used sparingly for Islamic theming */
-  --color-accent:       #2D5F2D;
-  --color-accent-light: #E8F0E8;
-
-  /* Semantic */
-  --color-error:       #C0392B;
-
-  /* Typography — manuscript feel */
-  --font-body:         'Inter', system-ui, sans-serif;
-  --font-serif:        'Noto Naskh Arabic', 'Georgia', serif;  /* for Arabic text / citations */
-  --font-size-base:    16px;        /* minimum — never smaller */
-  --font-size-lg:      20px;
-  --font-size-xl:      28px;
-  --font-size-xxl:     36px;        /* page title only */
-  --font-weight-normal: 400;
-  --font-weight-medium: 500;
-  --font-weight-bold:   700;
-  --line-height:       1.6;
-  --letter-spacing:    -0.01em;     /* slight tightening for headings */
-
-  /* Spacing — generous, like a well-typeset page */
-  --space-xs:   4px;
-  --space-sm:   8px;
-  --space-md:   16px;
-  --space-lg:   24px;
-  --space-xl:   32px;
-  --space-2xl:  48px;
-  --space-3xl:  64px;
-
-  /* Borders & Shadows — hard-edged, Ink-colored */
-  --border:           2px solid var(--color-ink);
-  --border-light:     1px solid var(--color-divider);
-  --shadow:           4px 4px 0px var(--color-ink);
-  --shadow-hover:     6px 6px 0px var(--color-ink);  /* subtle lift on interaction */
-  --radius:           0px;          /* sharp corners — brutalist */
+@theme {
+  /* Custom colors used across the app */
+  --color-base: #FDFDFB;
+  --color-base-secondary: #F5F5F4;
+  
+  --color-content: #1A1A1A;
+  --color-content-secondary: #52525B;
+  --color-content-tertiary: #A1A1AA;
+  
+  --color-accent: #0D9488;
+  --color-accent-light: #14B8A6;
+  --color-accent-dark: #0F766E;
+  
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-error: #EF4444;
+  
+  /* Custom fonts */
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-arabic: 'Amiri', 'Noto Naskh Arabic', 'Scheherazade New', serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  
+  /* Custom shadows */
+  --shadow-subtle: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-soft: 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+  --shadow-elevated: 0 4px 12px 0 rgba(0, 0, 0, 0.08);
+  --shadow-floating: 0 8px 24px 0 rgba(0, 0, 0, 0.10);
+  
+  /* Custom border radius */
+  --radius-sm: 6px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --radius-2xl: 24px;
+  
+  /* Custom line heights */
+  --leading-tight: 1.25;
+  --leading-snug: 1.375;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.625;
+  --leading-loose: 1.75;
+  --leading-arabic: 2.0;
 }
 
+/* Base styles */
 * {
   box-sizing: border-box;
-  padding: 0;
-  margin: 0;
-}
-
-html,
-body {
-  max-width: 100vw;
-  overflow-x: hidden;
-  background: var(--color-bg);
-  color: var(--color-text);
-  font-family: var(--font-body);
-  font-size: var(--font-size-base);
-  line-height: var(--line-height);
 }
 
 body {
-  min-height: 100vh;
+  background-color: var(--color-base);
+  color: var(--color-content);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-h1, h2, h3, h4, h5, h6 {
-  letter-spacing: var(--letter-spacing);
-  font-weight: var(--font-weight-bold);
+/* Arabic text optimization */
+.arabic {
+  font-family: var(--font-arabic);
+  line-height: var(--leading-arabic);
+  direction: rtl;
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
+/* Smooth fade-in animation */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-/* Common Brutalist Utility */
-.card {
-  background: var(--color-surface);
-  border: var(--border);
-  box-shadow: var(--shadow);
-  padding: var(--space-lg);
-  margin-bottom: var(--space-lg);
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
 }
 
-.card:hover {
-  box-shadow: var(--shadow-hover);
+/* Loading shimmer */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }
 
-.button {
-  display: inline-block;
-  background: var(--color-ink);
-  color: var(--color-paper);
-  padding: var(--space-md) var(--space-xl);
-  font-weight: var(--font-weight-medium);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  cursor: pointer;
-  border: none;
-  transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.button:hover {
-  transform: translate(-2px, -2px);
-  box-shadow: var(--shadow);
-}
-
-.container {
-    max-width: 1000px;
-    margin: 0 auto;
-    padding: var(--space-2xl) var(--space-lg);
+.animate-shimmer {
+  background: linear-gradient(90deg, #F5F5F4 0%, #E5E7EB 50%, #F5F5F4 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
 }

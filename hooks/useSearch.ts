@@ -17,9 +17,11 @@ export function useSearch() {
     try {
       const searchResults = await semanticSearch(query);
       setResults(searchResults);
+      return searchResults;
     } catch (err) {
       console.error('Search failed:', err);
       setError(err instanceof Error ? err : new Error('Search failed'));
+      return [];
     } finally {
       setLoading(false);
     }

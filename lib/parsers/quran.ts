@@ -13,9 +13,9 @@ export async function parseQuranSQL(file: File): Promise<ParsedVerse[]> {
   const text = await file.text();
   const results: ParsedVerse[] = [];
   
-  // Typical Tanzil SQL format: (sura, ayah, text)
-  // Example: INSERT INTO `quran_text` VALUES (1,1,'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ');
-  const regex = /\((\d+),\s*(\d+),\s*'([^']+)'\)/g;
+  // Tanzil SQL format: (index, sura, ayah, text)
+  // Example: (1, 1, 1, 'بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ')
+  const regex = /\(\d+,\s*(\d+),\s*(\d+),\s*'([^']+)'\)/g;
   
   let match;
   while ((match = regex.exec(text)) !== null) {

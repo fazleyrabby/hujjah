@@ -4,7 +4,7 @@ import { pipeline, env } from '@huggingface/transformers';
 env.allowLocalModels = false;
 env.useBrowserCache = true;
 // WebGPU is preferred in Transformers.js v3
-env.backends.onnx.wasm.proxy = false; 
+(env.backends as any).onnx.wasm.proxy = false; 
 
 let embeddingPipeline: any = null;
 

@@ -1,71 +1,69 @@
-# Hujjah — Local-First Islamic Research
+# Hujjah
 
-Hujjah is a privacy-focused, offline-capable AI research tool designed for exploring Islamic knowledge. It runs entirely in your browser using on-device embeddings and a local vector database.
+Local-first Islamic research tool. Search across Quran, Hadith, and scholarly commentary — entirely offline in your browser.
 
-![Aesthetic](https://img.shields.io/badge/Aesthetic-Soft--Brutalist-F9F7F2?labelColor=1A1A1A)
-![Local First](https://img.shields.io/badge/Architecture-Local--First-2D5F2D)
-![WebGPU](https://img.shields.io/badge/Inference-WebGPU-orange)
+## Stack
 
-## 📖 Philosophy: The Digital Manuscript
+- **Next.js 16** + **React 19** + **Tailwind CSS v4**
+- **PGLite** (PostgreSQL WASM) with `pgvector` extension
+- **OPFS** (Origin Private File System) for large dataset storage
+- **Transformers.js** for embeddings and local LLM inference
 
-Hujjah is designed with a **Soft-Brutalist** aesthetic. It moves away from the cluttered, high-frequency interfaces of modern apps and embraces the calm, intentional feel of a high-end physical manuscript.
+## Development
 
-- **Paper & Ink**: A restricted palette of Paper (`#F9F7F2`) and Ink (`#1A1A1A`).
-- **Minimal Interaction**: No hidden menus, no jargon, no distracting animations.
-- **Privacy by Default**: Your queries and knowledge base never leave your device.
+```bash
+npm install
+npm run dev          # Start dev server on http://localhost:3000
+npm run build        # Production build
+```
 
-## 🛠️ Technology Stack
+## Data
 
-- **Framework**: [Next.js 15+](https://nextjs.org) (App Router)
-- **Database**: [PGlite](https://pglite.dev) (Postgres in WASM) with `pgvector` support.
-- **Embeddings**: [Transformers.js v3](https://huggingface.co/docs/transformers.js) using the `all-MiniLM-L6-v2` model.
-- **Acceleration**: **WebGPU** for blazing fast on-device vector generation.
-- **Persistence**: IndexedDB-backed storage via `idb://hujjah-vault`.
+Source files are **not** included in the repo. Place them in:
 
-## 🚀 Key Features
+```
+/Users/rabbi/Desktop/hujjah resources/
+├── quran-uthmani.sql
+├── Sanadset 650K Data on Hadith Narrators/
+│   ├── sanadset.csv
+│   ├── books.csv
+│   └── chunks/
+└── global quran data/
+    └── *.json
+```
 
-- **Semantic Search**: Find relevant verses and hadiths based on meaning, not just keywords.
-- **Ingestion Pipeline**: Import large datasets directly from your local machine:
-  - **Quran**: Parse `.sql` dumps (Tanzil style).
-  - **Hadith**: Ingest large `.csv` datasets (Sanadset) with tag-aware cleaning.
-- **Hardware Adaptive**: Detects device capabilities to run in `FULL_LOCAL`, `HYBRID`, or `LITE` modes, ensuring smooth performance even on low-end Android devices.
-- **Zero Latency**: Once seeded, searches happen in milliseconds without any network round-trips.
+### Seeding (Node.js)
 
-## 📥 Getting Started
+Bulk import all data into the filesystem vault:
 
-### Prerequisites
+```bash
+node scripts/sync-all-data.mjs     # Import Quran + Hadith + Commentary + Books
+npm run package:vault              # Package for browser deployment
+```
 
-- Node.js 18+
-- A WebGPU-capable browser (Chrome, Edge, or recent Firefox)
+### Browser Import
 
-### Installation
+For incremental imports, use the **Dev Settings** page at `/settings`:
+- **Analytics** tab — check browser DB status vs source files
+- **Import Data** tab — drag & drop SQL/CSV/JSON files
+- **Danger Zone** tab — reset browser database
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/fazleyrabby/hujjah.git
-   cd hujjah
-   ```
+## Architecture
 
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
+| Layer | Storage | Use Case |
+|---|---|---|
+| Browser (end user) | `opfs://hujjah-vault` | Runtime queries, MVP frontend |
+| Node.js (dev) | `public/hujjah-vault/` | Bulk seeding, packaging |
 
-3. Run the development server:
-   ```bash
-   npm run dev
-   ```
+Browser storage uses **OPFS** with fallback to **IndexedDB**. OPFS handles 1M+ records significantly better than IDB.
 
-4. Open [http://localhost:3000](http://localhost:3000) and wait for the initial knowledge base to seed.
+## Pages
 
-## 🏗️ Ingesting Data
+| Route | Audience | Purpose |
+|---|---|---|
+| `/` | End user | Search & RAG answers |
+| `/settings` | Developer | DB analytics, import, reset |
 
-Navigate to `/import` to migrate your verified Islamic datasets.
-- For Quran: Upload `quran-uthmani.sql`.
-- For Hadith: Upload `Sanadset.csv`.
+## License
 
-Data is processed in batches to ensure the UI remains responsive and memory stable.
-
-## 📜 License
-
-This project is licensed under the MIT License - see the `LICENSE` file for details.
+Apache-2.0

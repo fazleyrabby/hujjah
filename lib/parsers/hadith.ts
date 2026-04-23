@@ -5,6 +5,37 @@ export interface ParsedHadith {
 }
 
 /**
+ * Robust CSV parser for Sanadset.csv
+ * Handles quoted fields with embedded commas
+ */
+function parseCSVLine(line: string): string[] {
+  const fields: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      fields.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  
+  fields.push(current.trim());
+  return fields;
+}
+
+/**
  * Parser for Sanadset.csv
  * Cleans tags for embedding but keeps them for UI display.
  */
@@ -13,26 +44,25 @@ export async function parseHadithCSV(file: File): Promise<ParsedHadith[]> {
   const lines = text.split('\n');
   const results: ParsedHadith[] = [];
   
-  // Headers check (optional, but good for robust parsing)
-  // Assuming format: book,number,text
-  // Sanadset often has: Sanad, Matn, Book, Number
-  
+  // Headers: Hadith,Book,Num_hadith,Matn,Sanad,Sanad_Length
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line) continue;
     
-    // Simple CSV split (handling quotes would be better in a production lib)
-    // For Sanadset, we often see TAB or COMMA. Let's assume standard CSV for now.
-    const parts = line.split(',');
+    const parts = parseCSVLine(line);
+    
+    // Need at least: Hadith, Book, Num_hadith
     if (parts.length < 3) continue;
     
-    // Matn/Content usually has <SANAD> and <MATN> tags
-    const content = parts[2] || ''; 
-    const book = parts[0] || 'Unknown';
-    const number = parts[1] || i.toString();
+    const rawContent = parts[0].replace(/^"|"$/g, '').replace(/""/g, '"').trim();
+    const book = parts[1].replace(/^"|"$/g, '').trim();
+    const number = parts[2].replace(/^"|"$/g, '').trim();
+    
+    // Skip if no content
+    if (!rawContent || !book) continue;
     
     results.push({
-      content,
+      content: rawContent,
       source_ref: `${book} Hadith #${number}`,
       category: 'hadith'
     });
@@ -50,5 +80,22 @@ export function cleanForEmbedding(text: string): string {
     .replace(/<\/SANAD>/g, '')
     .replace(/<MATN>/g, '')
     .replace(/<\/MATN>/g, '')
+    .replace(/<NAR>/g, '')
+    .replace(/<\/NAR>/g, '')
+    .replace(/\s+/g, ' ')
     .trim();
+}
+
+/**
+ * Extract narrator names from SANAD for optional indexing
+ */
+export function extractNarrators(sanadField: string): string[] {
+  // Parse Python list format: ['name1', 'name2']
+  const match = sanadField.match(/\[(.*)\]/);
+  if (!match) return [];
+  
+  return match[1]
+    .split(',')
+    .map(n => n.trim().replace(/^'|'$/g, ''))
+    .filter(n => n && n !== 'No SANAD');
 }
