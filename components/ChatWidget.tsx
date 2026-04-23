@@ -6,9 +6,10 @@ import { clsx } from 'clsx';
 
 interface ChatWidgetProps {
   lang: string;
+  onNavigateToVerse?: (surah: number, ayah: number) => void;
 }
 
-export default function ChatWidget({ lang }: ChatWidgetProps) {
+export default function ChatWidget({ lang, onNavigateToVerse }: ChatWidgetProps) {
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [input, setInput] = useState('');
@@ -175,12 +176,13 @@ export default function ChatWidget({ lang }: ChatWidgetProps) {
                       </p>
                       <div className="flex flex-wrap gap-1.5">
                         {msg.verses.map((v, i) => (
-                          <span
+                          <button
                             key={i}
-                            className="text-[10px] px-2 py-0.5 bg-white dark:bg-zinc-700 text-teal-700 dark:text-teal-400 rounded-full font-medium"
+                            onClick={() => onNavigateToVerse?.(v.surah, v.ayah)}
+                            className="text-[10px] px-2 py-0.5 bg-white dark:bg-zinc-700 text-teal-700 dark:text-teal-400 rounded-full font-medium hover:bg-teal-100 dark:hover:bg-teal-900/40 transition-colors cursor-pointer"
                           >
                             {v.surah}:{v.ayah}
-                          </span>
+                          </button>
                         ))}
                       </div>
                     </div>

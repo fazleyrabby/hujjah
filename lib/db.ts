@@ -108,6 +108,13 @@ export async function getSurahById(id: number): Promise<Surah | null> {
   return rows[0] || null;
 }
 
+export async function getSurahVerseCount(surah: number): Promise<number> {
+  const db = await getDB();
+  const sql = 'SELECT COUNT(*) as count FROM verses WHERE surah = ?';
+  const rows = await db.select<{ count: number }[]>(sql, [surah]);
+  return rows[0]?.count ?? 0;
+}
+
 export async function getSurahTranslators(surah: number, lang: string = 'en'): Promise<{ translator_slug: string; count: number }[]> {
   const db = await getDB();
   const sql = `
@@ -248,7 +255,7 @@ async function searchReference(surah: number, ayah: number, lang: string): Promi
     translator_slug: r.translator_slug,
     rank: 0,
     label: 'REF',
-    snippet: `${r.surah}:${r.ayah}`,
+    snippet: r.text,
   }));
 }
 
@@ -287,7 +294,7 @@ async function searchKeyword(query: string, lang: string, limit: number): Promis
       s.name_en,
       s.name_bn,
       bm25(quran_search_idx) AS rank,
-      snippet(quran_search_idx, 1, '<mark>', '</mark>', '...', 32) AS snippet
+      snippet(quran_search_idx, 0, '<mark>', '</mark>', '...', 32) AS snippet
     FROM quran_search_idx
     JOIN translations t ON t.id = quran_search_idx.rowid
     JOIN verses v ON v.id = t.verse_id
@@ -316,8 +323,8 @@ async function searchKeyword(query: string, lang: string, limit: number): Promis
 // ─── Semantic Search (Vector Search) ───
 async function searchSemantic(query: string, lang: string, limit: number): Promise<SearchResult[]> {
   try {
-    const { retrieveRelevantVerses } = await import('./ai/retrieve');
-    const results = await retrieveRelevantVerses(query, lang, limit);
+    const { retrieveHybrid } = await import('./ai/retrieve');
+    const results = await retrieveHybrid(query, lang, limit);
 
     return results.map(r => ({
       type: 'verse' as const,

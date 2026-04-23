@@ -71,4 +71,17 @@ describe('sanitizeQuery', () => {
   it('trims whitespace', () => {
     expect(sanitizeQuery('  mercy  ')).toBe('mercy');
   });
+
+  it('converts Bengali conjunctions to OR', () => {
+    expect(sanitizeQuery('সালাত ও সবর')).toBe('সালাত OR সবর');
+    expect(sanitizeQuery('ধৈর্য এবং নামাজ')).toBe('ধৈর্য OR নামাজ');
+  });
+
+  it('converts Bengali multi-word queries to OR', () => {
+    expect(sanitizeQuery('রহমত করুনা')).toBe('রহমত OR করুনা');
+  });
+
+  it('leaves English multi-word queries intact', () => {
+    expect(sanitizeQuery('mercy and patience')).toBe('mercy and patience');
+  });
 });

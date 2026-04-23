@@ -29,8 +29,9 @@ interface WorkerResponse {
 
 async function init() {
   if (!extractor) {
-  extractor = await pipeline('feature-extraction', 'all-MiniLM-L6-v2', {
+  extractor = await pipeline('feature-extraction', '/models/all-MiniLM-L6-v2', {
     quantized: true,
+    local_files_only: true,
   } as Record<string, unknown>);
   }
 }

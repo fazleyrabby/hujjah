@@ -58,10 +58,35 @@ export function classifyQuery(raw: string): ClassifiedQuery {
 /**
  * Sanitize a user query for safe FTS5 MATCH.
  * Removes special characters that could break the query.
+ * For Bengali, strips common conjunctions and converts to OR-separated tokens
+ * so compound queries like "সালাত ও সবর" match verses containing either word.
  */
 export function sanitizeQuery(raw: string): string {
-  return raw
+  const cleaned = raw
     .replace(/[*"{}()[\]]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
+
+  // Bengali conjunctions: ও, এবং, অথবা, কিংবা
+  // Split on these and build an OR query for FTS5
+  const bengaliConjunctions = /\s+(ও|এবং|অথবা|কিংবা)\s+/g;
+  if (bengaliConjunctions.test(cleaned)) {
+    const tokens = cleaned
+      .split(bengaliConjunctions)
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0 && !['ও', 'এবং', 'অথবা', 'কিংবা'].includes(t));
+    return tokens.join(' OR ');
+  }
+
+  // For Bengali multi-word queries without explicit operators, use OR
+  // FTS5 default is AND for spaces, which is too restrictive for Bengali
+  const hasBengali = /[\u0980-\u09FF]/.test(cleaned);
+  if (hasBengali) {
+    const words = cleaned.split(' ').filter((w) => w.length > 0);
+    if (words.length > 1 && !cleaned.includes(' OR ') && !cleaned.includes(' AND ') && !cleaned.includes(' NOT ')) {
+      return words.join(' OR ');
+    }
+  }
+
+  return cleaned;
 }

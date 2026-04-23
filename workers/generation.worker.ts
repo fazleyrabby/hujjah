@@ -16,8 +16,8 @@ let modelLoading = false;
 
 interface GenMessage {
   id: string;
-  type: 'generate';
-  prompt: string;
+  type: 'generate' | 'init';
+  prompt?: string;
   maxNewTokens?: number;
 }
 
@@ -26,6 +26,14 @@ interface GenResponse {
   type: 'generate' | 'error' | 'loading';
   text?: string;
   error?: string;
+}
+
+/**
+ * Format prompt for Qwen2.5-Instruct chat template.
+ */
+function formatChatPrompt(userPrompt: string): string {
+  // Qwen2.5-Instruct expects this format:
+  return `<|im_start|>user\n${userPrompt}<|im_end|>\n<|im_start|>assistant\n`;
 }
 
 async function init() {
@@ -39,9 +47,12 @@ async function init() {
 
   modelLoading = true;
   try {
-    generator = await pipeline('text-generation', 'qwen-onnx', {
+    console.log('[GenerationWorker] Loading qwen-onnx...');
+    generator = await pipeline('text-generation', '/models/qwen-onnx', {
       quantized: true,
+      local_files_only: true,
     } as Record<string, unknown>);
+    console.log('[GenerationWorker] Model loaded successfully');
   } catch (err) {
     console.error('[GenerationWorker] Failed to load model:', err);
     throw err;
@@ -51,7 +62,18 @@ async function init() {
 }
 
 self.addEventListener('message', async (event: MessageEvent<GenMessage>) => {
-  const { id, type, prompt, maxNewTokens = 120 } = event.data;
+  const { id, type, prompt, maxNewTokens = 80 } = event.data;
+
+  if (type === 'init') {
+    try {
+      await init();
+      self.postMessage({ id, type: 'generate', text: '' } as GenResponse);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      self.postMessage({ id, type: 'error', error: message } as GenResponse);
+    }
+    return;
+  }
 
   if (type !== 'generate') {
     self.postMessage({ id, type: 'error', error: 'Unknown message type' } as GenResponse);
@@ -61,17 +83,27 @@ self.addEventListener('message', async (event: MessageEvent<GenMessage>) => {
   try {
     self.postMessage({ id, type: 'loading' } as GenResponse);
     await init();
-    const output = await (generator as (text: string, opts: Record<string, unknown>) => Promise<unknown[]>)(prompt, {
-      max_new_tokens: maxNewTokens,
-      temperature: 0.1,
-      do_sample: false,
-      return_full_text: false,
-    });
+
+    const chatPrompt = formatChatPrompt(prompt ?? '');
+    console.log('[GenerationWorker] Generating with prompt length:', chatPrompt.length);
+
+    const output = await (generator as (text: string, opts: Record<string, unknown>) => Promise<unknown[]>)(
+      chatPrompt,
+      {
+        max_new_tokens: maxNewTokens,
+        temperature: 0.3,
+        do_sample: true,
+        top_p: 0.9,
+        return_full_text: false,
+      }
+    );
 
     const text = (output?.[0] as { generated_text?: string })?.generated_text;
+    console.log('[GenerationWorker] Generated text length:', text?.length ?? 0);
     self.postMessage({ id, type: 'generate', text: text?.trim() || '' } as GenResponse);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
+    console.error('[GenerationWorker] Generation error:', message);
     self.postMessage({ id, type: 'error', error: message } as GenResponse);
   }
 });

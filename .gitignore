@@ -53,6 +53,7 @@ CLAUDE.md
 DATAIMPORT.md
 dist/
 *.db
+CLAUDE_HANDOVER.md
 
 # Tauri build artifacts
 /src-tauri/target/

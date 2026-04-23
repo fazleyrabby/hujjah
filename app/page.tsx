@@ -128,12 +128,8 @@ export default function Home() {
   const handleQueryChange = useCallback(
     (value: string) => {
       setQuery(value);
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => {
-        executeSearch(value, lang);
-      }, 300);
     },
-    [executeSearch, lang]
+    []
   );
 
   // ─── Surah Selection ───
@@ -186,6 +182,22 @@ export default function Home() {
   const handleSurahClick = useCallback(
     (surahId: number) => {
       loadSurah(surahId, lang);
+    },
+    [loadSurah, lang]
+  );
+
+  const handleNavigateToVerse = useCallback(
+    async (surah: number, ayah: number) => {
+      await loadSurah(surah, lang);
+      // Scroll to verse after render
+      setTimeout(() => {
+        const el = document.getElementById(`verse-${surah}-${ayah}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el.classList.add('ring-2', 'ring-teal-500', 'bg-teal-50', 'dark:bg-teal-900/20');
+          setTimeout(() => el.classList.remove('ring-2', 'ring-teal-500', 'bg-teal-50', 'dark:bg-teal-900/20'), 3000);
+        }
+      }, 300);
     },
     [loadSurah, lang]
   );
@@ -339,8 +351,7 @@ export default function Home() {
                   value={query}
                   onChange={(e) => handleQueryChange(e.target.value)}
                   placeholder={lang === 'bn' ? 'কুরআন অনুসন্ধান...' : 'Search the Quran...'}
-                  disabled={loading}
-                  className="w-full px-5 py-3.5 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-shadow disabled:opacity-50 text-base shadow-sm"
+                  className="w-full px-5 py-3.5 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-shadow text-base shadow-sm"
                 />
                 <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
                   {query.trim() && (
@@ -689,6 +700,7 @@ export default function Home() {
                   return (
                     <div
                       key={`${v.id}-${v.translator_slug}-${i}`}
+                      id={`verse-${v.surah}-${v.ayah}`}
                       ref={(el) => { verseRefs.current[`${v.surah}-${v.ayah}`] = el; }}
                       className={clsx(
                         'rounded-xl p-5 transition-all',
@@ -779,7 +791,7 @@ export default function Home() {
         </div>
       </main>
 
-      <ChatWidget lang={lang} />
+      <ChatWidget lang={lang} onNavigateToVerse={handleNavigateToVerse} />
     </div>
   );
 }
