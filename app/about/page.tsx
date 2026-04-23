@@ -14,6 +14,17 @@ export default function AboutPage() {
   return (
     <div className="min-h-screen bg-[#F8F4F0]">
       <div className="max-w-2xl mx-auto px-6 py-12">
+        {/* ─── Back Navigation ─── */}
+        <a
+          href="/"
+          className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900 mb-8 transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          Back to Hujjah
+        </a>
+
         {/* ─── Branding Section ─── */}
         <div className="text-center mb-12">
           <div className="w-20 h-20 mx-auto mb-6 bg-gray-900 rounded-2xl flex items-center justify-center shadow-lg">
