@@ -42,7 +42,7 @@ export default function AboutPage() {
             </svg>
             Md. Fazley Rabbi
           </a>
-          <p className="text-xs text-gray-400 mt-2">Full-Stack Engineer & Data Architect</p>
+          <p className="text-xs text-gray-400 mt-2">Software Engineer</p>
         </div>
 
         {/* ─── Data Provenance ─── */}
@@ -168,7 +168,7 @@ export default function AboutPage() {
 
         {/* Footer */}
         <p className="text-center text-xs text-gray-400 mt-12">
-          Built with care in Dhaka, Bangladesh. Licensed under Apache-2.0.
+          Built with care in Chittagong, Bangladesh. Licensed under Apache-2.0.
         </p>
       </div>
     </div>
