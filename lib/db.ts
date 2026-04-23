@@ -101,6 +101,13 @@ export async function getSurahList(): Promise<Surah[]> {
   return db.select<Surah[]>(sql);
 }
 
+export async function getSurahById(id: number): Promise<Surah | null> {
+  const db = await getDB();
+  const sql = 'SELECT id, name_ar, name_en, name_bn FROM surahs WHERE id = ?';
+  const rows = await db.select<Surah[]>(sql, [id]);
+  return rows[0] || null;
+}
+
 export async function getSurahTranslators(surah: number, lang: string = 'en'): Promise<{ translator_slug: string; count: number }[]> {
   const db = await getDB();
   const sql = `

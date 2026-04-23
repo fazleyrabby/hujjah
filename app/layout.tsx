@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AudioProvider } from "@/contexts/AudioContext";
+import AudioPlayer from "@/components/AudioPlayer";
 
 export const metadata: Metadata = {
   title: "Hujjah — Local Islamic Research",
@@ -14,7 +16,10 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body suppressHydrationWarning>
-        {children}
+        <AudioProvider>
+          {children}
+          <AudioPlayer />
+        </AudioProvider>
       </body>
     </html>
   );

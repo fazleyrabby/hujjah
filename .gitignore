@@ -47,7 +47,8 @@ next-env.d.ts
 # Node.js seeding output
 /pglite_data/
 
-# Dev notes (keep AGENTS.md for project rules)
+# Dev notes / agent handover (local only)
+AGENTS.md
 CLAUDE.md
 DATAIMPORT.md
 dist/

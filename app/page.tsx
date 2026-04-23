@@ -306,33 +306,35 @@ export default function Home() {
                 onChange={(e) => handleQueryChange(e.target.value)}
                 placeholder={lang === 'bn' ? 'কুরআন অনুসন্ধান...' : 'Search the Quran...'}
                 disabled={loading}
-                className="w-full px-5 py-4 pr-32 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-shadow disabled:opacity-50 text-base shadow-sm"
+                className="w-full px-5 py-4 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-shadow disabled:opacity-50 text-base shadow-sm"
               />
-              {query.trim() && (
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                {query.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuery('');
+                      setResults(null);
+                      setSurahVerses(null);
+                      setSelectedSurah(null);
+                      clearAI();
+                    }}
+                    className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
+                    title="Clear search"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
                 <button
-                  type="button"
-                  onClick={() => {
-                    setQuery('');
-                    setResults(null);
-                    setSurahVerses(null);
-                    setSelectedSurah(null);
-                    clearAI();
-                  }}
-                  className="absolute right-[5.5rem] top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-md transition-colors z-10"
-                  title="Clear search"
+                  type="submit"
+                  disabled={loading || !query.trim()}
+                  className="px-5 py-2.5 bg-gray-900 dark:bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-gray-800 dark:hover:bg-teal-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
+                  {loading ? '...' : lang === 'bn' ? 'খুঁজুন' : 'Search'}
                 </button>
-              )}
-              <button
-                type="submit"
-                disabled={loading || !query.trim()}
-                className="absolute right-2 top-1/2 -translate-y-1/2 px-5 py-2.5 bg-gray-900 dark:bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-gray-800 dark:hover:bg-teal-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed z-0"
-              >
-                {loading ? '...' : lang === 'bn' ? 'খুঁজুন' : 'Search'}
-              </button>
+              </div>
             </div>
               <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
               {lang === 'bn'

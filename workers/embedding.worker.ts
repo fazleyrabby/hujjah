@@ -9,6 +9,7 @@ import { env, pipeline } from '@huggingface/transformers';
 
 // Configure local model path (relative to the worker location)
 env.localModelPath = '/models';
+env.allowLocalModels = true;
 env.allowRemoteModels = false;
 
 let extractor: Awaited<ReturnType<typeof pipeline>> | null = null;

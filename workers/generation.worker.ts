@@ -8,6 +8,7 @@
 import { env, pipeline } from '@huggingface/transformers';
 
 env.localModelPath = '/models';
+env.allowLocalModels = true;
 env.allowRemoteModels = false;
 
 let generator: Awaited<ReturnType<typeof pipeline>> | null = null;
