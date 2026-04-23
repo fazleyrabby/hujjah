@@ -19,10 +19,14 @@ export interface PlayOptions {
 interface AudioContextType {
   isPlaying: boolean;
   current: { surah: number; ayah: number } | null;
+  progress: number; // 0 - 1
+  currentTime: number;
+  duration: number;
   play: (opts: PlayOptions) => Promise<void>;
   pause: () => void;
   resume: () => Promise<void>;
   stop: () => void;
+  seekTo: (ratio: number) => void;
 }
 
 const AudioContext = createContext<AudioContextType | null>(null);
@@ -95,6 +99,7 @@ function cleanupAudio() {
     globalAudio.onended = null;
     globalAudio.onerror = null;
     globalAudio.oncanplay = null;
+    globalAudio.ontimeupdate = null;
     globalAudio = null;
   }
 }
@@ -102,10 +107,39 @@ function cleanupAudio() {
 export function AudioProvider({ children }: { children: React.ReactNode }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [current, setCurrent] = useState<{ surah: number; ayah: number } | null>(null);
+  const [progress, setProgress] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
   const autoPlayRef = useRef(false);
+  const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const clearProgressInterval = useCallback(() => {
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+      progressIntervalRef.current = null;
+    }
+  }, []);
+
+  const startProgressTracking = useCallback(() => {
+    clearProgressInterval();
+    progressIntervalRef.current = setInterval(() => {
+      if (globalAudio) {
+        const dur = globalAudio.duration || 0;
+        const cur = globalAudio.currentTime || 0;
+        setCurrentTime(cur);
+        setDuration(dur);
+        setProgress(dur > 0 ? cur / dur : 0);
+      }
+    }, 500);
+  }, [clearProgressInterval]);
 
   const play = useCallback(async (opts: PlayOptions) => {
     cleanupAudio();
+    clearProgressInterval();
+    setProgress(0);
+    setCurrentTime(0);
+    setDuration(0);
+
     const { surah, ayah, autoPlay = false } = opts;
     autoPlayRef.current = autoPlay;
 
@@ -122,13 +156,15 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       });
 
       audio.onended = async () => {
+        clearProgressInterval();
         setIsPlaying(false);
+        setProgress(0);
+        setCurrentTime(0);
         if (autoPlayRef.current) {
           const next = await getNextAyah(surah, ayah);
           if (next) {
             await play({ ...next, autoPlay: true });
           } else {
-            // Surah finished — stop and clear
             cleanupAudio();
             setCurrent(null);
             autoPlayRef.current = false;
@@ -137,38 +173,54 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       };
 
       audio.onerror = () => {
+        clearProgressInterval();
         setIsPlaying(false);
       };
 
       await audio.play();
       setIsPlaying(true);
       setCurrent({ surah, ayah });
+      startProgressTracking();
     } catch (err) {
       console.error('[Audio] Playback error:', err);
       setIsPlaying(false);
       setCurrent(null);
     }
-  }, []);
+  }, [clearProgressInterval, startProgressTracking]);
 
   const pause = useCallback(() => {
     if (globalAudio) {
       globalAudio.pause();
       setIsPlaying(false);
+      clearProgressInterval();
     }
-  }, []);
+  }, [clearProgressInterval]);
 
   const resume = useCallback(async () => {
     if (globalAudio) {
       await globalAudio.play();
       setIsPlaying(true);
+      startProgressTracking();
     }
-  }, []);
+  }, [startProgressTracking]);
 
   const stop = useCallback(() => {
+    clearProgressInterval();
     cleanupAudio();
     setIsPlaying(false);
     setCurrent(null);
+    setProgress(0);
+    setCurrentTime(0);
+    setDuration(0);
     autoPlayRef.current = false;
+  }, [clearProgressInterval]);
+
+  const seekTo = useCallback((ratio: number) => {
+    if (globalAudio && globalAudio.duration) {
+      globalAudio.currentTime = ratio * globalAudio.duration;
+      setProgress(ratio);
+      setCurrentTime(globalAudio.currentTime);
+    }
   }, []);
 
   // Keyboard shortcuts
@@ -184,8 +236,13 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('keydown', handler);
   }, [current, isPlaying, pause, resume]);
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => clearProgressInterval();
+  }, [clearProgressInterval]);
+
   return (
-    <AudioContext.Provider value={{ isPlaying, current, play, pause, resume, stop }}>
+    <AudioContext.Provider value={{ isPlaying, current, progress, currentTime, duration, play, pause, resume, stop, seekTo }}>
       {children}
     </AudioContext.Provider>
   );

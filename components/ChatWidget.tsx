@@ -10,6 +10,7 @@ interface ChatWidgetProps {
 
 export default function ChatWidget({ lang }: ChatWidgetProps) {
   const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [input, setInput] = useState('');
   const { messages, loading, error, sendMessage, clearChat } = useChat();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -41,15 +42,15 @@ export default function ChatWidget({ lang }: ChatWidgetProps) {
 
   return (
     <>
-      {/* Floating Toggle Button */}
+      {/* Floating Toggle Button — positioned above audio player */}
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-teal-600 hover:bg-teal-500 text-white rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center group"
+          className="fixed bottom-[72px] right-6 z-[60] w-12 h-12 bg-teal-600 hover:bg-teal-500 text-white rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center group"
           title={isBn ? 'এআই চ্যাট' : 'AI Chat'}
         >
           <svg
-            className="w-6 h-6 group-hover:scale-110 transition-transform"
+            className="w-5 h-5 group-hover:scale-110 transition-transform"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -62,7 +63,7 @@ export default function ChatWidget({ lang }: ChatWidgetProps) {
             />
           </svg>
           {messages.length > 0 && (
-            <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+            <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
               {messages.filter((m) => m.role === 'assistant').length}
             </span>
           )}
@@ -71,18 +72,20 @@ export default function ChatWidget({ lang }: ChatWidgetProps) {
 
       {/* Chat Panel */}
       {open && (
-        <div className="fixed bottom-6 right-6 z-50 w-[380px] max-w-[calc(100vw-3rem)] h-[520px] max-h-[calc(100vh-6rem)] bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-zinc-700 flex flex-col overflow-hidden animate-fade-in">
+        <div
+          className={clsx(
+            'fixed z-[60] bg-white dark:bg-zinc-900 shadow-2xl border border-gray-200 dark:border-zinc-700 flex flex-col overflow-hidden animate-fade-in',
+            expanded
+              ? 'inset-4 rounded-2xl'
+              : 'bottom-[72px] right-6 w-[380px] max-w-[calc(100vw-3rem)] h-[520px] max-h-[calc(100vh-7rem)] rounded-2xl'
+          )}
+        >
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-zinc-800 bg-teal-50 dark:bg-teal-900/20">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-zinc-800 bg-teal-50 dark:bg-teal-900/20 flex-shrink-0">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-teal-600 rounded-full flex items-center justify-center">
                 <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M13 10V3L4 14h7v7l9-11h-7z"
-                  />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
               </div>
               <div>
@@ -95,6 +98,22 @@ export default function ChatWidget({ lang }: ChatWidgetProps) {
               </div>
             </div>
             <div className="flex items-center gap-1">
+              {/* Expand / Collapse */}
+              <button
+                onClick={() => setExpanded((e) => !e)}
+                className="p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
+                title={expanded ? (isBn ? 'ছোট করুন' : 'Collapse') : (isBn ? 'বড় করুন' : 'Expand')}
+              >
+                {expanded ? (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                  </svg>
+                )}
+              </button>
               {messages.length > 0 && (
                 <button
                   onClick={clearChat}
@@ -107,7 +126,7 @@ export default function ChatWidget({ lang }: ChatWidgetProps) {
                 </button>
               )}
               <button
-                onClick={() => setOpen(false)}
+                onClick={() => { setOpen(false); setExpanded(false); }}
                 className="p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -130,9 +149,7 @@ export default function ChatWidget({ lang }: ChatWidgetProps) {
                   {isBn ? 'কুরআন সম্পর্কে জিজ্ঞাসা করুন' : 'Ask about the Quran'}
                 </p>
                 <p className="text-xs text-gray-400 dark:text-gray-500">
-                  {isBn
-                    ? 'যেমন: "অনুগ্রহ সম্পর্কে আয়াত"'
-                    : 'e.g., "verses about mercy"'}
+                  {isBn ? 'যেমন: "অনুগ্রহ সম্পর্কে আয়াত"' : 'e.g., "verses about mercy"'}
                 </p>
               </div>
             )}
@@ -192,7 +209,7 @@ export default function ChatWidget({ lang }: ChatWidgetProps) {
           </div>
 
           {/* Input */}
-          <form onSubmit={handleSubmit} className="p-3 border-t border-gray-100 dark:border-zinc-800">
+          <form onSubmit={handleSubmit} className="p-3 border-t border-gray-100 dark:border-zinc-800 flex-shrink-0">
             <div className="flex items-center gap-2">
               <input
                 ref={inputRef}
