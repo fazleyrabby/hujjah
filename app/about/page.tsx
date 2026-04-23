@@ -106,7 +106,7 @@ export default function AboutPage() {
                 </svg>
               </div>
               <div className="flex-1">
-                <div class="flex items-center gap-2">
+                <div className="flex items-center gap-2">
                   <h3 className="text-sm font-semibold text-gray-900">AI Model</h3>
                   <span className="text-[10px] font-bold text-teal-700 bg-teal-100 px-2 py-0.5 rounded-full">LOCAL-ONLY</span>
                 </div>

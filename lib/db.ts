@@ -38,6 +38,7 @@ export interface SurahVerse {
 export interface SearchResult {
   type: 'ref' | 'surah' | 'verse' | 'command';
   surah: number;
+  surah_name: string;
   ayah: number;
   text_ar: string;
   text: string;
@@ -134,6 +135,7 @@ export async function processQuery(
       {
         type: 'surah',
         surah: surahMatch.id,
+        surah_name: lang === 'bn' ? surahMatch.name_bn : surahMatch.name_en,
         ayah: 1,
         text_ar: '',
         text: `${surahMatch.name_en} (${surahMatch.name_ar})`,
@@ -171,16 +173,19 @@ export async function processQuery(
 async function searchReference(surah: number, ayah: number, lang: string): Promise<SearchResult[]> {
   const db = await getDB();
   const sql = `
-    SELECT v.surah, v.ayah, v.text_ar, t.text, t.translator_slug
+    SELECT v.surah, v.ayah, v.text_ar, t.text, t.translator_slug,
+      s.name_en, s.name_bn
     FROM verses v
     JOIN translations t ON v.id = t.verse_id
+    JOIN surahs s ON s.id = v.surah
     WHERE v.surah = ? AND v.ayah = ? AND t.lang_code = ?
     LIMIT 1
   `;
-  const rows = await db.select<QuranFTSResult[]>(sql, [surah, ayah, lang]);
+  const rows = await db.select<any[]>(sql, [surah, ayah, lang]);
   return rows.map((r) => ({
     type: 'ref' as const,
     surah: r.surah,
+    surah_name: lang === 'bn' ? r.name_bn : r.name_en,
     ayah: r.ayah,
     text_ar: r.text_ar,
     text: r.text,
@@ -223,21 +228,25 @@ async function searchKeyword(query: string, lang: string, limit: number): Promis
       v.text_ar,
       t.text,
       t.translator_slug,
+      s.name_en,
+      s.name_bn,
       bm25(quran_search_idx) AS rank,
       snippet(quran_search_idx, 1, '<mark>', '</mark>', '...', 32) AS snippet
     FROM quran_search_idx
     JOIN translations t ON t.id = quran_search_idx.rowid
     JOIN verses v ON v.id = t.verse_id
+    JOIN surahs s ON s.id = v.surah
     WHERE quran_search_idx MATCH ? AND quran_search_idx.lang_code = ?
     ORDER BY bm25(quran_search_idx)
     LIMIT ?
   `;
 
-  const rows = await db.select<QuranFTSResult[]>(sql, [query.trim(), lang, Math.min(limit, 20)]);
+  const rows = await db.select<any[]>(sql, [query.trim(), lang, Math.min(limit, 20)]);
 
   return (rows ?? []).map((r) => ({
     type: 'verse' as const,
     surah: r.surah,
+    surah_name: lang === 'bn' ? r.name_bn : r.name_en,
     ayah: r.ayah,
     text_ar: r.text_ar,
     text: r.text,

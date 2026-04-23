@@ -218,21 +218,31 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Language Toggle */}
-              <div className="flex items-center bg-gray-100 rounded-lg p-1">
-                {SUPPORTED_LANGS.map((l) => (
-                  <button
-                    key={l.code}
-                    onClick={() => handleLangChange(l.code)}
-                    className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
-                      lang === l.code
-                        ? 'bg-white text-gray-900 shadow-sm'
-                        : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    {l.label}
-                  </button>
-                ))}
+              <div className="flex items-center gap-3">
+                {/* Language Toggle */}
+                <div className="flex items-center bg-gray-100 rounded-lg p-1">
+                  {SUPPORTED_LANGS.map((l) => (
+                    <button
+                      key={l.code}
+                      onClick={() => handleLangChange(l.code)}
+                      className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
+                        lang === l.code
+                          ? 'bg-white text-gray-900 shadow-sm'
+                          : 'text-gray-500 hover:text-gray-700'
+                      }`}
+                    >
+                      {l.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* About Link */}
+                <a
+                  href="/about"
+                  className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  About
+                </a>
               </div>
             </div>
           </div>
@@ -288,7 +298,9 @@ export default function Home() {
               {results.map((r, i) => (
                 <article
                   key={`${r.surah}-${r.ayah}-${r.translator_slug}-${i}`}
-                  className="bg-white border border-gray-200 rounded-xl p-5 hover:shadow-subtle transition-shadow"
+                  onClick={() => handleSurahClick(r.surah)}
+                  className="bg-white border border-gray-200 rounded-xl p-5 hover:shadow-subtle hover:border-teal-200 transition-all cursor-pointer"
+                  title={`Go to ${r.surah_name} ${r.surah}:${r.ayah}`}
                 >
                   {/* Type Badge + Meta */}
                   <div className="flex items-center gap-2 mb-3">
@@ -297,6 +309,9 @@ export default function Home() {
                     </span>
                     <span className="text-xs font-semibold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-full">
                       {r.surah}:{r.ayah}
+                    </span>
+                    <span className="text-xs font-medium text-gray-600">
+                      {r.surah_name}
                     </span>
                     <span className="text-xs text-gray-400 capitalize">
                       {r.translator_slug}
@@ -327,13 +342,44 @@ export default function Home() {
                   ) : (
                     <p className="text-sm text-gray-700 leading-relaxed">{r.text}</p>
                   )}
+
+                  {/* Click hint */}
+                  <p className="text-xs text-teal-600 mt-3 flex items-center gap-1">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                    </svg>
+                    {lang === 'bn' ? 'সূরায় যান' : 'Go to surah'}
+                  </p>
                 </article>
               ))}
             </div>
           )}
 
+          {/* Surah Loading State */}
+          {loading && !searchMode && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between mb-6">
+                <div className="space-y-2">
+                  <div className="h-6 w-48 bg-gray-200 rounded animate-pulse" />
+                  <div className="h-4 w-32 bg-gray-200 rounded animate-pulse" />
+                </div>
+                <div className="h-4 w-20 bg-gray-200 rounded animate-pulse" />
+              </div>
+              {[...Array(7)].map((_, i) => (
+                <div key={i} className="bg-white border border-gray-200 rounded-xl p-5 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <div className="h-5 w-16 bg-gray-200 rounded-full animate-pulse" />
+                    <div className="h-4 w-24 bg-gray-200 rounded animate-pulse" />
+                  </div>
+                  <div className="h-8 w-full bg-gray-200 rounded animate-pulse" />
+                  <div className="h-16 w-full bg-gray-200 rounded animate-pulse" />
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Surah Reading View */}
-          {!searchMode && surahVerses && selectedSurah && (
+          {!loading && !searchMode && surahVerses && selectedSurah && (
             <div>
               <div className="flex items-center justify-between mb-6">
                 <div>
