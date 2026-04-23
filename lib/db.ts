@@ -8,6 +8,8 @@
  * - Semantic fallback via vector embeddings + RRF merging
  */
 
+import { classifyQuery } from './search-utils';
+
 // ─── Types ───
 export interface QuranFTSResult {
   surah: number;
@@ -117,53 +119,54 @@ export async function processQuery(
   lang: string = 'en',
   limit: number = 20
 ): Promise<SearchResult[]> {
-  const trimmed = query.trim();
-  if (!trimmed) return [];
+  const classification = classifyQuery(query);
 
-  // 1. REFERENCE MODE: "2:255" or "24:35"
-  const refMatch = trimmed.match(/^(\d+):(\d+)$/);
-  if (refMatch) {
-    const surah = parseInt(refMatch[1]);
-    const ayah = parseInt(refMatch[2]);
-    return searchReference(surah, ayah, lang);
-  }
+  switch (classification.type) {
+    case 'reference':
+      if (classification.surah && classification.ayah) {
+        return searchReference(classification.surah, classification.ayah, lang);
+      }
+      return [];
 
-  // 2. SURAH JUMP: match surah name (en or bn)
-  const surahMatch = await matchSurahName(trimmed, lang);
-  if (surahMatch) {
-    return [
-      {
-        type: 'surah',
-        surah: surahMatch.id,
-        surah_name: lang === 'bn' ? surahMatch.name_bn : surahMatch.name_en,
-        ayah: 1,
-        text_ar: '',
-        text: `${surahMatch.name_en} (${surahMatch.name_ar})`,
-        translator_slug: '',
-        rank: 0,
-        label: 'SURAH',
-        snippet: `Jump to Surah ${surahMatch.id}`,
-      },
-    ];
-  }
+    case 'command':
+      if (classification.command === 'quran' && classification.subQuery) {
+        return searchKeyword(classification.subQuery, lang, limit);
+      }
+      return [];
 
-  // 3. COMMAND MODE: "@quran mercy" or "@hadith prayer"
-  const cmdMatch = trimmed.match(/^@(\w+)\s+(.+)$/);
-  if (cmdMatch) {
-    const scope = cmdMatch[1];
-    const subQuery = cmdMatch[2];
-    if (scope === 'quran') {
-      return searchKeyword(subQuery, lang, limit);
+    case 'surah': {
+      const surahMatch = await matchSurahName(classification.raw, lang);
+      if (surahMatch) {
+        return [
+          {
+            type: 'surah',
+            surah: surahMatch.id,
+            surah_name: lang === 'bn' ? surahMatch.name_bn : surahMatch.name_en,
+            ayah: 1,
+            text_ar: '',
+            text: `${surahMatch.name_en} (${surahMatch.name_ar})`,
+            translator_slug: '',
+            rank: 0,
+            label: 'SURAH',
+            snippet: `Jump to Surah ${surahMatch.id}`,
+          },
+        ];
+      }
+      // Fall through to keyword search if surah name doesn't match
+      break;
     }
-    return [];
+
+    case 'keyword':
+    default:
+      break;
   }
 
-  // 4. KEYWORD LANE: FTS5 search
-  const keywordResults = await searchKeyword(trimmed, lang, limit);
+  // KEYWORD LANE: FTS5 search
+  const keywordResults = await searchKeyword(classification.raw, lang, limit);
 
-  // 5. SEMANTIC FALLBACK: if keyword results < 3
+  // SEMANTIC FALLBACK: if keyword results < 3
   if (keywordResults.length < 3) {
-    const semanticResults = await searchSemantic(trimmed, lang, limit);
+    const semanticResults = await searchSemantic(classification.raw, lang, limit);
     return rrfMerge(keywordResults, semanticResults, limit);
   }
 

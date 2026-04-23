@@ -13,7 +13,9 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "seed:native": "npx ts-node scripts/seed-native.ts",
-    "build:quran": "npx ts-node scripts/build-quran-vault.ts"
+    "build:quran": "npx ts-node scripts/build-quran-vault.ts",
+    "test": "vitest",
+    "test:run": "vitest run"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
@@ -30,18 +32,23 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.4",
     "@tauri-apps/cli": "^2.0.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^6.0.1",
     "better-sqlite3": "^12.9.0",
     "clsx": "^2.1.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
+    "jsdom": "^29.0.2",
     "lucide-react": "^1.8.0",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.4",
     "ts-node": "^10.9.2",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.5"
   }
 }
