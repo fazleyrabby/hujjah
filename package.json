@@ -12,7 +12,8 @@
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "seed:native": "npx ts-node scripts/seed-native.ts"
+    "seed:native": "npx ts-node scripts/seed-native.ts",
+    "build:quran": "npx ts-node scripts/build-quran-vault.ts"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
@@ -28,11 +29,11 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.4",
     "@tauri-apps/cli": "^2.0.0",
-    "@types/better-sqlite3": "^7.6.12",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "better-sqlite3": "^12.1.0",
+    "better-sqlite3": "^12.9.0",
     "clsx": "^2.1.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",

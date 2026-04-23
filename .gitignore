@@ -51,3 +51,4 @@ next-env.d.ts
 CLAUDE.md
 DATAIMPORT.md
 dist/
+*.db
