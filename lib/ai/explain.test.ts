@@ -10,6 +10,6 @@ describe('explain module (architecture)', () => {
   it('explainVerse returns helpful message for empty input', async () => {
     const { explainVerse } = await import('./explain');
     const result = await explainVerse('test query', []);
-    expect(result).toContain("couldn't find");
+    expect(result).toContain("Not found in provided sources.");
   });
 });
