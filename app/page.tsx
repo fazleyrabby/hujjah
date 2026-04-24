@@ -124,9 +124,9 @@ export default function Home() {
         const isHadithCommand = trimmed.toLowerCase().startsWith('@hadith');
         const domain = isHadithCommand ? 'hadith' : searchDomain;
 
-        // Auto-detect query language — use detected lang for search
-        const detectedLang = detectLang(trimmed);
-        const searchLang = detectedLang;
+        // Use the explicitly selected language (from toggle or initial)
+        // Auto-detect is only a fallback if no language preference set
+        const searchLang = activeLang;
 
         if (domain === 'hadith') {
           const rows = await processHadithQuery(trimmed, 20);
