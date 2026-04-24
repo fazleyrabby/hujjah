@@ -6,15 +6,19 @@ import {
   getSurahVerses,
   getSurahTranslators,
   processQuery,
+  processHadithQuery,
   getQuranStats,
   type SearchResult,
   type Surah,
   type SurahVerse,
   type QuranStats,
+  type HadithResult,
 } from '@/lib/db';
+import { detectLang } from '@/lib/search-utils';
 import { useQuranAudio } from '@/contexts/AudioContext';
 import { useRAG } from '@/hooks/useRAG';
 import ChatWidget from '@/components/ChatWidget';
+import LinkedVerseText from '@/components/LinkedVerseText';
 import { clsx } from 'clsx';
 
 const SUPPORTED_LANGS = [
@@ -39,6 +43,8 @@ export default function Home() {
   const [searchMode, setSearchMode] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
+  const [searchDomain, setSearchDomain] = useState<'quran' | 'hadith'>('quran');
+  const [hadithResults, setHadithResults] = useState<HadithResult[] | null>(null);
   const { play: playAudio, pause: pauseAudio, resume: resumeAudio, stop: stopAudio, isPlaying: isAudioPlaying, current: currentAudio } = useQuranAudio();
   const { askAI, explanation, loading: aiLoading, error: aiError, clearAI } = useRAG();
 
@@ -99,12 +105,14 @@ export default function Home() {
       const trimmed = searchQuery.trim();
       if (!trimmed) {
         setResults(null);
+        setHadithResults(null);
         return;
       }
 
       setLoading(true);
       setError(null);
       setResults(null);
+      setHadithResults(null);
       setLatency(null);
       setSurahVerses(null);
       setSelectedSurah(null);
@@ -112,8 +120,21 @@ export default function Home() {
 
       const start = performance.now();
       try {
-        const rows = await processQuery(trimmed, activeLang, 20);
-        setResults(rows);
+        // Auto-detect @hadith command
+        const isHadithCommand = trimmed.toLowerCase().startsWith('@hadith');
+        const domain = isHadithCommand ? 'hadith' : searchDomain;
+
+        // Auto-detect query language — use detected lang for search
+        const detectedLang = detectLang(trimmed);
+        const searchLang = detectedLang;
+
+        if (domain === 'hadith') {
+          const rows = await processHadithQuery(trimmed, 20);
+          setHadithResults(rows);
+        } else {
+          const rows = await processQuery(trimmed, searchLang, 20);
+          setResults(rows);
+        }
         setLatency(Math.round(performance.now() - start));
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
@@ -122,14 +143,18 @@ export default function Home() {
         setLoading(false);
       }
     },
-    []
+    [searchDomain]
   );
 
   const handleQueryChange = useCallback(
     (value: string) => {
       setQuery(value);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        executeSearch(value, lang);
+      }, 300);
     },
-    []
+    [executeSearch, lang]
   );
 
   // ─── Surah Selection ───
@@ -268,89 +293,131 @@ export default function Home() {
 
       {/* ─── Main Content ─── */}
       <main className="flex-1 min-w-0 bg-base">
-        {/* Header with Language Toggle + Sidebar Toggle */}
-        <header className="bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800 sticky top-0 z-50">
-          <div className="max-w-3xl mx-auto px-6 py-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                {!sidebarOpen && (
-                  <button
-                    onClick={() => setSidebarOpen(true)}
-                    className="w-9 h-9 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
-                    title="Show surah list"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h16" />
-                    </svg>
-                  </button>
-                )}
-                <div>
-                  <h1 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">Hujjah</h1>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                    {stats.verses > 0
-                      ? `${stats.verses.toLocaleString()} verses · ${stats.translations.toLocaleString()} translations`
-                      : 'Local Islamic Research Engine'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {/* Language Toggle */}
-                <div className="flex items-center bg-gray-100 dark:bg-zinc-800 rounded-lg p-0.5">
-                  {SUPPORTED_LANGS.map((l) => (
+        {/* Sticky top bar: header + disclaimer + search — single solid block */}
+        <div className="sticky top-0 z-50 bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800">
+          {/* Header */}
+          <header>
+            <div className="max-w-3xl mx-auto px-6 py-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {!sidebarOpen && (
                     <button
-                      key={l.code}
-                      onClick={() => handleLangChange(l.code)}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-                        lang === l.code
-                          ? 'bg-white dark:bg-zinc-700 text-gray-900 dark:text-white shadow-sm'
-                          : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-                      }`}
+                      onClick={() => setSidebarOpen(true)}
+                      className="w-9 h-9 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
+                      title="Show surah list"
                     >
-                      {l.label}
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h16" />
+                      </svg>
                     </button>
-                  ))}
+                  )}
+                  <div>
+                    <h1 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">Hujjah</h1>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      {stats.verses > 0
+                        ? `${stats.verses.toLocaleString()} verses · ${stats.translations.toLocaleString()} translations`
+                        : 'Local Islamic Research Engine'}
+                    </p>
+                  </div>
                 </div>
 
-                {/* Dark Mode Toggle */}
-                <button
-                  onClick={() => setDarkMode((d) => !d)}
-                  className="w-9 h-9 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
-                  title={darkMode ? 'Switch to light' : 'Switch to dark'}
-                >
-                  {darkMode ? (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                    </svg>
-                  ) : (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                    </svg>
-                  )}
-                </button>
+                <div className="flex items-center gap-2">
+                  {/* Language Toggle */}
+                  <div className="flex items-center bg-gray-100 dark:bg-zinc-800 rounded-lg p-0.5">
+                    {SUPPORTED_LANGS.map((l) => (
+                      <button
+                        key={l.code}
+                        onClick={() => handleLangChange(l.code)}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                          lang === l.code
+                            ? 'bg-white dark:bg-zinc-700 text-gray-900 dark:text-white shadow-sm'
+                            : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                        }`}
+                      >
+                        {l.label}
+                      </button>
+                    ))}
+                  </div>
 
-                {/* About Link */}
-                <a
-                  href="/about"
-                  className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
-                >
-                  About
-                </a>
+                  {/* Dark Mode Toggle */}
+                  <button
+                    onClick={() => setDarkMode((d) => !d)}
+                    className="w-9 h-9 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
+                    title={darkMode ? 'Switch to light' : 'Switch to dark'}
+                  >
+                    {darkMode ? (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                      </svg>
+                    ) : (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                      </svg>
+                    )}
+                  </button>
+
+                  {/* About Link */}
+                  <a
+                    href="/about"
+                    className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
+                  >
+                    About
+                  </a>
+                </div>
               </div>
             </div>
-          </div>
-        </header>
+          </header>
 
-        {/* Sticky Search Bar — full width */}
-        <div className="sticky top-[73px] z-40 bg-base/95 dark:bg-[#0a0a0a]/95 backdrop-blur-sm border-b border-gray-200/50 dark:border-zinc-800/50">
+          {/* Disclaimer */}
+          <div className="border-t border-amber-200/80 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-950/50 px-4 py-1.5">
+            <p className="max-w-3xl mx-auto text-[10px] text-amber-700 dark:text-amber-400 leading-snug text-center">
+              <span className="font-semibold">Disclaimer:</span> AI summaries may not be 100% correct. Cross-check with qualified scholars using the verse references provided.
+            </p>
+          </div>
+
+          {/* Search Bar */}
+          <div className="bg-white dark:bg-zinc-900 border-t border-gray-100 dark:border-zinc-800/60">
           <div className="max-w-3xl mx-auto px-6 py-3">
+            {/* Domain Toggle */}
+            <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center bg-gray-100 dark:bg-zinc-800 rounded-lg p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setSearchDomain('quran')}
+                  className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                    searchDomain === 'quran'
+                      ? 'bg-white dark:bg-zinc-700 text-teal-700 dark:text-teal-400 shadow-sm'
+                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                  }`}
+                >
+                  {lang === 'bn' ? 'কুরআন' : 'Quran'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSearchDomain('hadith')}
+                  className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                    searchDomain === 'hadith'
+                      ? 'bg-white dark:bg-zinc-700 text-teal-700 dark:text-teal-400 shadow-sm'
+                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                  }`}
+                >
+                  {lang === 'bn' ? 'হাদিস' : 'Hadith'}
+                </button>
+              </div>
+              <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                {searchDomain === 'hadith' ? '@hadith also works' : ''}
+              </span>
+            </div>
             <form onSubmit={handleSubmit}>
               <div className="relative">
                 <input
                   type="text"
                   value={query}
                   onChange={(e) => handleQueryChange(e.target.value)}
-                  placeholder={lang === 'bn' ? 'কুরআন অনুসন্ধান...' : 'Search the Quran...'}
+                  placeholder={searchDomain === 'hadith'
+                    ? (lang === 'bn' ? 'হাদিস অনুসন্ধান...' : 'Search hadith...')
+                    : (lang === 'bn' ? 'কুরআন অনুসন্ধান...' : 'Search the Quran...')
+                  }
                   className="w-full px-5 py-3.5 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-shadow text-base shadow-sm"
                 />
                 <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
@@ -389,6 +456,7 @@ export default function Home() {
             </form>
           </div>
         </div>
+        </div>{/* end sticky top bar */}
 
         <div className="max-w-3xl mx-auto px-6 py-8">
           {/* Error */}
@@ -448,7 +516,7 @@ export default function Home() {
                     </button>
                   </div>
                   <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed italic">
-                    "{explanation}"
+                    "<LinkedVerseText text={explanation} onVerseClick={handleNavigateToVerse} />"
                   </p>
                 </div>
               )}
@@ -782,12 +850,6 @@ export default function Home() {
             </div>
           )}
 
-          {/* Disclaimer */}
-          <div className="mt-12 pt-6 border-t border-gray-200 dark:border-zinc-800">
-            <p className="text-xs text-gray-400 dark:text-gray-500 leading-relaxed">
-              <span className="font-medium text-gray-500 dark:text-gray-400">Disclaimer:</span> Any AI-generated summary or analysis may not be 100% correct. Please cross-check with qualified scholars or other authentic sources using the verse references provided.
-            </p>
-          </div>
         </div>
       </main>
 

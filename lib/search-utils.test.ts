@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { classifyQuery, sanitizeQuery, type ClassifiedQuery } from './search-utils';
+import { classifyQuery, sanitizeQuery, detectLang, type ClassifiedQuery } from './search-utils';
 
 describe('classifyQuery', () => {
   it('classifies reference queries (surah:ayah)', () => {
@@ -83,5 +83,32 @@ describe('sanitizeQuery', () => {
 
   it('leaves English multi-word queries intact', () => {
     expect(sanitizeQuery('mercy and patience')).toBe('mercy and patience');
+  });
+});
+
+describe('detectLang', () => {
+  it('returns en for English text', () => {
+    expect(detectLang('mercy and patience')).toBe('en');
+    expect(detectLang('verses about guidance')).toBe('en');
+  });
+
+  it('returns bn for Bengali text', () => {
+    expect(detectLang('রহমত')).toBe('bn');
+    expect(detectLang('কুরআনের আয়াত')).toBe('bn');
+    expect(detectLang('ধৈর্য ও সবর')).toBe('bn');
+  });
+
+  it('returns bn for mixed with Bengali characters', () => {
+    expect(detectLang('I want রহমত')).toBe('bn');
+  });
+
+  it('returns en for empty string', () => {
+    expect(detectLang('')).toBe('en');
+    expect(detectLang('   ')).toBe('en');
+  });
+
+  it('returns en for numbers/symbols', () => {
+    expect(detectLang('2:255')).toBe('en');
+    expect(detectLang('@hadith prayer')).toBe('en');
   });
 });

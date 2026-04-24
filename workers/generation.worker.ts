@@ -11,6 +11,8 @@ env.localModelPath = '/models';
 env.allowLocalModels = true;
 env.allowRemoteModels = false;
 
+const MODEL_PATH = '/models/qwen-onnx';
+
 let generator: Awaited<ReturnType<typeof pipeline>> | null = null;
 let modelLoading = false;
 
@@ -32,7 +34,6 @@ interface GenResponse {
  * Format prompt for Qwen2.5-Instruct chat template.
  */
 function formatChatPrompt(userPrompt: string): string {
-  // Qwen2.5-Instruct expects this format:
   return `<|im_start|>user\n${userPrompt}<|im_end|>\n<|im_start|>assistant\n`;
 }
 
@@ -48,10 +49,12 @@ async function init() {
   modelLoading = true;
   try {
     console.log('[GenerationWorker] Loading qwen-onnx...');
-    generator = await pipeline('text-generation', '/models/qwen-onnx', {
+
+    generator = await pipeline('text-generation', MODEL_PATH, {
       quantized: true,
       local_files_only: true,
     } as Record<string, unknown>);
+
     console.log('[GenerationWorker] Model loaded successfully');
   } catch (err) {
     console.error('[GenerationWorker] Failed to load model:', err);

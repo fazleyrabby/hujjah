@@ -14,6 +14,8 @@
     "tauri:build": "tauri build",
     "seed:native": "npx ts-node scripts/seed-native.ts",
     "build:quran": "npx ts-node scripts/build-quran-vault.ts",
+    "build:hadith": "python3 scripts/build-hadith-vault.py",
+    "build:hadith:full": "python3 scripts/build-hadith-full.py",
     "test": "vitest",
     "test:run": "vitest run"
   },

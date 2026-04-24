@@ -1,3 +1,4 @@
+use futures::StreamExt;
 use reqwest;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -298,8 +299,6 @@ pub async fn download_model(
     let mut file = fs::File::create(&dest_path).map_err(|e| e.to_string())?;
     let mut stream = response.bytes_stream();
     let mut downloaded: u64 = 0;
-
-    use futures::StreamExt;
 
     while let Some(chunk) = stream.next().await {
         if cancel_flag.load(Ordering::Relaxed) {

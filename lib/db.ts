@@ -8,7 +8,10 @@
  * - Semantic fallback via vector embeddings + RRF merging
  */
 
-import { classifyQuery } from './search-utils';
+import { classifyQuery, buildFTS5Queries } from './search-utils';
+import { searchHadithKeyword, type HadithResult } from './hadith-db';
+
+export type { HadithResult } from './hadith-db';
 
 // ─── Types ───
 export interface QuranFTSResult {
@@ -283,7 +286,9 @@ async function matchSurahName(query: string, lang: string): Promise<Surah | null
 async function searchKeyword(query: string, lang: string, limit: number): Promise<SearchResult[]> {
   const db = await getDB();
 
-  // Use snippet for highlighting
+  const ftsQueries = buildFTS5Queries(query);
+  if (ftsQueries.length === 0) return [];
+
   const sql = `
     SELECT
       v.surah,
@@ -304,20 +309,33 @@ async function searchKeyword(query: string, lang: string, limit: number): Promis
     LIMIT ?
   `;
 
-  const rows = await db.select<any[]>(sql, [query.trim(), lang, Math.min(limit, 20)]);
+  const cap = Math.min(limit, 20);
 
-  return (rows ?? []).map((r) => ({
-    type: 'verse' as const,
-    surah: r.surah,
-    surah_name: lang === 'bn' ? r.name_bn : r.name_en,
-    ayah: r.ayah,
-    text_ar: r.text_ar,
-    text: r.text,
-    translator_slug: r.translator_slug,
-    rank: r.rank,
-    label: 'VERSE',
-    snippet: r.snippet ?? r.text.slice(0, 120) + '...',
-  }));
+  // Try each FTS5 query strategy (phrase → AND → OR) until we get results
+  for (const ftsQuery of ftsQueries) {
+    try {
+      const rows = await db.select<any[]>(sql, [ftsQuery, lang, cap]);
+      if (rows && rows.length > 0) {
+        return rows.map((r) => ({
+          type: 'verse' as const,
+          surah: r.surah,
+          surah_name: lang === 'bn' ? r.name_bn : r.name_en,
+          ayah: r.ayah,
+          text_ar: r.text_ar,
+          text: r.text,
+          translator_slug: r.translator_slug,
+          rank: r.rank,
+          label: 'VERSE',
+          snippet: r.snippet ?? r.text.slice(0, 120) + '...',
+        }));
+      }
+    } catch {
+      // This strategy had a syntax issue — try next
+      continue;
+    }
+  }
+
+  return [];
 }
 
 // ─── Semantic Search (Vector Search) ───
@@ -410,6 +428,22 @@ export async function purgeLegacyStorage(): Promise<string> {
   }
 }
 
+// ─── Hadith Query ───
+export async function processHadithQuery(
+  query: string,
+  limit: number = 20
+): Promise<HadithResult[]> {
+  const classification = classifyQuery(query);
+
+  // @hadith command: strip prefix and search
+  if (classification.type === 'command' && classification.command === 'hadith' && classification.subQuery) {
+    return searchHadithKeyword(classification.subQuery, limit);
+  }
+
+  // Default: direct keyword search on hadith matn
+  return searchHadithKeyword(classification.raw, limit);
+}
+
 // ─── Backwards compat: old searchQuranFTS ───
 export async function searchQuranFTS(
   query: string,
@@ -418,6 +452,9 @@ export async function searchQuranFTS(
 ): Promise<QuranFTSResult[]> {
   if (!query.trim()) return [];
   const db = await getDB();
+  const ftsQueries = buildFTS5Queries(query);
+  if (ftsQueries.length === 0) return [];
+
   const sql = `
     SELECT
       v.surah,
@@ -433,10 +470,14 @@ export async function searchQuranFTS(
     ORDER BY bm25(quran_search_idx)
     LIMIT ?
   `;
-  const results = await db.select<QuranFTSResult[]>(sql, [
-    query.trim(),
-    lang,
-    Math.min(limit, 20),
-  ]);
-  return results ?? [];
+  const cap = Math.min(limit, 20);
+  for (const ftsQuery of ftsQueries) {
+    try {
+      const rows = await db.select<QuranFTSResult[]>(sql, [ftsQuery, lang, cap]);
+      if (rows && rows.length > 0) return rows;
+    } catch {
+      continue;
+    }
+  }
+  return [];
 }

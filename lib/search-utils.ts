@@ -2,6 +2,17 @@
  * Pure search classification logic — testable without Tauri/SQLite.
  */
 
+/**
+ * Auto-detect whether a query string is Bengali or English.
+ * Checks for Bengali Unicode block (U+0980–U+09FF).
+ * Returns 'bn' if any Bengali character is found, 'en' otherwise.
+ */
+export function detectLang(query: string): 'en' | 'bn' {
+  if (!query || !query.trim()) return 'en';
+  if (/[\u0980-\u09FF]/.test(query)) return 'bn';
+  return 'en';
+}
+
 export type QueryType = 'reference' | 'surah' | 'command' | 'keyword';
 
 export interface ClassifiedQuery {
@@ -56,10 +67,57 @@ export function classifyQuery(raw: string): ClassifiedQuery {
 }
 
 /**
+ * Strip all punctuation that causes FTS5 syntax errors, replacing with spaces.
+ * Used by buildFTS5Queries internally.
+ */
+function stripFTS5Punctuation(raw: string): string {
+  return raw
+    .replace(/[.,!?;:*"{}()[\]^~+\-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Build one or more FTS5 MATCH expressions to try in order (best → broadest).
+ * Returns an array of query strings; caller should try each until rows come back.
+ *
+ * Strategy:
+ *   1. Phrase search  — "word1 word2 word3"  (exact adjacency, highest precision)
+ *   2. AND search     — word1 word2 word3     (all words present, FTS5 default)
+ *   3. OR search      — word1 OR word2 OR word3 (any word matches)
+ *
+ * Single-word queries skip straight to exact match (only one candidate).
+ */
+export function buildFTS5Queries(raw: string): string[] {
+  const clean = stripFTS5Punctuation(raw);
+  if (!clean) return [];
+
+  const hasBengali = /[\u0980-\u09FF]/.test(clean);
+
+  // Bengali conjunctions — collapse to OR tokens
+  const bengaliConjRe = /\s+(ও|এবং|অথবা|কিংবা)\s+/;
+  if (hasBengali && bengaliConjRe.test(clean)) {
+    const tokens = clean
+      .split(/\s+(ও|এবং|অথবা|কিংবা)\s+/)
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0 && !['ও', 'এবং', 'অথবা', 'কিংবা'].includes(t));
+    return [tokens.join(' OR ')];
+  }
+
+  const words = clean.split(' ').filter(Boolean);
+  if (words.length === 1) return [clean];
+
+  // Bengali: AND is too strict — go straight to OR
+  if (hasBengali) return [words.join(' OR ')];
+
+  // English multi-word: phrase → AND → OR
+  return [`"${clean}"`, clean, words.join(' OR ')];
+}
+
+/**
  * Sanitize a user query for safe FTS5 MATCH.
- * Removes special characters that could break the query.
- * For Bengali, strips common conjunctions and converts to OR-separated tokens
- * so compound queries like "সালাত ও সবর" match verses containing either word.
+ * Strips special characters (collapsed to empty, not spaces) and handles
+ * Bengali conjunctions → OR tokens. For new search code use buildFTS5Queries().
  */
 export function sanitizeQuery(raw: string): string {
   const cleaned = raw
@@ -68,18 +126,15 @@ export function sanitizeQuery(raw: string): string {
     .trim();
 
   // Bengali conjunctions: ও, এবং, অথবা, কিংবা
-  // Split on these and build an OR query for FTS5
   const bengaliConjunctions = /\s+(ও|এবং|অথবা|কিংবা)\s+/g;
   if (bengaliConjunctions.test(cleaned)) {
     const tokens = cleaned
-      .split(bengaliConjunctions)
+      .split(/\s+(ও|এবং|অথবা|কিংবা)\s+/)
       .map((t) => t.trim())
       .filter((t) => t.length > 0 && !['ও', 'এবং', 'অথবা', 'কিংবা'].includes(t));
     return tokens.join(' OR ');
   }
 
-  // For Bengali multi-word queries without explicit operators, use OR
-  // FTS5 default is AND for spaces, which is too restrictive for Bengali
   const hasBengali = /[\u0980-\u09FF]/.test(cleaned);
   if (hasBengali) {
     const words = cleaned.split(' ').filter((w) => w.length > 0);

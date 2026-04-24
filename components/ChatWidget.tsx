@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useChat } from '@/hooks/useChat';
+import LinkedVerseText from '@/components/LinkedVerseText';
 import { clsx } from 'clsx';
 
 interface ChatWidgetProps {
@@ -168,7 +169,11 @@ export default function ChatWidget({ lang, onNavigateToVerse }: ChatWidgetProps)
                       : 'bg-gray-100 dark:bg-zinc-700 text-gray-800 dark:text-white rounded-bl-md border border-gray-200 dark:border-zinc-600'
                   )}
                 >
-                  <p>{msg.text}</p>
+                  {msg.role === 'assistant' && onNavigateToVerse ? (
+                    <LinkedVerseText text={msg.text} onVerseClick={onNavigateToVerse} />
+                  ) : (
+                    <p>{msg.text}</p>
+                  )}
                   {msg.verses && msg.verses.length > 0 && (
                     <div className="mt-2 pt-2 border-t border-gray-200 dark:border-zinc-700">
                       <p className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">

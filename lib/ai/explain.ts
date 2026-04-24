@@ -12,6 +12,7 @@
 
 import { getDB } from '@/lib/db';
 import { embedOne, cosineSimilarity } from './embedding';
+import { searchHadithKeyword, type HadithResult } from '@/lib/hadith-db';
 
 export interface VerseContext {
   surah: number;
@@ -19,6 +20,35 @@ export interface VerseContext {
   text_ar: string;
   text: string;
   translator_slug: string;
+}
+
+export interface HadithContext {
+  id: number;
+  book_name_ar: string;
+  book_name_en: string | null;
+  num_in_book: number;
+  matn_ar: string;
+  sanad_length: number;
+}
+
+/**
+ * Search hadith corpus for relevant results (FTS5 keyword search).
+ * Returns top matching hadith as HadithContext.
+ */
+async function searchHadithForAI(query: string, limit = 3): Promise<HadithContext[]> {
+  try {
+    const results = await searchHadithKeyword(query, limit);
+    return results.map((r: HadithResult) => ({
+      id: r.id,
+      book_name_ar: r.book_name_ar,
+      book_name_en: r.book_name_en,
+      num_in_book: r.num_in_book,
+      matn_ar: r.matn_ar,
+      sanad_length: r.sanad_length,
+    }));
+  } catch {
+    return [];
+  }
 }
 
 let worker: Worker | null = null;
@@ -68,8 +98,8 @@ async function generate(prompt: string, maxNewTokens = 80): Promise<string> {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       pending.delete(id);
-      reject(new Error('AI generation timed out after 15 seconds'));
-    }, 15000);
+      reject(new Error('AI generation timed out after 120 seconds'));
+    }, 120000);
 
     pending.set(id, {
       resolve: (text: string) => {
@@ -88,33 +118,68 @@ async function generate(prompt: string, maxNewTokens = 80): Promise<string> {
 /**
  * Format verses as a readable fallback when the LLM fails.
  */
-function formatVersesFallback(verses: VerseContext[]): string {
-  const lines = verses.map((v) => `[${v.surah}:${v.ayah}] ${v.text}`).join('\n\n');
-  return `Here are the verses I found:\n\n${lines}\n\nHope this helps — let me know if you'd like to explore any of these further!`;
+function truncate(text: string, maxLen: number = 120): string {
+  if (text.length <= maxLen) return text;
+  const cut = text.lastIndexOf(' ', maxLen);
+  return text.slice(0, cut > 0 ? cut : maxLen) + '...';
+}
+
+function formatVersesFallback(verses: VerseContext[], query: string = '', lang: string = 'en'): string {
+  if (verses.length === 0) {
+    return lang === 'bn'
+      ? 'এই বিষয়ে কোনো আয়াত পাওয়া যায়নি।'
+      : 'No relevant verses found for this topic.';
+  }
+
+  const refs = verses.map((v) => `${v.surah}:${v.ayah}`).join(', ');
+  const top = verses.slice(0, 2);
+
+  if (lang === 'bn') {
+    const intro = query.trim()
+      ? `কুরআনে "${query}" বিষয়ে ${verses.length}টি প্রাসঙ্গিক আয়াত পাওয়া গেছে (${refs})।`
+      : `${verses.length}টি প্রাসঙ্গিক আয়াত পাওয়া গেছে (${refs})।`;
+    const snippets = top.map((v) => `[${v.surah}:${v.ayah}] — ${truncate(v.text, 140)}`).join('\n\n');
+    return `${intro}\n\n${snippets}`;
+  }
+
+  const intro = query.trim()
+    ? `The Quran speaks about "${query}" across ${verses.length} relevant verse${verses.length > 1 ? 's' : ''} (${refs}).`
+    : `Found ${verses.length} relevant verse${verses.length > 1 ? 's' : ''} (${refs}).`;
+  const snippets = top.map((v) => `[${v.surah}:${v.ayah}] — ${truncate(v.text, 140)}`).join('\n\n');
+  return `${intro}\n\n${snippets}`;
 }
 
 /**
  * Detect casual greetings / chitchat so we can reply naturally
  * without running the LLM on empty verse context.
  */
-function detectChitchat(query: string): string | null {
+function detectChitchat(query: string, lang: string = 'en'): string | null {
   const q = query.toLowerCase().trim();
-  const greetings = ['hi', 'hello', 'hey', 'salam', 'as-salamu alaykum', 'assalamualaikum'];
-  const howAreYou = ['how are you', 'how r u', 'how is it going', 'how are things'];
-  const identity = ['who are you', 'who am i talking to', 'what is your name', 'what are you'];
-  const thanks = ['thank you', 'thanks', 'shukran', 'jazakallah'];
+  const isBn = lang === 'bn';
+  const greetings = ['hi', 'hello', 'hey', 'salam', 'as-salamu alaykum', 'assalamualaikum', 'আসসালামু', 'সালাম', 'হ্যালো'];
+  const howAreYou = ['how are you', 'how r u', 'how is it going', 'কেমন আছ', 'কেমন আছেন'];
+  const identity = ['who are you', 'who am i talking to', 'what is your name', 'what are you', 'তুমি কে', 'আপনি কে'];
+  const thanks = ['thank you', 'thanks', 'shukran', 'jazakallah', 'ধন্যবাদ', 'জাযাকাল্লাহ', 'শুকরিয়া'];
 
   if (greetings.some((g) => q.includes(g))) {
-    return "Salam! I'm Hujjah AI, your companion for exploring the Quran. Ask me about any topic, verse, or surah — I'm here to help!";
+    return isBn
+      ? "সালাম! আমি হুজ্জাহ এআই, কুরআন অনুসন্ধানে আপনার সঙ্গী। যেকোনো বিষয়, আয়াত বা সূরা সম্পর্কে জিজ্ঞাসা করুন!"
+      : "Salam! I'm Hujjah AI, your companion for exploring the Quran. Ask me about any topic, verse, or surah — I'm here to help!";
   }
   if (howAreYou.some((h) => q.includes(h))) {
-    return "I'm doing well, Alhamdulillah! Ready to explore the Quran with you. What would you like to know?";
+    return isBn
+      ? "আলহামদুলিল্লাহ, ভালো আছি! কুরআন নিয়ে কিছু জানতে চাইলে জিজ্ঞাসা করুন।"
+      : "I'm doing well, Alhamdulillah! Ready to explore the Quran with you. What would you like to know?";
   }
   if (identity.some((i) => q.includes(i))) {
-    return "I'm Hujjah AI — a local, offline assistant built to help you understand and reflect on the Quran. Everything I share is grounded directly in Quranic verses.";
+    return isBn
+      ? "আমি হুজ্জাহ এআই — কুরআন বোঝা ও গবেষণায় সাহায্যকারী একটি স্থানীয়, অফলাইন সহকারী। আমার সকল তথ্য সরাসরি কুরআনের আয়াত থেকে নেওয়া।"
+      : "I'm Hujjah AI — a local, offline assistant built to help you understand and reflect on the Quran. Everything I share is grounded directly in Quranic verses.";
   }
   if (thanks.some((t) => q.includes(t))) {
-    return "You're welcome! May Allah bless your journey with the Quran. Feel free to ask anytime.";
+    return isBn
+      ? "আপনাকে স্বাগতম! কুরআনের পথে আল্লাহ আপনাকে বরকত দিন। যেকোনো সময় জিজ্ঞাসা করতে পারেন।"
+      : "You're welcome! May Allah bless your journey with the Quran. Feel free to ask anytime.";
   }
   return null;
 }
@@ -122,43 +187,53 @@ function detectChitchat(query: string): string | null {
 /**
  * Build a warm, conversational prompt grounded in retrieved verses.
  */
-function buildPrompt(verses: VerseContext[]): string {
+function buildPrompt(query: string, verses: VerseContext[], lang: string = 'en'): string {
   const context = verses
+    .slice(0, 4)
     .map((v) => `[${v.surah}:${v.ayah}] ${v.text}`)
     .join('\n');
 
-  return `You are a warm, knowledgeable Islamic research companion. Your tone is friendly, humble, and conversational — like a thoughtful friend or teacher sharing insights from the Quran.
+  if (lang === 'bn') {
+    return `তুমি একজন কুরআন বিশেষজ্ঞ। প্রশ্নটির উত্তর দাও "${query}" — নিচের আয়াতগুলো থেকে ২-৩ বাক্যে একটি সংক্ষিপ্ত অনুচ্ছেদ লিখো। আয়াত নম্বর স্বাভাবিকভাবে উল্লেখ করো। আয়াতের পাঠ্য হুবহু কপি করো না।
 
-Instructions:
-- Use ONLY the verses provided below.
-- Write 2-4 sentences that feel natural and human, not robotic.
-- Gently weave in the verse references (e.g., "as mentioned in Surah Al-Baqarah [2:255]...").
-- If the context is limited, acknowledge it honestly rather than making things up.
-- Avoid sounding like a textbook. Use words like "Allah tells us," "the Quran reminds us," or "we find guidance in."
-
-Provided verses:
+আয়াতসমূহ:
 ${context}
 
-Your response:`;
+সংক্ষিপ্ত উত্তর:`;
+  }
+
+  return `You are a Quran research assistant. Answer the question "${query}" using the verses below.
+Write a concise 2-3 sentence paragraph in your own words. Naturally cite verse numbers like (2:255) inline. Do NOT copy verse text verbatim or list verses — synthesize them into a clear answer.
+
+Verses:
+${context}
+
+Answer:`;
 }
 
 /**
  * Generate a warm explanation from retrieved verses.
  */
-export async function explainVerse(query: string, verses: VerseContext[]): Promise<string> {
+export async function explainVerse(query: string, verses: VerseContext[], lang: string = 'en'): Promise<string> {
   // Handle greetings / small talk instantly without LLM
-  const chitchat = detectChitchat(query);
+  const chitchat = detectChitchat(query, lang);
   if (chitchat) return chitchat;
 
   if (verses.length === 0) {
-    return "I couldn't find any verses closely related to that. Could you try rephrasing or asking about a specific topic from the Quran?";
+    return lang === 'bn'
+      ? "এই বিষয়ে ঘনিষ্ঠভাবে সম্পর্কিত কোনো আয়াত পাওয়া যায়নি। অনুগ্রহ করে অন্যভাবে জিজ্ঞাসা করুন।"
+      : "I couldn't find any verses closely related to that. Could you try rephrasing or asking about a specific topic from the Quran?";
   }
 
-  // TODO: Re-enable LLM generation once model loading is fixed.
-  // The 512MB Qwen ONNX model fails to load in Web Worker due to
-  // Transformers.js routing fetches through HuggingFace Hub.
-  // For now, return well-formatted verse references directly.
-  return formatVersesFallback(verses);
+  try {
+    const prompt = buildPrompt(query, verses, lang);
+    const text = await generate(prompt, 200);
+    if (text) return text;
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[Explain] Generation failed, using fallback:', message);
+  }
+  return formatVersesFallback(verses, query, lang);
 }
 
 /**
@@ -268,22 +343,23 @@ async function fetchVerseRange(surah: number, startAyah: number, endAyah: number
 /**
  * Retrieve relevant verses for a query, then explain them.
  * This is the full RAG pipeline: query → embed → retrieve → explain.
+ * Also retrieves relevant hadith from the Kutub al-Sittah corpus.
  */
 export async function explainQuery(
   query: string,
   lang: string = 'en'
-): Promise<{ explanation: string; verses: VerseContext[] }> {
+): Promise<{ explanation: string; verses: VerseContext[]; hadith: HadithContext[] }> {
   // Fast path: greetings / small talk — no RAG needed
-  const chitchat = detectChitchat(query);
+  const chitchat = detectChitchat(query, lang);
   if (chitchat) {
-    return { explanation: chitchat, verses: [] };
+    return { explanation: chitchat, verses: [], hadith: [] };
   }
 
   // Try to detect specific surah / verse references first
   const specificVerses = await detectSpecificVerses(query, lang);
   if (specificVerses && specificVerses.length > 0) {
-    const explanation = await explainVerse(query, specificVerses);
-    return { explanation, verses: specificVerses };
+    const explanation = await explainVerse(query, specificVerses, lang);
+    return { explanation, verses: specificVerses, hadith: [] };
   }
 
   const db = await getDB();
@@ -317,7 +393,7 @@ export async function explainQuery(
     }[]
   >(sql, [lang]);
 
-  // Step 3: Score by similarity
+  // Step 3: Score Quran verses by similarity
   const scored = rows
     .filter((r) => r.embedding)
     .map((r) => ({
@@ -331,8 +407,80 @@ export async function explainQuery(
     .sort((a, b) => b.similarity - a.similarity)
     .slice(0, 5);
 
-  // Step 4: Generate explanation
-  const explanation = await explainVerse(query, scored);
+  // Step 4: Search hadith corpus (Arabic FTS5, top 2 results)
+  const hadithResults = await searchHadithForAI(query, 2);
 
-  return { explanation, verses: scored };
+  // Step 5: Build combined prompt with Quran + Hadith context
+  const quranContext = scored
+    .map((v) => `[Quran ${v.surah}:${v.ayah}] ${v.text}`)
+    .join('\n');
+
+  const hadithContext = hadithResults
+    .map((h) => {
+      const book = h.book_name_en || h.book_name_ar;
+      return `[Hadith — ${book} #${h.num_in_book}]\n${h.matn_ar.slice(0, 300)}`;
+    })
+    .join('\n\n');
+
+  let explanation: string;
+  if (hadithResults.length > 0 || scored.length > 0) {
+    try {
+      const prompt = buildHadithPrompt(query, scored, hadithResults, lang);
+      explanation = await generate(prompt, 200);
+      if (!explanation) throw new Error('Empty generation');
+    } catch (err) {
+      console.error('[Explain] Generation failed:', err);
+      explanation = formatVersesFallback(scored, query, lang);
+    }
+  } else {
+    explanation = await explainVerse(query, scored, lang);
+  }
+
+  return { explanation, verses: scored, hadith: hadithResults };
+}
+
+/**
+ * Build a prompt that includes both Quran verses and hadith.
+ */
+function buildHadithPrompt(
+  query: string,
+  verses: VerseContext[],
+  hadith: HadithContext[],
+  lang: string = 'en'
+): string {
+  const quranPart = verses.length > 0
+    ? verses.map((v) => `[Quran ${v.surah}:${v.ayah}] ${v.text}`).join('\n')
+    : '';
+
+  const hadithPart = hadith.length > 0
+    ? hadith.map((h) => {
+        const book = h.book_name_en || h.book_name_ar;
+        return `[Hadith — ${book} #${h.num_in_book}]\n${h.matn_ar.slice(0, 300)}`;
+      }).join('\n\n')
+    : '';
+
+  if (lang === 'bn') {
+    const sources = [];
+    if (quranPart) sources.push('কুরআনের আয়াত', quranPart);
+    if (hadithPart) sources.push('হাদিস (কুতুব আল-সিত্তাহ)', hadithPart);
+    const sourceList = sources.join('\n\n');
+    return `তুমি একজন ইসলামিক গবেষণা সহকারী। প্রশ্ন "${query}" — নিচের সূত্রগুলো থেকে ২-৩ বাক্যে উত্তর দাও। সংখ্যা স্বাভাবিকভাবে উল্লেখ করো। কপি করো না — নিজের ভাষায় লিখো।
+
+সূত্র:
+${sourceList}
+
+সংক্ষিপ্ত উত্তর:`;
+  }
+
+  const sources = [];
+  if (quranPart) sources.push('Quran verses', quranPart);
+  if (hadithPart) sources.push('Hadith (Kutub al-Sittah)', hadithPart);
+  const sourceList = sources.join('\n\n');
+  return `You are an Islamic research assistant. Answer the question "${query}" using the sources below.
+Write a concise 2-3 sentence paragraph in your own words. Cite sources naturally like (Quran 2:255) or (Hadith: Bukhari #1). Do NOT copy text verbatim.
+
+Sources:
+${sourceList}
+
+Answer:`;
 }
