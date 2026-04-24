@@ -65,3 +65,9 @@ CLAUDE_HANDOVER.md
 
 # macOS
 .DS_Store
+
+# Local docs
+docs/
+
+*.db-shm
+*.db-wal

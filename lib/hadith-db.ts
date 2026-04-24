@@ -6,6 +6,7 @@
  */
 
 import { getDB } from './db';
+import { classifyQuery } from './search-utils';
 
 // ─── Types ───
 
@@ -71,6 +72,22 @@ export async function getHadithBooks(): Promise<HadithBook[]> {
     ORDER BY hadith_count DESC
   `;
   return db.select<HadithBook[]>(sql);
+}
+
+// ─── Hadith Query Router ───
+
+export async function processHadithQuery(
+  query: string,
+  limit: number = 20,
+  lang: string = 'en'
+): Promise<HadithResult[]> {
+  const classification = classifyQuery(query);
+
+  if (classification.type === 'command' && classification.command === 'hadith' && classification.subQuery) {
+    return searchHadithKeyword(classification.subQuery, limit, lang);
+  }
+
+  return searchHadithKeyword(classification.raw, limit, lang);
 }
 
 // ─── Arabic Normalizer ───
@@ -221,6 +238,71 @@ export async function getHadithByRef(
     sanad_length: r.sanad_length,
     rank: 0,
     snippet: r.matn_ar,
+  };
+}
+
+// ─── Paginated Hadith Listing ───
+
+export interface HadithPageResult {
+  hadiths: HadithResult[];
+  total: number;
+  totalPages: number;
+  page: number;
+  perPage: number;
+}
+
+export async function getHadithsByBook(
+  bookId: number,
+  page: number = 1,
+  perPage: number = 20,
+  lang: string = 'en'
+): Promise<HadithPageResult> {
+  const db = await getHadithDB();
+  const offset = (page - 1) * perPage;
+
+  const countSql = `SELECT COUNT(*) as total FROM hadiths WHERE book_id = ?`;
+  const countRows = await db.select<{ total: number }[]>(countSql, [bookId]);
+  const total = countRows[0]?.total ?? 0;
+
+  const sql = `
+    SELECT
+      h.id,
+      h.book_id,
+      b.name_ar AS book_name_ar,
+      b.name_en AS book_name_en,
+      h.num_in_book,
+      h.hadith_ar,
+      h.matn_ar,
+      ht.matn_text AS matn_en,
+      h.sanad_length,
+      0 AS rank
+    FROM hadiths h
+    JOIN hadith_books b ON b.id = h.book_id
+    LEFT JOIN hadith_translations ht ON ht.hadith_id = h.id AND ht.lang_code = ? AND ht.translator = 'qwen3.5-9b'
+    WHERE h.book_id = ?
+    ORDER BY h.num_in_book ASC
+    LIMIT ? OFFSET ?
+  `;
+  const rows = await db.select<any[]>(sql, [lang, bookId, perPage, offset]);
+
+  return {
+    hadiths: rows.map((r) => ({
+      id: r.id,
+      book_id: r.book_id,
+      book_name_ar: r.book_name_ar,
+      book_name_en: r.book_name_en,
+      num_in_book: r.num_in_book,
+      hadith_ar: r.hadith_ar,
+      matn_ar: r.matn_ar,
+      matn_en: r.matn_en ?? null,
+      sanad_length: r.sanad_length,
+      rank: r.rank,
+      snippet: r.matn_ar,
+    })),
+    total,
+    totalPages: Math.ceil(total / perPage),
+    page,
+    perPage,
   };
 }
 

@@ -4,10 +4,9 @@
  * Local AI Explanation Pipeline
  *
  * Generates a 3-sentence explanation strictly from retrieved verses.
- * Uses a lightweight text-generation model via Transformers.js Web Worker.
+ * Uses a text-generation model via Transformers.js Web Worker.
  *
- * REQUIRED: qwen-onnx model in src-tauri/resources/models/qwen-onnx
- * (symlinked to public/models for web access)
+ * Model path is configured in lib/ai/model-config.ts
  */
 
 import { getDB } from '@/lib/db';
@@ -132,21 +131,21 @@ function formatVersesFallback(verses: VerseContext[], query: string = '', lang: 
   }
 
   const refs = verses.map((v) => `${v.surah}:${v.ayah}`).join(', ');
-  const top = verses.slice(0, 2);
+  const top = verses.slice(0, 3);
 
   if (lang === 'bn') {
     const intro = query.trim()
-      ? `কুরআনে "${query}" বিষয়ে ${verses.length}টি প্রাসঙ্গিক আয়াত পাওয়া গেছে (${refs})।`
-      : `${verses.length}টি প্রাসঙ্গিক আয়াত পাওয়া গেছে (${refs})।`;
-    const snippets = top.map((v) => `[${v.surah}:${v.ayah}] — ${truncate(v.text, 140)}`).join('\n\n');
-    return `${intro}\n\n${snippets}`;
+      ? `কুরআনে "${query}" সম্পর্কে কয়েকটি প্রাসঙ্গিক আয়াত:`
+      : `প্রাসঙ্গিক আয়াতসমূহ (${refs}):`;
+    const snippets = top.map((v) => `• [${v.surah}:${v.ayah}] ${truncate(v.text, 180)}`).join('\n\n');
+    return `${intro}\n\n${snippets}\n\nএই আয়াতগুলো থেকে বোঝা যায় যে এ বিষয়ে কুরআন স্পষ্ট নির্দেশনা দিয়েছে।`;
   }
 
   const intro = query.trim()
-    ? `The Quran speaks about "${query}" across ${verses.length} relevant verse${verses.length > 1 ? 's' : ''} (${refs}).`
-    : `Found ${verses.length} relevant verse${verses.length > 1 ? 's' : ''} (${refs}).`;
-  const snippets = top.map((v) => `[${v.surah}:${v.ayah}] — ${truncate(v.text, 140)}`).join('\n\n');
-  return `${intro}\n\n${snippets}`;
+    ? `Here is what the Quran says about "${query}":`
+    : `Relevant verses (${refs}):`;
+  const snippets = top.map((v) => `• [${v.surah}:${v.ayah}] ${truncate(v.text, 180)}`).join('\n\n');
+  return `${intro}\n\n${snippets}\n\nThese verses offer guidance on this matter from the Quranic perspective.`;
 }
 
 /**
@@ -293,34 +292,55 @@ Answer:`;
 
 /**
  * Check if generated output is grounded in provided context.
- * Validates by checking if key nouns/verbs from output exist in context words.
- * Falls back to extractive summary if output seems ungrounded.
+ * Much more permissive than strict word overlap — allows common theological
+ * terms and citation patterns that the prompt explicitly asks for.
  */
 function validateOutput(output: string, ctx: StructuredContext): boolean {
   if (!output || output.length < 10) return false;
 
-  // Build word set from all context text
+  // Build word set from all context text — keep alphanumerics, not just a-z
   const contextText = [
     ...ctx.quran.map((v) => v.translation),
     ...ctx.hadith.map((h) => h.arabic),
   ].join(' ').toLowerCase();
 
   const contextWords = new Set(
-    contextText.split(/\s+/).map((w) => w.replace(/[^a-z]/g, ''))
+    contextText.split(/\s+/).map((w) => w.replace(/[^a-z0-9]/g, '')).filter(Boolean)
   );
 
-  // Extract content words from output (skip short function words)
+  // Extract content words from output
   const outputWords = output
     .toLowerCase()
     .split(/\s+/)
-    .map((w) => w.replace(/[^a-z]/g, ''))
-    .filter((w) => w.length > 4);
+    .map((w) => w.replace(/[^a-z0-9]/g, ''))
+    .filter((w) => w.length > 3);
 
   if (outputWords.length === 0) return true;
 
-  // If >60% of output content words not in context → likely hallucinated
-  const misses = outputWords.filter((w) => !contextWords.has(w)).length;
-  return misses / outputWords.length < 0.6;
+  // Always-allowed words the prompt itself instructs the model to use
+  const allowedWords = new Set([
+    'quran', 'koran', 'hadith', 'allah', 'god', 'prophet', 'muhammad',
+    'islam', 'muslim', 'verse', 'verses', 'ayah', 'surah', 'chapter',
+    'source', 'sources', 'context', 'provided', 'according', 'teaches',
+    'teaching', 'command', 'commands', 'mercy', 'merciful', 'patient',
+    'patience', 'prayer', 'prayers', 'faith', 'believe', 'believers',
+    'reward', 'paradise', 'hell', 'sin', 'sins', 'forgive', 'forgiveness',
+    'guidance', 'guide', 'truth', 'worship', 'obey', 'obedience', 'heart',
+    'soul', 'world', 'hereafter', 'life', 'death', 'creation', 'creator',
+    'lord', 'master', 'king', 'power', 'knowledge', 'wise', 'wisdom',
+    'justice', 'just', 'grace', 'blessing', 'blessings', 'peace',
+  ]);
+
+  const misses = outputWords.filter((w) => {
+    if (allowedWords.has(w)) return false;
+    if (contextWords.has(w)) return false;
+    // Allow numeric verse references like 2236, 2255
+    if (/^\d{3,4}$/.test(w)) return false;
+    return true;
+  }).length;
+
+  // Very permissive: allow up to 80% novel words (the model paraphrases)
+  return misses / outputWords.length < 0.8;
 }
 
 // ─── Phase 6: Low-End Device Detection ───
@@ -625,11 +645,15 @@ export async function explainQuery(
     const ctx = buildStructuredContext(scored, hadithResults);
     try {
       const prompt = buildHadithPrompt(query, scored, hadithResults, lang, intent);
+      console.log('[Explain] Prompt length:', prompt.length, '— calling generation worker...');
       const raw = await generate(prompt, 150);
+      console.log('[Explain] Generation returned:', raw?.slice(0, 100), '...');
       if (raw && validateOutput(raw, ctx)) {
         explanation = raw;
+        console.log('[Explain] Output passed validation ✓');
       } else {
         if (raw) console.warn('[Explain] Output failed grounding validation, using extractive fallback');
+        else console.warn('[Explain] Generation returned empty, using fallback');
         explanation = formatVersesFallback(scored, query, lang);
       }
     } catch (err) {

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { getQuranStats, purgeLegacyStorage, getDB } from '@/lib/db';
 import { getModelStatus, getModelStatusLabel, initAIEnvironment } from '@/lib/ai';
+import { EMBEDDING_MODEL, EMBEDDING_DIM } from '@/lib/ai/model-config';
 
 export default function SettingsPage() {
   const [mounted, setMounted] = useState(false);
@@ -84,7 +85,7 @@ export default function SettingsPage() {
             <span className="text-sm font-medium text-gray-900 dark:text-white">{modelStatus}</span>
           </div>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-            Model: <code className="bg-gray-100 dark:bg-zinc-800 px-1 rounded text-gray-900 dark:text-white">all-MiniLM-L6-v2</code> (quantized ONNX)
+            Model: <code className="bg-gray-100 dark:bg-zinc-800 px-1 rounded text-gray-900 dark:text-white">{EMBEDDING_MODEL}</code> (quantized ONNX)
           </p>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
             Source: Local bundle — 100% offline, no CDN calls.
@@ -107,7 +108,7 @@ export default function SettingsPage() {
             <li>All 6,236 Arabic verses</li>
             <li>68K+ translations across 2 languages (en, bn)</li>
             <li>FTS5 full-text index (unicode61 tokenizer)</li>
-            <li>56K+ vector embeddings (384-dim) for English</li>
+            <li>56K+ vector embeddings ({EMBEDDING_DIM}-dim) for English</li>
           </ul>
         </div>
 

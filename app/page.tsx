@@ -6,14 +6,13 @@ import {
   getSurahVerses,
   getSurahTranslators,
   processQuery,
-  processHadithQuery,
   getQuranStats,
   type SearchResult,
   type Surah,
   type SurahVerse,
   type QuranStats,
-  type HadithResult,
 } from '@/lib/db';
+import { processHadithQuery, type HadithResult } from '@/lib/hadith-db';
 import { detectLang } from '@/lib/search-utils';
 import { useQuranAudio } from '@/contexts/AudioContext';
 import { useRAG } from '@/hooks/useRAG';
@@ -250,20 +249,9 @@ export default function Home() {
       {/* ─── Sidebar: Toggleable, Sticky, Scrollable ─── */}
       {sidebarOpen && (
         <aside className="w-64 bg-white dark:bg-zinc-900 border-r border-gray-200 dark:border-zinc-800 flex-shrink-0 flex flex-col h-screen sticky top-0">
-          <div className="p-4 border-b border-gray-100 dark:border-zinc-800 flex items-center justify-between">
-            <div>
-              <h2 className="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wider">Surahs</h2>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{surahs.length} chapters</p>
-            </div>
-            <button
-              onClick={() => setSidebarOpen(false)}
-              className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
-              title="Close sidebar"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-              </svg>
-            </button>
+          <div className="p-4 border-b border-gray-100 dark:border-zinc-800">
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wider">Surahs</h2>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{surahs.length} chapters</p>
           </div>
           <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
             {surahs.map((s) => (
@@ -300,17 +288,6 @@ export default function Home() {
             <div className="max-w-3xl mx-auto px-6 py-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  {!sidebarOpen && (
-                    <button
-                      onClick={() => setSidebarOpen(true)}
-                      className="w-9 h-9 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
-                      title="Show surah list"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h16" />
-                      </svg>
-                    </button>
-                  )}
                   <div>
                     <h1 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">Hujjah</h1>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
@@ -355,6 +332,14 @@ export default function Home() {
                       </svg>
                     )}
                   </button>
+
+                  {/* Hadith Link */}
+                  <a
+                    href="/hadith"
+                    className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
+                  >
+                    Hadith
+                  </a>
 
                   {/* About Link */}
                   <a
@@ -898,6 +883,17 @@ export default function Home() {
       </main>
 
       <ChatWidget lang={lang} onNavigateToVerse={handleNavigateToVerse} />
+
+      {/* ─── Floating Surahs Toggle ─── */}
+      <button
+        onClick={() => setSidebarOpen((v) => !v)}
+        className="fixed top-[73px] left-0 z-50 flex items-center gap-1 px-2 py-2 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 border-l-0 rounded-r-full shadow-md text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-all"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+        </svg>
+        <span className="text-xs">Surahs</span>
+      </button>
     </div>
   );
 }

@@ -9,9 +9,6 @@
  */
 
 import { classifyQuery, buildFTS5Queries } from './search-utils';
-import { searchHadithKeyword, type HadithResult } from './hadith-db';
-
-export type { HadithResult } from './hadith-db';
 
 // ─── Types ───
 export interface QuranFTSResult {
@@ -426,23 +423,6 @@ export async function purgeLegacyStorage(): Promise<string> {
   } catch {
     return 'Mock: legacy purged';
   }
-}
-
-// ─── Hadith Query ───
-export async function processHadithQuery(
-  query: string,
-  limit: number = 20,
-  lang: string = 'en'
-): Promise<HadithResult[]> {
-  const classification = classifyQuery(query);
-
-  // @hadith command: strip prefix and search
-  if (classification.type === 'command' && classification.command === 'hadith' && classification.subQuery) {
-    return searchHadithKeyword(classification.subQuery, limit, lang);
-  }
-
-  // Default: direct keyword search on hadith matn
-  return searchHadithKeyword(classification.raw, limit, lang);
 }
 
 // ─── Backwards compat: old searchQuranFTS ───

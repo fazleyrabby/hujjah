@@ -185,21 +185,25 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   }, [clearProgressInterval, computeSurahCumulative]);
 
   const play = useCallback(async (opts: PlayOptions) => {
+    const isVerseTransition = currentRef.current?.surah === opts.surah && currentRef.current?.ayah !== opts.ayah;
     cleanupAudio();
     clearProgressInterval();
-    setProgress(0);
-    setCurrentTime(0);
-    setDuration(0);
-    setSurahProgress(0);
-    setSurahCurrentTime(0);
 
     const { surah, ayah, autoPlay = false } = opts;
     autoPlayRef.current = autoPlay;
 
-    // Load surah verse count if changed
+    // Only reset per-verse state; keep surah-level state for continuity
+    setProgress(0);
+    setCurrentTime(0);
+    setDuration(0);
+
+    // Load surah verse count if changed (new surah)
     if (currentSurahRef.current !== surah) {
       currentSurahRef.current = surah;
       surahVerseCountRef.current = await getSurahVerseCount(surah);
+      // Reset surah state for new surah
+      setSurahProgress(0);
+      setSurahCurrentTime(0);
     }
 
     try {
@@ -214,7 +218,6 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         setTimeout(() => reject(new Error('Audio load timeout')), 10000);
       });
 
-      // Cache duration once known
       const dur = audio.duration || 0;
       if (dur > 0) {
         verseDurationsRef.current.set(vKey(surah, ayah), dur);

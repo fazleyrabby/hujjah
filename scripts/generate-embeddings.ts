@@ -1,110 +1,119 @@
 #!/usr/bin/env ts-node
 /**
- * Generate 384-dim embeddings for all English translations.
- * Uses local ONNX model in src-tauri/resources/models.
+ * Fast Embedding Generation — Single Process, Large Batches
  *
- * Run: npx ts-node scripts/generate-embeddings.ts
+ * Optimizations:
+ * 1. Fetch ALL texts upfront (no repeated SQL queries)
+ * 2. Process in large batches (200-500)
+ * 3. Write back in one transaction per batch
+ *
+ * Run: npx ts-node --esm scripts/generate-embeddings-fast.ts --force
  */
 
 import Database from 'better-sqlite3';
 import { env, pipeline } from '@huggingface/transformers';
-import fs from 'fs';
-import path from 'path';
+import * as path from 'path';
 
 const DB_PATH = path.join(process.cwd(), 'src-tauri', 'resources', 'hujjah-quran.db');
+const EMBEDDING_MODEL = 'bge-m3';
+const BATCH_SIZE = 200; // Much larger = less overhead
 
-if (!fs.existsSync(DB_PATH)) {
-  console.error('Database not found:', DB_PATH);
-  process.exit(1);
-}
-
-// Configure local model path
 env.localModelPath = path.join(process.cwd(), 'src-tauri', 'resources', 'models');
 env.allowRemoteModels = false;
 
-const db = new Database(DB_PATH);
-
 async function main() {
-  console.log('🔥 Embedding Generation');
-  console.log('=======================');
-  console.log(`Model: ${env.localModelPath}/all-MiniLM-L6-v2`);
+  console.log('🔥 Fast Embedding Generation');
+  console.log('=============================');
+  console.log(`Model: ${EMBEDDING_MODEL}`);
+  console.log(`Batch size: ${BATCH_SIZE}`);
   console.log(`DB: ${DB_PATH}`);
+
+  const db = new Database(DB_PATH);
+
+  if (process.argv.includes('--force')) {
+    console.log('\n🗑️  Clearing existing embeddings...');
+    db.prepare("UPDATE translations SET embedding = NULL WHERE lang_code = 'en'").run();
+    console.log('  ✅ Cleared');
+  }
 
   // Load model
   console.log('\n📦 Loading model...');
-  const extractor = await pipeline('feature-extraction', 'all-MiniLM-L6-v2', {
+  const loadStart = Date.now();
+  const extractor = await pipeline('feature-extraction', EMBEDDING_MODEL, {
     quantized: true,
   });
-  console.log('  ✅ Model loaded');
+  console.log(`  ✅ Model loaded in ${Date.now() - loadStart}ms`);
 
-  // Count English translations
-  const countRow = db.prepare("SELECT COUNT(*) as c FROM translations WHERE lang_code = 'en' AND embedding IS NULL").get() as { c: number };
-  const total = countRow.c;
-  console.log(`\n📝 English translations to embed: ${total.toLocaleString()}`);
+  // Fetch ALL rows that need embeddings into memory
+  console.log('\n📖 Fetching texts from database...');
+  const rows = db.prepare(
+    "SELECT id, text FROM translations WHERE lang_code = 'en' AND embedding IS NULL ORDER BY id"
+  ).all() as { id: number; text: string }[];
+
+  const total = rows.length;
+  console.log(`  ${total.toLocaleString()} texts to embed`);
 
   if (total === 0) {
-    console.log('  ✅ All embeddings already generated');
+    console.log('✅ All embeddings already generated');
     db.close();
     return;
   }
 
-  // Fetch rows in batches
-  const BATCH_SIZE = 100;
+  // Process in large batches
   const updateStmt = db.prepare('UPDATE translations SET embedding = ? WHERE id = ?');
-
   let processed = 0;
-  let lastId = 0;
+  const start = Date.now();
 
-  while (true) {
-    const rows = db.prepare(
-      "SELECT id, text FROM translations WHERE lang_code = 'en' AND embedding IS NULL AND id > ? ORDER BY id LIMIT ?"
-    ).all(lastId, BATCH_SIZE) as { id: number; text: string }[];
+  for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+    const batch = rows.slice(i, i + BATCH_SIZE);
+    const texts = batch.map((r) => r.text);
 
-    if (rows.length === 0) break;
-
-    // Generate embeddings for batch
-    const texts = rows.map((r) => r.text);
+    // Generate embeddings
     const outputs = await extractor(texts, { pooling: 'mean', normalize: true });
     const embeddings: number[][] = outputs.tolist();
 
-    // Update DB in a transaction
-    const updateBatch = db.transaction((items: { id: number; emb: Buffer }[]) => {
+    // Write all in one transaction
+    const writeTx = db.transaction((items: { id: number; emb: Buffer }[]) => {
       for (const item of items) {
         updateStmt.run(item.emb, item.id);
       }
     });
 
-    const items = rows.map((r, i) => {
-      const vec = embeddings[i];
-      const buffer = Buffer.from(new Float32Array(vec).buffer);
-      return { id: r.id, emb: buffer };
-    });
+    const items = batch.map((r, idx) => ({
+      id: r.id,
+      emb: Buffer.from(new Float32Array(embeddings[idx]).buffer),
+    }));
 
-    updateBatch(items);
+    writeTx(items);
 
-    processed += rows.length;
-    lastId = rows[rows.length - 1].id;
+    processed += batch.length;
 
-    // Progress bar
+    // Progress
     const pct = Math.min(100, Math.round((processed / total) * 100));
-    const filled = Math.round(pct / 2);
-    const empty = 50 - filled;
-    const bar = '█'.repeat(filled) + '░'.repeat(empty);
-    process.stdout.write(`\r  [${bar}] ${pct}% (${processed.toLocaleString()}/${total.toLocaleString()})`);
+    const elapsed = Math.round((Date.now() - start) / 1000);
+    const rate = elapsed > 0 ? Math.round(processed / elapsed) : 0;
+    const eta = rate > 0 ? Math.round((total - processed) / rate) : 0;
+    const bar = '█'.repeat(Math.round(pct / 2)) + '░'.repeat(50 - Math.round(pct / 2));
+
+    process.stdout.write(
+      `\r  [${bar}] ${pct}% | ${processed.toLocaleString()}/${total.toLocaleString()} | ${rate}/s | ETA: ${eta}s`
+    );
   }
 
   console.log('');
-  console.log('\n✅ Embedding generation complete!');
+  console.log(`\n✅ Done in ${Math.round((Date.now() - start) / 1000)}s`);
 
   // Verify
-  const verified = db.prepare("SELECT COUNT(*) as c FROM translations WHERE lang_code = 'en' AND embedding IS NOT NULL").get() as { c: number };
-  console.log(`  ${verified.c.toLocaleString()} English translations now have embeddings`);
+  const verified = db.prepare(
+    "SELECT COUNT(*) as c FROM translations WHERE lang_code = 'en' AND embedding IS NOT NULL"
+  ).get() as { c: number };
+  console.log(`  ${verified.c.toLocaleString()} English translations have embeddings`);
 
   db.exec('VACUUM;');
   db.close();
 }
 
 main().catch((e) => {
-  console.error(e);
+  console.error('❌ Error:', e);
   process.exit(1);
 });

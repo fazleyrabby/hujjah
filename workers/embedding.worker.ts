@@ -1,11 +1,14 @@
 /**
  * Embedding Worker for Hujjah
  *
- * Generates 384-dimensional embeddings using the local all-MiniLM-L6-v2 model.
+ * Generates embeddings using the configured local model.
  * Communicates with the main thread via postMessage.
  */
 
 import { env, pipeline } from '@huggingface/transformers';
+
+// NOTE: Keep in sync with lib/ai/model-config.ts
+const EMBEDDING_MODEL = 'bge-m3';
 
 // Configure local model path (relative to the worker location)
 env.localModelPath = '/models';
@@ -29,10 +32,12 @@ interface WorkerResponse {
 
 async function init() {
   if (!extractor) {
-  extractor = await pipeline('feature-extraction', '/models/all-MiniLM-L6-v2', {
-    quantized: true,
-    local_files_only: true,
-  } as Record<string, unknown>);
+    console.log(`[EmbeddingWorker] Loading ${EMBEDDING_MODEL}...`);
+    extractor = await pipeline('feature-extraction', `/models/${EMBEDDING_MODEL}`, {
+      quantized: true,
+      local_files_only: true,
+    } as Record<string, unknown>);
+    console.log(`[EmbeddingWorker] ${EMBEDDING_MODEL} loaded`);
   }
 }
 
@@ -52,6 +57,7 @@ self.addEventListener('message', async (event: MessageEvent<WorkerMessage>) => {
     self.postMessage({ id, type: 'embed', embeddings } as WorkerResponse);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
+    console.error('[EmbeddingWorker] Error:', message);
     self.postMessage({ id, type: 'error', error: message } as WorkerResponse);
   }
 });

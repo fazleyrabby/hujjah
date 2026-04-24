@@ -7,27 +7,27 @@
 
 import { env, pipeline } from '@huggingface/transformers';
 
-env.localModelPath = '/models';
-env.allowLocalModels = true;
-env.allowRemoteModels = false;
+// NOTE: Keep in sync with lib/ai/model-config.ts
+const GENERATION_MODEL = 'qwen2.5-1.5b';
+const MODEL_PATH = `/models/${GENERATION_MODEL}`;
 
-const MODEL_PATH = '/models/qwen-onnx';
-
-// Phase 3: Detect model capability tier from path name.
-// 0.5B models: greedy decode, extractive only (max 80 tokens).
-// 1.5B models: controlled summarization (max 150 tokens).
-function detectModelTier(modelPath: string): '0.5B' | '1.5B' | 'unknown' {
-  if (/0\.5[Bb]|500[Mm]/.test(modelPath)) return '0.5B';
-  if (/1\.5[Bb]|1500[Mm]/.test(modelPath)) return '1.5B';
+// Detect model capability tier from model name.
+function detectModelTier(modelName: string): '0.5B' | '1.5B' | 'unknown' {
+  if (/0\.5[Bb]|500[Mm]|qwen-onnx/.test(modelName)) return '0.5B';
+  if (/1\.5[Bb]|1500[Mm]/.test(modelName)) return '1.5B';
   return 'unknown';
 }
 
-const MODEL_TIER = detectModelTier(MODEL_PATH);
+const MODEL_TIER = detectModelTier(GENERATION_MODEL);
 const MAX_TOKENS_BY_TIER: Record<string, number> = {
   '0.5B': 80,
   '1.5B': 150,
   unknown: 150,
 };
+
+env.localModelPath = '/models';
+env.allowLocalModels = true;
+env.allowRemoteModels = false;
 
 let generator: Awaited<ReturnType<typeof pipeline>> | null = null;
 let modelLoading = false;
@@ -64,14 +64,14 @@ async function init() {
 
   modelLoading = true;
   try {
-    console.log('[GenerationWorker] Loading qwen-onnx...');
+    console.log(`[GenerationWorker] Loading ${GENERATION_MODEL}...`);
 
     generator = await pipeline('text-generation', MODEL_PATH, {
       quantized: true,
       local_files_only: true,
     } as Record<string, unknown>);
 
-    console.log('[GenerationWorker] Model loaded successfully');
+    console.log(`[GenerationWorker] ${GENERATION_MODEL} loaded (tier: ${MODEL_TIER})`);
   } catch (err) {
     console.error('[GenerationWorker] Failed to load model:', err);
     throw err;
@@ -82,7 +82,6 @@ async function init() {
 
 self.addEventListener('message', async (event: MessageEvent<GenMessage>) => {
   const { id, type, prompt } = event.data;
-  // Phase 3: Cap tokens by model tier; caller hint is advisory only
   const tierMax = MAX_TOKENS_BY_TIER[MODEL_TIER] ?? 150;
   const maxNewTokens = Math.min(event.data.maxNewTokens ?? tierMax, tierMax);
 
@@ -109,11 +108,10 @@ self.addEventListener('message', async (event: MessageEvent<GenMessage>) => {
     const chatPrompt = formatChatPrompt(prompt ?? '');
     console.log('[GenerationWorker] Generating with prompt length:', chatPrompt.length);
 
-    const output = await (generator as (text: string, opts: Record<string, unknown>) => Promise<unknown[]>)(
+    const output = await (generator as (text: string, opts: Record<string, unknown>) => Promise<unknown[]>) (
       chatPrompt,
       {
         max_new_tokens: maxNewTokens,
-        // Phase 3: 0.5B uses greedy decode (temp=0) for stability
         temperature: MODEL_TIER === '0.5B' ? 0 : 0.3,
         do_sample: MODEL_TIER !== '0.5B',
         top_p: MODEL_TIER === '0.5B' ? 1.0 : 0.9,

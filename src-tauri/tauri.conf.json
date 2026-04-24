@@ -36,7 +36,10 @@
     ],
     "resources": {
       "resources/hujjah-quran.db": "resources/hujjah-quran.db",
-      "resources/hujjah-hadith-core.db": "resources/hujjah-hadith-core.db"
+      "resources/hujjah-hadith-core.db": "resources/hujjah-hadith-core.db",
+      "resources/models/all-MiniLM-L6-v2": "resources/models/all-MiniLM-L6-v2",
+      "resources/models/bge-m3": "resources/models/bge-m3",
+      "resources/models/qwen2.5-1.5b": "resources/models/qwen2.5-1.5b"
     }
   }
 }
