@@ -51,8 +51,12 @@ const BATCH_SIZE  = parseInt(getArg('--batch', '50'), 10);
 const ROW_LIMIT   = parseInt(getArg('--limit', '0'), 10); // 0 = unlimited
 const MLX_HOST    = getArg('--host', 'http://localhost:8080');
 const DRY_RUN     = hasFlag('--dry-run');
-const CONCURRENCY = Math.max(1, parseInt(getArg('--concurrency', '3'), 10));
+const CONCURRENCY = Math.max(1, parseInt(getArg('--concurrency', '1'), 10));
 const TRANSLATOR  = 'qwen3.5-9b';
+
+// Model path for MLX server. Defaults to the local path; override with env var
+// or pass the model served by your MLX instance.
+const MLX_MODEL   = process.env.MLX_MODEL_PATH ?? '/Users/rabbi/ai/models/Qwen3.5-9B-OptiQ-4bit';
 
 if (!['en', 'bn'].includes(LANG)) {
   console.error('--lang must be en or bn');
@@ -160,7 +164,7 @@ async function translateBatch(
   lang: 'en' | 'bn'
 ): Promise<string[]> {
   const body = {
-    model: '/Users/rabbi/ai/models/Qwen3.5-9B-OptiQ-4bit',
+    model: MLX_MODEL,
     messages: [
       { role: 'system', content: systemPrompt(lang) },
       { role: 'user',   content: userPromptBatch(rows, lang) },
@@ -271,6 +275,119 @@ function printProgress(total: number): void {
   );
 }
 
+// ─── Promise pool (lightweight p-limit) ─────────────────────────────────────
+
+async function mapLimit<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let idx = 0;
+
+  async function worker(): Promise<void> {
+    while (idx < items.length) {
+      const current = idx++;
+      results[current] = await fn(items[current], current);
+    }
+  }
+
+  const workers = Array(Math.min(limit, items.length))
+    .fill(null)
+    .map(() => worker());
+  await Promise.all(workers);
+  return results;
+}
+
+// ─── Process one API batch (used by the pool) ────────────────────────────────
+
+interface ApiBatchResult {
+  results: Array<{ hadithId: number; matnText: string } | null>;
+  translated: number;
+  errCount: number;
+}
+
+async function processApiBatch(
+  apiBatch: HadithRow[],
+  lang: 'en' | 'bn'
+): Promise<ApiBatchResult> {
+  const batchResults: Array<{ hadithId: number; matnText: string } | null> = [];
+  let translated = 0;
+  let errCount = 0;
+
+  // Check matn cache — only send uncached rows to API
+  const uncached: HadithRow[] = [];
+  const cachedMap = new Map<number, string>(); // hadithId → translation
+  for (const row of apiBatch) {
+    const hit = matnCache.get(row.matn_ar);
+    if (hit !== undefined) {
+      cachedMap.set(row.id, hit);
+    } else {
+      uncached.push(row);
+    }
+  }
+
+  let translations: string[] = [];
+  if (uncached.length > 0) {
+    try {
+      translations = await translateBatch(uncached, lang);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(
+        `\n  ✗ Batch error (hadiths ${uncached.map((r) => r.num_in_book).join(',')}): ${msg}`
+      );
+      uncached.forEach(() => {
+        errCount++;
+        batchResults.push(null);
+      });
+      return { results: batchResults, translated, errCount };
+    }
+
+    // Retry any entries the model skipped (missing [N] in output)
+    const retries = uncached.filter((_, idx) => !translations[idx]);
+    if (retries.length > 0) {
+      for (const row of retries) {
+        const origIdx = uncached.indexOf(row);
+        try {
+          const single = await translateBatch([row], lang);
+          if (single[0]) translations[origIdx] = single[0];
+        } catch {
+          // will be caught below as missing
+        }
+      }
+    }
+
+    // Populate matn cache for successful translations
+    uncached.forEach((row, idx) => {
+      if (translations[idx]) matnCache.set(row.matn_ar, translations[idx]);
+    });
+  }
+
+  // Merge cached + newly translated, preserving order
+  let uncachedIdx = 0;
+  for (const row of apiBatch) {
+    const cached = cachedMap.get(row.id);
+    if (cached !== undefined) {
+      batchResults.push({ hadithId: row.id, matnText: cached });
+      translated++;
+    } else {
+      const t = translations[uncachedIdx++] ?? '';
+      if (t) {
+        batchResults.push({ hadithId: row.id, matnText: t });
+        translated++;
+      } else {
+        console.error(
+          `\n  ✗ Missing translation for hadith ${row.id} (${row.book_name_en} #${row.num_in_book})`
+        );
+        errCount++;
+        batchResults.push(null);
+      }
+    }
+  }
+
+  return { results: batchResults, translated, errCount };
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -279,8 +396,10 @@ async function main() {
   console.log(`  Book:        ${BOOK_FILTER}`);
   console.log(`  MLX server:  ${MLX_ENDPOINT}`);
   console.log(`  Batch size:  ${BATCH_SIZE}`);
+  console.log(`  API batch:   ${getArg('--api-batch', '10')}`);
   console.log(`  Concurrency: ${CONCURRENCY}`);
   console.log(`  Translator:  ${TRANSLATOR}`);
+  console.log(`  Model:       ${MLX_MODEL}`);
   if (DRY_RUN) console.log('  *** DRY RUN — no DB writes ***');
   console.log('');
 
@@ -311,7 +430,10 @@ async function main() {
   console.log(`  Rows to translate: ${total.toLocaleString()}\n`);
 
   // API_BATCH: hadiths per API call (amortizes per-request overhead)
-  const API_BATCH = parseInt(getArg('--api-batch', '5'), 10);
+  // Safe default: 10 (2× faster than 5, same memory/CPU pressure)
+  // Increase to 15 if your MLX server has >16GB RAM
+  // Decrease to 5 if you see timeout errors
+  const API_BATCH = parseInt(getArg('--api-batch', '10'), 10);
 
   // Dry-run: show a sample batch prompt and exit
   if (DRY_RUN) {
@@ -326,90 +448,38 @@ async function main() {
 
   startTime = Date.now();
 
-  // Process rows in API_BATCH-sized groups, committed every BATCH_SIZE rows
+  // Process rows in DB_BATCH-sized groups, committed every BATCH_SIZE rows
   for (let batchStart = 0; batchStart < total; batchStart += BATCH_SIZE) {
-    const batch = rows.slice(batchStart, batchStart + BATCH_SIZE);
-    const batchResults: Array<{ hadithId: number; matnText: string } | null> = [];
+    const dbBatch = rows.slice(batchStart, batchStart + BATCH_SIZE);
 
-    // Split batch into API_BATCH-sized groups (one API call each)
-    for (let i = 0; i < batch.length; i += API_BATCH) {
-      const apiBatch = batch.slice(i, i + API_BATCH);
-
-      // Check matn cache — only send uncached rows to API
-      const uncached: HadithRow[] = [];
-      const cachedMap = new Map<number, string>(); // hadithId → translation
-      for (const row of apiBatch) {
-        const hit = matnCache.get(row.matn_ar);
-        if (hit !== undefined) {
-          cachedMap.set(row.id, hit);
-        } else {
-          uncached.push(row);
-        }
-      }
-
-      let translations: string[] = [];
-      if (uncached.length > 0) {
-        try {
-          translations = await translateBatch(uncached, LANG);
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : String(err);
-          console.error(`\n  ✗ Batch error (hadiths ${uncached.map(r => r.num_in_book).join(',')}): ${msg}`);
-          uncached.forEach(() => { errors++; batchResults.push(null); });
-          printProgress(total);
-          continue;
-        }
-
-        // Retry any entries the model skipped (missing [N] in output)
-        const retries = uncached.filter((_, idx) => !translations[idx]);
-        if (retries.length > 0) {
-          for (const row of retries) {
-            const origIdx = uncached.indexOf(row);
-            try {
-              const single = await translateBatch([row], LANG);
-              if (single[0]) translations[origIdx] = single[0];
-            } catch {
-              // will be caught below as missing
-            }
-          }
-        }
-
-        // Populate matn cache for successful translations
-        uncached.forEach((row, idx) => {
-          if (translations[idx]) matnCache.set(row.matn_ar, translations[idx]);
-        });
-      }
-
-      // Merge cached + newly translated, preserving order
-      let uncachedIdx = 0;
-      for (const row of apiBatch) {
-        const cached = cachedMap.get(row.id);
-        if (cached !== undefined) {
-          batchResults.push({ hadithId: row.id, matnText: cached });
-          done++;
-        } else {
-          const t = translations[uncachedIdx++] ?? '';
-          if (t) {
-            batchResults.push({ hadithId: row.id, matnText: t });
-            done++;
-          } else {
-            console.error(`\n  ✗ Missing translation for hadith ${row.id} (${row.book_name_en} #${row.num_in_book})`);
-            errors++;
-            batchResults.push(null);
-          }
-        }
-      }
-
-      printProgress(total);
+    // Split DB batch into API_BATCH-sized chunks
+    const apiBatches: HadithRow[][] = [];
+    for (let i = 0; i < dbBatch.length; i += API_BATCH) {
+      apiBatches.push(dbBatch.slice(i, i + API_BATCH));
     }
+
+    // Process API batches with concurrency limit
+    const apiResults = await mapLimit(apiBatches, CONCURRENCY, (apiBatch) =>
+      processApiBatch(apiBatch, LANG)
+    );
+
+    // Flatten results and update counters
+    const batchResults: Array<{ hadithId: number; matnText: string } | null> = [];
+    for (const r of apiResults) {
+      batchResults.push(...r.results);
+      done += r.translated;
+      errors += r.errCount;
+    }
+    printProgress(total);
 
     // Commit batch in a single transaction
     const commitBatch = db.transaction(() => {
       for (const r of batchResults) {
         if (r === null) continue;
         insertStmt.run({
-          hadithId:   r.hadithId,
-          langCode:   LANG,
-          matnText:   r.matnText,
+          hadithId: r.hadithId,
+          langCode: LANG,
+          matnText: r.matnText,
           translator: TRANSLATOR,
         });
       }
