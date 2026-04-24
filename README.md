@@ -1,11 +1,11 @@
 # Hujjah
 
-Privacy-first, offline-capable Islamic research engine. Search the Quran in English and Bengali — 100% offline, zero external APIs.
+Privacy-first, offline-capable Islamic research engine. Search the Quran in English and Bengali, explore Kutub al-Sittah hadith with full sanad chains — 100% offline, zero external APIs.
 
 ## Stack
 
 - **Next.js 16** + **React 19** + **Tailwind CSS v4**
-- **Tauri 2.0** — Native desktop app shell
+- **Tauri 2.0** — Cross-platform native app shell
 - **Native SQLite** via `@tauri-apps/plugin-sql` — No browser storage limits
 - **FTS5** full-text search with `unicode61` tokenizer
 - **Transformers.js** — Local ONNX models for embeddings + text generation
@@ -15,46 +15,44 @@ Privacy-first, offline-capable Islamic research engine. Search the Quran in Engl
 ```bash
 npm install
 npm run dev          # Start Next.js dev server
-npm run tauri:dev    # Start Tauri app in dev mode
-npm run build        # Production build (static export to dist/)
-npm run tauri:build  # Build native Tauri app
-npm run test:run     # Run Vitest suite
+npm run tauri dev   # Start Tauri app in dev mode
+npm run build       # Production build (static export to dist/)
+npm run tauri build # Build native Tauri app
+npm run test:run    # Run Vitest suite
 ```
 
-## Data Seeding
+## Data
+
+### Quran Database (`hujjah-quran.db`)
 
 Source files are **not** included in the repo. Place them in:
 
 ```
-/Users/rabbi/Desktop/hujjah resources/
+/path/to/resources/
 ├── quran-uthmani.sql              # Arabic Uthmani text (Tanzil)
 ├── translations/
 │   ├── en.sahih.sql               # English translations (Tanzil)
-│   ├── bn.bengali.sql             # Bengali translations (Tanzil)
-│   └── ...                        # Other translators
-└── global quran data/             # JSON translations (legacy)
-    └── *.json
+│   └── bn.bengali.sql             # Bengali translations (Tanzil)
 ```
-
-### Build the Quran Vault
 
 ```bash
-# 1. Build the unified Quran database (Arabic + all translations)
-npm run build:quran
-
-# 2. Migrate to latest schema (surahs table, FTS5, embeddings)
-npx ts-node scripts/migrate-db.ts
-
-# 3. Swap translations with verified Tanzil data
-npx ts-node scripts/migrate-tanzil-ai.ts
-
-# 4. Generate vector embeddings for English translations
-npx ts-node scripts/generate-embeddings.ts
-
-# 5. Fix any missing verses (if needed)
-npx ts-node scripts/fix-missing-verses.ts
-npx ts-node scripts/fix-missing-embeddings.ts
+npm run build:quran                # Build unified Quran database
+npx ts-node scripts/migrate-db.ts  # Migrate schema (surahs, FTS5, embeddings)
+npx ts-node scripts/migrate-tanzil-ai.ts  # Load Tanzil translations
+npx ts-node scripts/generate-embeddings.ts # Generate vector embeddings
 ```
+
+### Hadith Database
+
+Hadith data comes from the Sanadset 650K corpus. Chunked CSVs are processed by:
+
+```bash
+npm run build:hadith           # Kutub al-Sittah only (~36K hadith)
+npm run build:hadith:full      # Full 650K corpus (~2.4GB output)
+python3 scripts/split-hadith-tiers.py  # Core + Research split in one run
+```
+
+Output: `src-tauri/resources/hujjah-hadith-*.db`
 
 ## Architecture
 
@@ -62,37 +60,41 @@ npx ts-node scripts/fix-missing-embeddings.ts
 |---|---|---|
 | Frontend | Next.js 16 (static export) | UI, search, surah navigation, chat |
 | Backend | Tauri 2.0 Rust runtime | Native OS integration, file access |
-| Database | SQLite `hujjah-quran.db` | 6,236 verses, 68K+ translations, FTS5, vectors |
-| Embedding Model | Local ONNX `all-MiniLM-L6-v2` | 384-dim sentence embeddings |
-| LLM Model | Local ONNX `qwen-onnx` (Qwen2.5-0.5B) | Text generation for explanations |
+| Quran DB | SQLite `hujjah-quran.db` | 6,236 verses, 68K+ translations, FTS5, vectors |
+| Hadith DB | SQLite `hujjah-hadith-core.db` | 36K Kutub al-Sittah hadith, FTS5, narrators |
+| Hadith DB | SQLite `hujjah-hadith-research.db` | 615K additional hadith (downloadable) |
+| Embedding | Local ONNX `all-MiniLM-L6-v2` | 384-dim sentence embeddings |
+| LLM | Local ONNX `qwen-onnx` (Qwen2.5-0.5B) | Text generation for AI explanations |
 
-### Database Schema
+### Quran Schema
 
 ```sql
--- Arabic verses
 CREATE TABLE verses (id, surah, ayah, text_ar);
-
--- Translations (English + Bengali from Tanzil.net)
 CREATE TABLE translations (id, verse_id, lang_code, translator_slug, text, embedding BLOB);
-
--- FTS5 search index (en + bn only)
 CREATE VIRTUAL TABLE quran_search_idx USING fts5(text, verse_id, lang_code, tokenize='unicode61');
-
--- Surah metadata
 CREATE TABLE surahs (id, name_ar, name_en, name_bn);
+```
 
--- Verse-level embeddings for semantic search
-CREATE TABLE vec_idx (verse_id PRIMARY KEY, embedding BLOB);
+### Hadith Schema (Core)
+
+```sql
+CREATE TABLE hadiths (id, book_id, num_in_book, hadith_ar, matn_ar, sanad_length);
+CREATE TABLE hadith_books (id, name_ar, name_en, hadith_count);
+CREATE TABLE narrators (id, name_ar);
+CREATE TABLE hadith_narrators (hadith_id, narrator_id, position);
+CREATE TABLE narrator_edges (from_narrator_id, to_narrator_id, hadith_count);
+CREATE VIRTUAL TABLE hadith_search_idx USING fts5(matn_ar, hadith_id, book_id);
 ```
 
 ## Search Features
 
 - **Reference Jump**: Type `2:255` to go directly to Ayat al-Kursi
 - **Surah Navigation**: Click any surah name in the sidebar
-- **Keyword Search**: FTS5-powered full-text search with highlighted snippets
-- **Language Toggle**: Switch between English and Bengali instantly
+- **Keyword Search**: FTS5 full-text search with highlighted snippets
+- **Auto Language Detection**: Automatically switches between English and Bengali FTS5 index based on input script
 - **Semantic Search**: Local AI embedding search via all-MiniLM-L6-v2
-- **Translator Selector**: View any surah with a specific translator only
+- **Translator Selector**: View any surah with a specific translator
+- **Hadith Domain**: Toggle to Quran or Hadith; use `@hadith prayer` to route hadith search directly
 
 ## Audio Features
 
@@ -101,20 +103,22 @@ CREATE TABLE vec_idx (verse_id PRIMARY KEY, embedding BLOB);
 - **Pause / Resume / Stop**: Full audio controls in the surah header
 - **Local Caching**: Audio cached via Tauri FS, streams from everyayah.com CDN
 
-## AI Chat (Agentic Q&A)
+## AI Chat
 
 - **Floating Chat Widget**: Bottom-right toggle with message history
-- **RAG Pipeline**: Query → embed → retrieve top-5 verses → generate explanation
-- **Source Citations**: Every AI response shows referenced surah:ayah
+- **RAG Pipeline**: Query → embed (Quran) + FTS5 (Hadith) → retrieve top sources → generate explanation
+- **Bilingual**: Responses in English or Bengali based on your language toggle
+- **Source Citations**: Every AI response shows referenced surah:ayah or hadith book + number
 - **100% Offline**: qwen-onnx model runs in a Web Worker — no data leaves device
 
 ## Pages
 
-| Route | Audience | Purpose |
-|---|---|---|
-| `/` | End user | Search, surah reading, audio, chat |
-| `/about` | End user | Data sources, privacy guard, links |
-| `/settings` | Developer | DB stats, model status, reset |
+| Route | Purpose |
+|---|---|
+| `/` | Search, surah reading, audio, AI chat |
+| `/about` | Data sources, privacy, links |
+| `/settings` | DB stats, model status, reset |
+| `/chain` | Sanad chain explorer — search narrators, browse teachers/students, view hadith graphs |
 
 ## License
 
