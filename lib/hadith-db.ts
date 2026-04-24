@@ -72,6 +72,13 @@ export async function getHadithBooks(): Promise<HadithBook[]> {
   return db.select<HadithBook[]>(sql);
 }
 
+// ─── Arabic Diacritic Stripper ───
+// FTS5 unicode61 strips diacritics during indexing but not from queries.
+// We strip diacritics from the query to match the stripped index.
+function stripArabicDiacritics(text: string): string {
+  return text.replace(/[\u064B-\u0652\u0670]/g, '');
+}
+
 // ─── Keyword Search (FTS5) ───
 
 export async function searchHadithKeyword(
@@ -80,6 +87,9 @@ export async function searchHadithKeyword(
 ): Promise<HadithResult[]> {
   const db = await getHadithDB();
   if (!query.trim()) return [];
+
+  const cleanQuery = stripArabicDiacritics(query.trim());
+  if (!cleanQuery) return [];
 
   const sql = `
     SELECT
@@ -92,7 +102,7 @@ export async function searchHadithKeyword(
       h.matn_ar,
       h.sanad_length,
       bm25(hadith_search_idx) AS rank,
-      snippet(hadith_search_idx, 1, '<mark>', '</mark>', '...', 32) AS snippet
+      snippet(hadith_search_idx, 0, '<mark>', '</mark>', '...', 32) AS snippet
     FROM hadith_search_idx
     JOIN hadiths h ON h.id = hadith_search_idx.rowid
     JOIN hadith_books b ON b.id = h.book_id
@@ -101,7 +111,7 @@ export async function searchHadithKeyword(
     LIMIT ?
   `;
 
-  const rows = await db.select<any[]>(sql, [query.trim(), Math.min(limit, 50)]);
+  const rows = await db.select<any[]>(sql, [cleanQuery, Math.min(limit, 50)]);
 
   return (rows ?? []).map((r) => ({
     id: r.id,

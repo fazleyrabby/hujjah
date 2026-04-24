@@ -15,6 +15,12 @@ from pathlib import Path
 
 csv.field_size_limit(sys.maxsize)
 
+def strip_diacritics(text: str) -> str:
+    """Strip all Arabic tashkeel (diacritics) for clean FTS5 indexing."""
+    return re.sub(r'[\u064B-\u0652\u0670]', '', text)
+
+csv.field_size_limit(sys.maxsize)
+
 # ─── Config ───
 DATA_DIR = Path("/Users/rabbi/Desktop/hujjah resources/Sanadset 650K Data on Hadith Narrators/chunks")
 OUTPUT_DIR = Path(__file__).parent.parent / "src-tauri" / "resources"
@@ -86,24 +92,6 @@ CREATE VIRTUAL TABLE hadith_search_idx USING fts5(
   book_id UNINDEXED,
   tokenize = 'unicode61'
 );
-
--- FTS5 auto-sync triggers
-CREATE TRIGGER hadiths_ai AFTER INSERT ON hadiths BEGIN
-  INSERT INTO hadith_search_idx(rowid, matn_ar, hadith_id, book_id)
-  VALUES (new.id, new.matn_ar, new.id, new.book_id);
-END;
-
-CREATE TRIGGER hadiths_ad AFTER DELETE ON hadiths BEGIN
-  INSERT INTO hadith_search_idx(hadith_search_idx, rowid, matn_ar, hadith_id, book_id)
-  VALUES ('delete', old.id, old.matn_ar, old.id, old.book_id);
-END;
-
-CREATE TRIGGER hadiths_au AFTER UPDATE ON hadiths BEGIN
-  INSERT INTO hadith_search_idx(hadith_search_idx, rowid, matn_ar, hadith_id, book_id)
-  VALUES ('delete', old.id, old.matn_ar, old.id, old.book_id);
-  INSERT INTO hadith_search_idx(rowid, matn_ar, hadith_id, book_id)
-  VALUES (new.id, new.matn_ar, new.id, new.book_id);
-END;
 
 CREATE TABLE narrator_edges (
   from_narrator_id INTEGER NOT NULL REFERENCES narrators(id),
@@ -252,6 +240,12 @@ def insert_batch(db, batch, narrator_cache):
             )
             hadith_id = cur.lastrowid
             count += 1
+            # Insert into FTS5 with diacritics stripped
+            stripped_matn = strip_diacritics(matn)
+            cur.execute(
+                "INSERT INTO hadith_search_idx(rowid, matn_ar, hadith_id, book_id) VALUES (?, ?, ?, ?)",
+                (hadith_id, stripped_matn, hadith_id, book_id)
+            )
         except sqlite3.IntegrityError:
             # Duplicate (book_id, num_in_book) — skip
             continue

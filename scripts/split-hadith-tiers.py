@@ -21,6 +21,10 @@ from pathlib import Path
 
 csv.field_size_limit(sys.maxsize)
 
+def strip_diacritics(text: str) -> str:
+    """Strip all Arabic tashkeel (diacritics) for clean FTS5 indexing."""
+    return re.sub(r'[\u064B-\u0652\u0670]', '', text)
+
 DATA_DIR = Path("/Users/rabbi/Desktop/hujjah resources/Sanadset 650K Data on Hadith Narrators/chunks")
 OUTPUT_DIR = Path(__file__).parent.parent / "src-tauri" / "resources"
 CORE_DB = OUTPUT_DIR / "hujjah-hadith-core.db"
@@ -103,6 +107,13 @@ CREATE VIRTUAL TABLE hadith_search_idx USING fts5(
   hadith_id UNINDEXED,
   book_id UNINDEXED,
   tokenize = 'unicode61'
+);
+
+CREATE TABLE narrator_edges (
+  from_narrator_id INTEGER NOT NULL REFERENCES narrators(id),
+  to_narrator_id INTEGER NOT NULL REFERENCES narrators(id),
+  hadith_count INTEGER DEFAULT 1,
+  PRIMARY KEY (from_narrator_id, to_narrator_id)
 );
 
 CREATE TRIGGER hadiths_ai AFTER INSERT ON hadiths BEGIN
@@ -263,6 +274,12 @@ def insert_batch(db, batch, narrator_cache):
             )
             hadith_id = cur.lastrowid
             count += 1
+            # Insert into FTS5 with diacritics stripped (unicode61 strips some but not all Arabic diacritics)
+            stripped_matn = strip_diacritics(matn)
+            cur.execute(
+                "INSERT INTO hadith_search_idx(rowid, matn_ar, hadith_id, book_id) VALUES (?, ?, ?, ?)",
+                (hadith_id, stripped_matn, hadith_id, book_id)
+            )
         except sqlite3.IntegrityError:
             continue
 
