@@ -431,17 +431,18 @@ export async function purgeLegacyStorage(): Promise<string> {
 // ─── Hadith Query ───
 export async function processHadithQuery(
   query: string,
-  limit: number = 20
+  limit: number = 20,
+  lang: string = 'en'
 ): Promise<HadithResult[]> {
   const classification = classifyQuery(query);
 
   // @hadith command: strip prefix and search
   if (classification.type === 'command' && classification.command === 'hadith' && classification.subQuery) {
-    return searchHadithKeyword(classification.subQuery, limit);
+    return searchHadithKeyword(classification.subQuery, limit, lang);
   }
 
   // Default: direct keyword search on hadith matn
-  return searchHadithKeyword(classification.raw, limit);
+  return searchHadithKeyword(classification.raw, limit, lang);
 }
 
 // ─── Backwards compat: old searchQuranFTS ───

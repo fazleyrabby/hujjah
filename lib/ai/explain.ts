@@ -184,6 +184,25 @@ function detectChitchat(query: string, lang: string = 'en'): string | null {
   return null;
 }
 
+// ─── Query Intent Classification ───
+
+export type QueryIntent = 'explain' | 'summarize' | 'factual' | 'search';
+
+/**
+ * Classify the user's intent to tailor the prompt and response style.
+ * - explain: "what does X mean", "explain", "why", "how"
+ * - summarize: "summarize", "brief overview", "tldr"
+ * - factual: "what is", "who is", "when", "where"
+ * - search: "find", "show me", "list", bare noun queries
+ */
+export function classifyIntent(query: string): QueryIntent {
+  const q = query.toLowerCase().trim();
+  if (/\b(explain|clarify|elaborate|describe|tell me about|what does .+ mean|why |how )\b/.test(q)) return 'explain';
+  if (/\b(summarize|summary|overview|brief|tldr|in short)\b/.test(q)) return 'summarize';
+  if (/\b(what is|what are|who is|who are|when |where |define)\b/.test(q)) return 'factual';
+  return 'search';
+}
+
 // ─── Phase 2 Step 3: Structured Context Builder ───
 
 interface StructuredContext {
@@ -210,7 +229,7 @@ function buildStructuredContext(
 
 // ─── Phase 2 Step 4: Strict Grounding Prompt ───
 
-function buildStrictPrompt(query: string, ctx: StructuredContext, lang: string): string {
+function buildStrictPrompt(query: string, ctx: StructuredContext, lang: string, intent?: QueryIntent): string {
   const quranLines = ctx.quran
     .map((v) => `[Quran ${v.ref}] ${v.translation}`)
     .join('\n');
@@ -242,7 +261,16 @@ ${contextBlock}
 সংক্ষিপ্ত উত্তর:`;
   }
 
-  return `You are an assistant explaining Qur'an and Hadith.
+  const instruction =
+    intent === 'summarize'
+      ? 'Provide a brief 2-sentence summary based only on the sources below.'
+      : intent === 'factual'
+      ? 'Answer directly and concisely using only the sources below.'
+      : intent === 'explain'
+      ? 'Explain clearly in 2-3 sentences using only the sources below. Mention what the texts say.'
+      : 'Using the sources below, respond to the question in 2-3 sentences.';
+
+  return `You are an assistant for Qur'an and Hadith.
 
 STRICT RULES:
 - Use ONLY the provided context below
@@ -250,6 +278,8 @@ STRICT RULES:
 - Do NOT introduce external knowledge
 - If context is insufficient, say: "Not found in provided sources."
 - Always cite references like (Quran 2:255) or (Bukhari #1)
+
+${instruction}
 
 Context:
 ${contextBlock}
@@ -497,6 +527,9 @@ export async function explainQuery(
   const cached = cacheGet(cacheKey);
   if (cached) return cached;
 
+  // Classify intent to tailor prompt
+  const intent = classifyIntent(query);
+
   // Phase 6: Low-end device — keyword-only, no embedding
   const lowEnd = isLowEndDevice();
 
@@ -591,7 +624,7 @@ export async function explainQuery(
   } else {
     const ctx = buildStructuredContext(scored, hadithResults);
     try {
-      const prompt = buildHadithPrompt(query, scored, hadithResults, lang);
+      const prompt = buildHadithPrompt(query, scored, hadithResults, lang, intent);
       const raw = await generate(prompt, 150);
       if (raw && validateOutput(raw, ctx)) {
         explanation = raw;
@@ -617,8 +650,9 @@ function buildHadithPrompt(
   query: string,
   verses: VerseContext[],
   hadith: HadithContext[],
-  lang: string = 'en'
+  lang: string = 'en',
+  intent?: QueryIntent
 ): string {
   const ctx = buildStructuredContext(verses, hadith);
-  return buildStrictPrompt(query, ctx, lang);
+  return buildStrictPrompt(query, ctx, lang, intent);
 }

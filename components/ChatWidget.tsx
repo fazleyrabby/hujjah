@@ -14,7 +14,7 @@ export default function ChatWidget({ lang, onNavigateToVerse }: ChatWidgetProps)
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [input, setInput] = useState('');
-  const { messages, loading, error, sendMessage, clearChat } = useChat();
+  const { messages, loading, error, sendMessage, translateMessage, clearChat } = useChat();
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -148,10 +148,10 @@ export default function ChatWidget({ lang, onNavigateToVerse }: ChatWidgetProps)
                   </svg>
                 </div>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
-                  {isBn ? 'কুরআন সম্পর্কে জিজ্ঞাসা করুন' : 'Ask about the Quran'}
+                  {isBn ? 'কুরআন ও হাদিস সম্পর্কে জিজ্ঞাসা করুন' : 'Ask about Quran & Hadith'}
                 </p>
                 <p className="text-xs text-gray-400 dark:text-gray-500">
-                  {isBn ? 'যেমন: "অনুগ্রহ সম্পর্কে আয়াত"' : 'e.g., "verses about mercy"'}
+                  {isBn ? 'যেমন: "সালাত সম্পর্কে ব্যাখ্যা করুন"' : 'e.g., "explain the concept of tawbah"'}
                 </p>
               </div>
             )}
@@ -174,22 +174,53 @@ export default function ChatWidget({ lang, onNavigateToVerse }: ChatWidgetProps)
                   ) : (
                     <p>{msg.text}</p>
                   )}
-                  {msg.verses && msg.verses.length > 0 && (
-                    <div className="mt-2 pt-2 border-t border-gray-200 dark:border-zinc-700">
-                      <p className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">
+
+                  {/* Sources: Quran verses + Hadith */}
+                  {msg.role === 'assistant' && ((msg.verses && msg.verses.length > 0) || (msg.hadith && msg.hadith.length > 0)) && (
+                    <div className="mt-2 pt-2 border-t border-gray-200 dark:border-zinc-700 space-y-1.5">
+                      <p className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">
                         {isBn ? 'সূত্র' : 'Sources'}
                       </p>
                       <div className="flex flex-wrap gap-1.5">
-                        {msg.verses.map((v, i) => (
+                        {msg.verses?.map((v, i) => (
                           <button
-                            key={i}
+                            key={`v-${i}`}
                             onClick={() => onNavigateToVerse?.(v.surah, v.ayah)}
-                            className="text-[10px] px-2 py-0.5 bg-white dark:bg-zinc-700 text-teal-700 dark:text-teal-400 rounded-full font-medium hover:bg-teal-100 dark:hover:bg-teal-900/40 transition-colors cursor-pointer"
+                            className="text-[10px] px-2 py-0.5 bg-white dark:bg-zinc-700 text-teal-700 dark:text-teal-400 rounded-full font-medium hover:bg-teal-100 dark:hover:bg-teal-900/40 transition-colors"
                           >
                             {v.surah}:{v.ayah}
                           </button>
                         ))}
+                        {msg.hadith?.map((h, i) => (
+                          <span
+                            key={`h-${i}`}
+                            className="text-[10px] px-2 py-0.5 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 rounded-full font-medium"
+                          >
+                            {h.book_name_en ?? h.book_name_ar} #{h.num_in_book}
+                          </span>
+                        ))}
                       </div>
+                    </div>
+                  )}
+
+                  {/* Language toggle for assistant messages */}
+                  {msg.role === 'assistant' && (
+                    <div className="mt-2 flex items-center gap-1.5">
+                      {['en', 'bn'].map((l) => (
+                        <button
+                          key={l}
+                          onClick={() => translateMessage(msg.id, l)}
+                          disabled={loading}
+                          className={clsx(
+                            'text-[10px] px-2 py-0.5 rounded-full font-medium transition-colors',
+                            msg.lang === l
+                              ? 'bg-teal-600 text-white'
+                              : 'bg-gray-100 dark:bg-zinc-700 text-gray-500 dark:text-gray-400 hover:bg-teal-50 dark:hover:bg-teal-900/20 hover:text-teal-700'
+                          )}
+                        >
+                          {l === 'en' ? 'EN' : 'বাং'}
+                        </button>
+                      ))}
                     </div>
                   )}
                 </div>

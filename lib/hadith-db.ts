@@ -24,6 +24,7 @@ export interface HadithResult {
   num_in_book: number;
   hadith_ar: string;
   matn_ar: string;
+  matn_en: string | null;  // AI translation (null if not yet translated)
   sanad_length: number;
   rank: number;
   snippet?: string;
@@ -86,39 +87,83 @@ function normalizeArabicQuery(text: string): string {
 
 export async function searchHadithKeyword(
   query: string,
-  limit: number = 20
+  limit: number = 20,
+  lang: string = 'en'
 ): Promise<HadithResult[]> {
   const db = await getHadithDB();
   if (!query.trim()) return [];
 
-  const cleanQuery = normalizeArabicQuery(query.trim());
-  if (!cleanQuery) return [];
+  // For English/Bengali queries: try translated FTS first, fall back to Arabic
+  const isArabic = /[\u0600-\u06FF]/.test(query);
+  const useTranslatedFTS = !isArabic && ['en', 'bn'].includes(lang);
 
-  const sql = `
-    SELECT
-      h.id,
-      h.book_id,
-      b.name_ar AS book_name_ar,
-      b.name_en AS book_name_en,
-      h.num_in_book,
-      h.hadith_ar,
-      h.matn_ar,
-      h.sanad_length,
-      bm25(hadith_search_idx) AS rank,
-      snippet(hadith_search_idx, 0, '<mark>', '</mark>', '...', 32) AS snippet
-    FROM hadith_search_idx
-    JOIN hadiths h ON h.id = hadith_search_idx.rowid
-    JOIN hadith_books b ON b.id = h.book_id
-    WHERE hadith_search_idx MATCH ?
-    ORDER BY
-      bm25(hadith_search_idx) +
-      CASE WHEN h.sanad_length <= 3 THEN -0.5
-           WHEN h.sanad_length <= 6 THEN -0.2
-           ELSE 0 END
-    LIMIT ?
-  `;
+  let rows: any[] = [];
 
-  const rows = await db.select<any[]>(sql, [cleanQuery, Math.min(limit, 50)]);
+  if (useTranslatedFTS) {
+    try {
+      const ftsSql = `
+        SELECT
+          h.id,
+          h.book_id,
+          b.name_ar AS book_name_ar,
+          b.name_en AS book_name_en,
+          h.num_in_book,
+          h.hadith_ar,
+          h.matn_ar,
+          ht.matn_text AS matn_en,
+          h.sanad_length,
+          bm25(hadith_trans_search_idx) AS rank,
+          snippet(hadith_trans_search_idx, 0, '<mark>', '</mark>', '...', 32) AS snippet
+        FROM hadith_trans_search_idx
+        JOIN hadith_translations ht ON ht.id = hadith_trans_search_idx.rowid
+        JOIN hadiths h ON h.id = ht.hadith_id
+        JOIN hadith_books b ON b.id = h.book_id
+        WHERE hadith_trans_search_idx MATCH ? AND ht.lang_code = ?
+        ORDER BY
+          bm25(hadith_trans_search_idx) +
+          CASE WHEN h.sanad_length <= 3 THEN -0.5
+               WHEN h.sanad_length <= 6 THEN -0.2
+               ELSE 0 END
+        LIMIT ?
+      `;
+      rows = await db.select<any[]>(ftsSql, [query.trim(), lang, Math.min(limit, 50)]);
+    } catch {
+      rows = [];
+    }
+  }
+
+  // Fall back to Arabic FTS (always works, translations may be incomplete)
+  if (rows.length === 0) {
+    const cleanQuery = normalizeArabicQuery(query.trim());
+    if (!cleanQuery) return [];
+
+    const sql = `
+      SELECT
+        h.id,
+        h.book_id,
+        b.name_ar AS book_name_ar,
+        b.name_en AS book_name_en,
+        h.num_in_book,
+        h.hadith_ar,
+        h.matn_ar,
+        ht.matn_text AS matn_en,
+        h.sanad_length,
+        bm25(hadith_search_idx) AS rank,
+        snippet(hadith_search_idx, 0, '<mark>', '</mark>', '...', 32) AS snippet
+      FROM hadith_search_idx
+      JOIN hadiths h ON h.id = hadith_search_idx.rowid
+      JOIN hadith_books b ON b.id = h.book_id
+      LEFT JOIN hadith_translations ht ON ht.hadith_id = h.id AND ht.lang_code = ? AND ht.translator = 'qwen3.5-9b'
+      WHERE hadith_search_idx MATCH ?
+      ORDER BY
+        bm25(hadith_search_idx) +
+        CASE WHEN h.sanad_length <= 3 THEN -0.5
+             WHEN h.sanad_length <= 6 THEN -0.2
+             ELSE 0 END
+      LIMIT ?
+    `;
+    rows = await db.select<any[]>(sql, [lang, cleanQuery, Math.min(limit, 50)]);
+  }
 
   return (rows ?? []).map((r) => ({
     id: r.id,
@@ -128,6 +173,7 @@ export async function searchHadithKeyword(
     num_in_book: r.num_in_book,
     hadith_ar: r.hadith_ar,
     matn_ar: r.matn_ar,
+    matn_en: r.matn_en ?? null,
     sanad_length: r.sanad_length,
     rank: r.rank,
     snippet: r.snippet ?? r.matn_ar.slice(0, 160) + '...',
@@ -138,7 +184,8 @@ export async function searchHadithKeyword(
 
 export async function getHadithByRef(
   bookId: number,
-  numInBook: number
+  numInBook: number,
+  lang: string = 'en'
 ): Promise<HadithResult | null> {
   const db = await getHadithDB();
   const sql = `
@@ -150,14 +197,16 @@ export async function getHadithByRef(
       h.num_in_book,
       h.hadith_ar,
       h.matn_ar,
+      ht.matn_text AS matn_en,
       h.sanad_length,
       0 AS rank
     FROM hadiths h
     JOIN hadith_books b ON b.id = h.book_id
+    LEFT JOIN hadith_translations ht ON ht.hadith_id = h.id AND ht.lang_code = ? AND ht.translator = 'qwen3.5-9b'
     WHERE h.book_id = ? AND h.num_in_book = ?
     LIMIT 1
   `;
-  const rows = await db.select<any[]>(sql, [bookId, numInBook]);
+  const rows = await db.select<any[]>(sql, [lang, bookId, numInBook]);
   if (rows.length === 0) return null;
   const r = rows[0];
   return {
@@ -168,6 +217,7 @@ export async function getHadithByRef(
     num_in_book: r.num_in_book,
     hadith_ar: r.hadith_ar,
     matn_ar: r.matn_ar,
+    matn_en: r.matn_en ?? null,
     sanad_length: r.sanad_length,
     rank: 0,
     snippet: r.matn_ar,

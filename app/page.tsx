@@ -129,7 +129,7 @@ export default function Home() {
         const searchLang = activeLang;
 
         if (domain === 'hadith') {
-          const rows = await processHadithQuery(trimmed, 20);
+          const rows = await processHadithQuery(trimmed, 20, searchLang);
           setHadithResults(rows);
         } else {
           const rows = await processQuery(trimmed, searchLang, 20);
@@ -839,14 +839,59 @@ export default function Home() {
             </div>
           )}
 
-          {/* No results */}
-          {!loading && searchMode && results !== null && results.length === 0 && (
+          {/* No results — Quran */}
+          {!loading && searchMode && searchDomain === 'quran' && results !== null && results.length === 0 && (
             <div className="text-center py-12">
               <p className="text-gray-500 text-sm">
                 {lang === 'bn'
                   ? 'কোনো আয়াত পাওয়া যায়নি। অন্য কীওয়ার্ড দিয়ে চেষ্টা করুন।'
                   : 'No verses found. Try different keywords or check that the database is seeded.'}
-              </p>
+              {/* Hadith Results */}
+            {!loading && searchMode && searchDomain === 'hadith' && hadithResults !== null && hadithResults.length > 0 && (
+              <div className="space-y-3 px-4 pb-6">
+                {hadithResults.map((h, i) => (
+                  <div
+                    key={`${h.id}-\${i}`}
+                    className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/40 rounded-xl p-4"
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-[11px] font-semibold px-2 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded-full">
+                        {h.book_name_en ?? h.book_name_ar}
+                      </span>
+                      <span className="text-[11px] text-gray-400 dark:text-gray-500">#\${h.num_in_book}</span>
+                      {h.grade && (
+                        <span className="text-[11px] px-2 py-0.5 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-full ml-auto">
+                          {\`Grade: \${h.grade}\`}
+                        </span>
+                      )}
+                    </div>
+                    {h.matn_ar && (
+                      <p className="text-right font-arabic text-base leading-loose text-gray-800 dark:text-gray-200 mb-2" dir="rtl">
+                        {h.matn_ar}
+                      </p>
+                    )}
+                    {h.matn_en && (
+                      <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed border-t border-amber-200 dark:border-amber-800/40 pt-2 mt-2">
+                        {h.matn_en}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* No results — Hadith */}
+            {!loading && searchMode && searchDomain === 'hadith' && hadithResults !== null && hadithResults.length === 0 && (
+              <div className="text-center py-12">
+                <p className="text-gray-500 text-sm">
+                  {lang === 'bn'
+                    ? 'কোনো হাদিস পাওয়া যায়নি। অন্য কীওয়ার্ড দিয়ে চেষ্টা করুন।'
+                    : 'No hadith found. Try different keywords.'}
+                </p>
+              </div>
+            )}
+
+            </p>
             </div>
           )}
 
