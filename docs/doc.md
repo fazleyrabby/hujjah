@@ -583,6 +583,217 @@ hujjah/
 
 ---
 
-*Last updated: 2026-04-23*
-*Total commits: 6*
-*Lines of code added: ~6,500+*
+---
+
+## 2026-04-24 — AI Hardening, Hadith Translation Schema & Bulk Translator
+
+### Context
+Major refactor session focused on eliminating hallucination risk, adding low-end device support, and building the infrastructure for multilingual hadith translations via a local MLX model.
+
+---
+
+### Phase 1 — Query Normalization (`lib/search-utils.ts`)
+
+Added a pre-search normalization layer `normalizeQuery(query, lang?)`:
+
+| Language | Transforms Applied |
+|---|---|
+| Arabic | Diacritics (harakat + tatweel) stripped, alif variants (أإآٱ) → ا, alif maqsura (ى) → ي |
+| Bengali | `NFC` normalization to collapse unicode variants |
+| English | Lowercase + light suffix stemming on content words (>4 chars) |
+
+Also exported `stripArabicDiacritics()` for reuse across modules.
+
+---
+
+### Phase 2 — Chat Pipeline Critical Fix (`lib/ai/explain.ts`)
+
+Old pipeline built prompts via raw string concatenation with no grounding enforcement. Replaced with:
+
+**`buildStructuredContext(verses, hadith) → StructuredContext`**
+- Typed `{ quran: [{ref, arabic, translation}], hadith: [{ref, arabic}] }` object
+- Hard caps: 5 Quran verses, 2 hadith, 300 chars per matn
+
+**`buildStrictPrompt(query, ctx, lang)`** — replaces all previous `buildPrompt` / `buildHadithPrompt`:
+```
+STRICT RULES:
+- Use ONLY the provided context
+- Do NOT add interpretations beyond the text
+- If context is insufficient: "Not found in provided sources."
+- Always cite references (Quran 2:255) or (Bukhari #1)
+```
+Both EN and BN variants. Falls back to "not found" string if context block is empty.
+
+**`validateOutput(output, ctx) → boolean`**
+- Builds word set from all context translations
+- Extracts content words (>4 chars) from LLM output
+- If >60% of output words not in context → returns false → extractive fallback
+- Prevents runaway hallucination from leaking into UI
+
+**`isLowEndDevice() → boolean`**
+- Reads `navigator.deviceMemory` (Chrome/Edge API)
+- If < 3GB → disables embedding worker + LLM entirely
+- Falls back to FTS5 keyword search + extractive verse summary
+
+**Query cache**
+- `Map<string, CacheEntry>` keyed by `"lang:query"`
+- Max 10 entries, FIFO eviction
+- Checked before any DB or embedding call
+
+**Low-end device path in `explainQuery()`**
+- Runs FTS5 on `quran_search_idx` directly (no embedding worker spin-up)
+- Skips hadith search
+- Returns extractive `formatVersesFallback()` — no LLM call
+
+**Token cap reduced**: `generate()` calls now cap at 150 tokens (was 200) for 1.5B model.
+
+---
+
+### Phase 3 — Small Model Optimization (`workers/generation.worker.ts`)
+
+Added `detectModelTier(modelPath)` reading model path for `0.5B` / `1.5B` pattern:
+
+| Tier | decode | max_tokens | do_sample | top_p |
+|---|---|---|---|---|
+| 0.5B | greedy (temp=0) | 80 | false | 1.0 |
+| 1.5B / unknown | sampling (temp=0.3) | 150 | true | 0.9 |
+
+Caller's `maxNewTokens` hint is now advisory — clamped to tier max.
+
+---
+
+### Phase 5 — Hadith Arabic Normalization (`lib/hadith-db.ts`)
+
+- `stripArabicDiacritics` → renamed `normalizeArabicQuery`
+- Now also normalizes alif variants (أإآٱ → ا) and alif maqsura (ى → ي)
+- FTS5 ranking updated: shorter isnad chains get BM25 score bonus
+  - `sanad_length ≤ 3` → −0.5 bonus
+  - `sanad_length ≤ 6` → −0.2 bonus
+
+---
+
+### DB Cleanup — `hujjah-hadith-core.db`
+
+**Corrupt rows deleted:**
+- 2,006 rows in `hadith_books` had raw hadith Arabic text stored as `name_ar`, with `name_en = NULL` and `hadith_count = 0` — a migration artifact
+- Zero hadiths referenced them → safe DELETE
+- 6 real books remain: Bukhari (6,974), Muslim (5,348), Abu Dawood (4,567), Tirmidhi (3,813), Ibn Majah (4,333), Nasa'i (11,292)
+
+Applied to both:
+- `src-tauri/resources/hujjah-hadith-core.db`
+- `src-tauri/target/debug/resources/hujjah-hadith-core.db`
+
+---
+
+### Hadith Translation Schema
+
+New table `hadith_translations` added to both DB files:
+
+```sql
+CREATE TABLE hadith_translations (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  hadith_id  INTEGER NOT NULL REFERENCES hadiths(id) ON DELETE CASCADE,
+  lang_code  TEXT NOT NULL CHECK(lang_code IN ('en','bn')),
+  matn_text  TEXT NOT NULL,
+  translator TEXT NOT NULL DEFAULT 'qwen3.5-9b',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(hadith_id, lang_code, translator)
+);
+CREATE INDEX idx_htrans_hadith_lang ON hadith_translations(hadith_id, lang_code);
+CREATE INDEX idx_htrans_lang ON hadith_translations(lang_code);
+```
+
+New FTS5 virtual table for EN/BN hadith search:
+```sql
+CREATE VIRTUAL TABLE hadith_trans_search_idx USING fts5(
+  matn_text, hadith_id UNINDEXED, lang_code UNINDEXED, tokenize = 'unicode61'
+);
+```
+
+Three triggers (`htrans_ai`, `htrans_ad`, `htrans_au`) auto-sync FTS on INSERT/UPDATE/DELETE.
+
+Design rationale:
+- Mirrors `quran_translations` pattern
+- `translator` column is versioned — re-running with a better model produces new rows without overwriting
+- `lang_code` CHECK constraint enforces only supported languages
+- NULL-safe — hadiths with no translation yet simply have no row; all queries must LEFT JOIN
+
+---
+
+### Bulk Translation Script (`scripts/translate-hadith.ts`)
+
+Translates `matn_ar` (Arabic hadith body only — sanad stays in Arabic) via local MLX OpenAI-compatible server.
+
+**Anti-hallucination measures:**
+- `temperature: 0.1` — near-deterministic
+- `max_tokens: 300` — hard cap
+- Length sanity check: rejects output > 5× Arabic input length
+- System prompt explicitly forbids additions, paraphrasing, footnotes
+- Islamic terminology (salat, zakat, hajj, etc.) preserved in Arabic
+
+**Resumable:** `INSERT OR IGNORE` on `UNIQUE(hadith_id, lang_code, translator)` — safe to restart.
+
+**CLI flags:**
+```bash
+--lang     en | bn
+--book     "Sahih al-Bukhari" | ... | all
+--batch    N          (rows per commit, default 50)
+--limit    N          (max rows, default unlimited)
+--host     URL        (MLX server, default http://localhost:8080)
+--concurrency N       (parallel requests, default 3)
+--dry-run             (print 3 sample prompts, no writes)
+```
+
+**npm scripts added:**
+```json
+"translate:hadith:en": "npx ts-node scripts/translate-hadith.ts --lang en",
+"translate:hadith:bn": "npx ts-node scripts/translate-hadith.ts --lang bn"
+```
+
+**Estimated runtime:** ~3.4 hours for 36,327 hadiths at concurrency 3.
+
+---
+
+### Sanadset Investigation
+
+Checked `/Desktop/hujjah resources/Sanadset 650K Data on Hadith Narrators/`:
+- 956 total books, 650K hadiths
+- Our 6 Kutub al-Sittah books are present with matching row counts (±16 rows)
+- **Narrator data already fully imported** — 99.9% coverage across all 6 books
+- `translated_samples.csv` contains English translations but sample-only, not full coverage
+- Sanadset folder is the source the current DB was built from — no re-import needed
+- Research tier (remaining 650K) goes into separate `hujjah-hadith-research.db`
+
+---
+
+### Current DB State (post-session)
+
+```
+hujjah-hadith-core.db
+  hadith_books         6 rows
+  hadiths         36,327 rows
+  narrators       24,184 rows
+  hadith_narrators   239,652 rows
+  narrator_edges    94,188 rows
+  hadith_translations  0 rows  ← translation not run yet
+  hadith_trans_search_idx  (FTS5, empty until translation runs)
+```
+
+---
+
+### Next Steps (handed to next agent)
+
+1. Wire `hadith_translations` into `searchHadithKeyword()` — add `matn_en: string | null` to `HadithResult`
+2. Prefer `hadith_trans_search_idx` for EN/BN queries; fall back to Arabic FTS when translations absent
+3. Update `HadithContext` in `explain.ts` to use `matn_en` in context when available
+4. UI: show `matn_en` alongside `matn_ar` in hadith display cards with "AI translation" label
+5. `getHadithByRef()` to also fetch translation row
+6. Language-driven translation preference: BN query → `lang_code='bn'` → fallback `'en'` → Arabic
+
+See `CLAUDE_HANDOVER.md` and `AGENTS.md` for full agent-ready prompt.
+
+---
+
+*Last updated: 2026-04-24*
+*Total commits: 10+*
+*Lines of code added: ~6,500+ (initial) + ~500 (this session)*

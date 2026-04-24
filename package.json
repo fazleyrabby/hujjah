@@ -16,6 +16,8 @@
     "build:quran": "npx ts-node scripts/build-quran-vault.ts",
     "build:hadith": "python3 scripts/build-hadith-vault.py",
     "build:hadith:full": "python3 scripts/build-hadith-full.py",
+    "translate:hadith:en": "npx ts-node scripts/translate-hadith.ts --lang en",
+    "translate:hadith:bn": "npx ts-node scripts/translate-hadith.ts --lang bn",
     "test": "vitest",
     "test:run": "vitest run"
   },

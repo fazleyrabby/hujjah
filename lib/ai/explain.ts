@@ -184,35 +184,162 @@ function detectChitchat(query: string, lang: string = 'en'): string | null {
   return null;
 }
 
-/**
- * Build a warm, conversational prompt grounded in retrieved verses.
- */
-function buildPrompt(query: string, verses: VerseContext[], lang: string = 'en'): string {
-  const context = verses
-    .slice(0, 4)
-    .map((v) => `[${v.surah}:${v.ayah}] ${v.text}`)
+// ─── Phase 2 Step 3: Structured Context Builder ───
+
+interface StructuredContext {
+  quran: Array<{ ref: string; arabic: string; translation: string }>;
+  hadith: Array<{ ref: string; arabic: string }>;
+}
+
+function buildStructuredContext(
+  verses: VerseContext[],
+  hadith: HadithContext[]
+): StructuredContext {
+  return {
+    quran: verses.slice(0, 5).map((v) => ({
+      ref: `${v.surah}:${v.ayah}`,
+      arabic: v.text_ar,
+      translation: v.text,
+    })),
+    hadith: hadith.slice(0, 2).map((h) => ({
+      ref: `${h.book_name_en || h.book_name_ar} #${h.num_in_book}`,
+      arabic: h.matn_ar.slice(0, 300),
+    })),
+  };
+}
+
+// ─── Phase 2 Step 4: Strict Grounding Prompt ───
+
+function buildStrictPrompt(query: string, ctx: StructuredContext, lang: string): string {
+  const quranLines = ctx.quran
+    .map((v) => `[Quran ${v.ref}] ${v.translation}`)
     .join('\n');
+  const hadithLines = ctx.hadith
+    .map((h) => `[Hadith ${h.ref}] ${h.arabic}`)
+    .join('\n');
+  const contextBlock = [quranLines, hadithLines].filter(Boolean).join('\n\n');
+
+  if (!contextBlock.trim()) {
+    return lang === 'bn'
+      ? `প্রদত্ত উৎসে পাওয়া যায়নি।`
+      : `Not found in provided sources.`;
+  }
 
   if (lang === 'bn') {
-    return `তুমি একজন কুরআন বিশেষজ্ঞ। প্রশ্নটির উত্তর দাও "${query}" — নিচের আয়াতগুলো থেকে ২-৩ বাক্যে একটি সংক্ষিপ্ত অনুচ্ছেদ লিখো। আয়াত নম্বর স্বাভাবিকভাবে উল্লেখ করো। আয়াতের পাঠ্য হুবহু কপি করো না।
+    return `তুমি কুরআন ও হাদিসের একজন সহকারী।
 
-আয়াতসমূহ:
-${context}
+কঠোর নিয়ম:
+- শুধুমাত্র নিচের প্রদত্ত সূত্র ব্যবহার করো
+- বাইরের জ্ঞান যোগ করো না
+- সূত্রে না থাকলে বলো: "প্রদত্ত উৎসে পাওয়া যায়নি।"
+- উদ্ধৃতি দাও (যেমন: ২:২৫৫)
+
+সূত্র:
+${contextBlock}
+
+প্রশ্ন: ${query}
 
 সংক্ষিপ্ত উত্তর:`;
   }
 
-  return `You are a Quran research assistant. Answer the question "${query}" using the verses below.
-Write a concise 2-3 sentence paragraph in your own words. Naturally cite verse numbers like (2:255) inline. Do NOT copy verse text verbatim or list verses — synthesize them into a clear answer.
+  return `You are an assistant explaining Qur'an and Hadith.
 
-Verses:
-${context}
+STRICT RULES:
+- Use ONLY the provided context below
+- Do NOT add interpretations beyond the text
+- Do NOT introduce external knowledge
+- If context is insufficient, say: "Not found in provided sources."
+- Always cite references like (Quran 2:255) or (Bukhari #1)
+
+Context:
+${contextBlock}
+
+Question: ${query}
 
 Answer:`;
 }
 
+// ─── Phase 2 Step 5: Output Validation ───
+
 /**
- * Generate a warm explanation from retrieved verses.
+ * Check if generated output is grounded in provided context.
+ * Validates by checking if key nouns/verbs from output exist in context words.
+ * Falls back to extractive summary if output seems ungrounded.
+ */
+function validateOutput(output: string, ctx: StructuredContext): boolean {
+  if (!output || output.length < 10) return false;
+
+  // Build word set from all context text
+  const contextText = [
+    ...ctx.quran.map((v) => v.translation),
+    ...ctx.hadith.map((h) => h.arabic),
+  ].join(' ').toLowerCase();
+
+  const contextWords = new Set(
+    contextText.split(/\s+/).map((w) => w.replace(/[^a-z]/g, ''))
+  );
+
+  // Extract content words from output (skip short function words)
+  const outputWords = output
+    .toLowerCase()
+    .split(/\s+/)
+    .map((w) => w.replace(/[^a-z]/g, ''))
+    .filter((w) => w.length > 4);
+
+  if (outputWords.length === 0) return true;
+
+  // If >60% of output content words not in context → likely hallucinated
+  const misses = outputWords.filter((w) => !contextWords.has(w)).length;
+  return misses / outputWords.length < 0.6;
+}
+
+// ─── Phase 6: Low-End Device Detection ───
+
+/**
+ * Detect if device has constrained memory (< 3GB).
+ * Uses navigator.deviceMemory (Chrome/Edge) when available.
+ */
+export function isLowEndDevice(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
+  if (mem !== undefined) return mem < 3;
+  return false;
+}
+
+// ─── Phase 7: Query Cache ───
+
+interface CacheEntry {
+  explanation: string;
+  verses: VerseContext[];
+  hadith: HadithContext[];
+}
+
+const queryCache = new Map<string, CacheEntry>();
+const CACHE_MAX = 10;
+
+function cacheGet(key: string): CacheEntry | undefined {
+  return queryCache.get(key);
+}
+
+function cacheSet(key: string, value: CacheEntry): void {
+  if (queryCache.size >= CACHE_MAX) {
+    // Evict oldest entry
+    const firstKey = queryCache.keys().next().value;
+    if (firstKey) queryCache.delete(firstKey);
+  }
+  queryCache.set(key, value);
+}
+
+// ─── Prompt Builder (kept for verse-only fallback) ───
+
+function buildPrompt(query: string, verses: VerseContext[], lang: string = 'en'): string {
+  const ctx = buildStructuredContext(verses, []);
+  return buildStrictPrompt(query, ctx, lang);
+}
+
+/**
+ * Generate a grounded explanation from retrieved verses.
+ * Falls back to extractive summary if model fails or output fails validation.
  */
 export async function explainVerse(query: string, verses: VerseContext[], lang: string = 'en'): Promise<string> {
   // Handle greetings / small talk instantly without LLM
@@ -221,14 +348,24 @@ export async function explainVerse(query: string, verses: VerseContext[], lang: 
 
   if (verses.length === 0) {
     return lang === 'bn'
-      ? "এই বিষয়ে ঘনিষ্ঠভাবে সম্পর্কিত কোনো আয়াত পাওয়া যায়নি। অনুগ্রহ করে অন্যভাবে জিজ্ঞাসা করুন।"
-      : "I couldn't find any verses closely related to that. Could you try rephrasing or asking about a specific topic from the Quran?";
+      ? "প্রদত্ত উৎসে পাওয়া যায়নি।"
+      : "Not found in provided sources.";
   }
 
+  // Low-end devices: skip LLM, return extractive summary only
+  if (isLowEndDevice()) {
+    return formatVersesFallback(verses, query, lang);
+  }
+
+  const ctx = buildStructuredContext(verses, []);
   try {
     const prompt = buildPrompt(query, verses, lang);
-    const text = await generate(prompt, 200);
-    if (text) return text;
+    const text = await generate(prompt, 150);
+    if (text) {
+      if (validateOutput(text, ctx)) return text;
+      // Output failed validation — fall back to extractive
+      console.warn('[Explain] Output failed grounding validation, using extractive fallback');
+    }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[Explain] Generation failed, using fallback:', message);
@@ -355,92 +492,126 @@ export async function explainQuery(
     return { explanation: chitchat, verses: [], hadith: [] };
   }
 
+  // Phase 7: Check query cache (last 10 queries)
+  const cacheKey = `${lang}:${query.trim().toLowerCase()}`;
+  const cached = cacheGet(cacheKey);
+  if (cached) return cached;
+
+  // Phase 6: Low-end device — keyword-only, no embedding
+  const lowEnd = isLowEndDevice();
+
   // Try to detect specific surah / verse references first
   const specificVerses = await detectSpecificVerses(query, lang);
   if (specificVerses && specificVerses.length > 0) {
     const explanation = await explainVerse(query, specificVerses, lang);
-    return { explanation, verses: specificVerses, hadith: [] };
+    const result = { explanation, verses: specificVerses, hadith: [] };
+    cacheSet(cacheKey, result);
+    return result;
   }
 
   const db = await getDB();
 
-  // Step 1: Embed the query
-  const queryEmbedding = await embedOne(query);
+  let scored: VerseContext[] = [];
 
-  // Step 2: Load translations with embeddings (limit to 5000 for speed)
-  const sql = `
-    SELECT
-      v.surah,
-      v.ayah,
-      v.text_ar,
-      t.text,
-      t.translator_slug,
-      t.embedding
-    FROM translations t
-    JOIN verses v ON v.id = t.verse_id
-    WHERE t.lang_code = ? AND t.embedding IS NOT NULL
-    LIMIT 5000
-  `;
+  if (lowEnd) {
+    // Low-end: FTS5 keyword search only, no embedding computation
+    const ftsQuery = query.trim().toLowerCase();
+    const ftsSql = `
+      SELECT v.surah, v.ayah, v.text_ar, t.text, t.translator_slug
+      FROM quran_search_idx
+      JOIN translations t ON t.id = quran_search_idx.rowid
+      JOIN verses v ON v.id = t.verse_id
+      WHERE quran_search_idx MATCH ? AND quran_search_idx.lang_code = ?
+      ORDER BY bm25(quran_search_idx)
+      LIMIT 5
+    `;
+    try {
+      const ftsRows = await db.select<VerseContext[]>(ftsSql, [ftsQuery, lang]);
+      scored = ftsRows;
+    } catch {
+      scored = [];
+    }
+  } else {
+    // Step 1: Embed the query
+    const queryEmbedding = await embedOne(query);
 
-  const rows = await db.select<
-    {
-      surah: number;
-      ayah: number;
-      text_ar: string;
-      text: string;
-      translator_slug: string;
-      embedding: ArrayBuffer;
-    }[]
-  >(sql, [lang]);
+    // Step 2: Load translations with embeddings (limit to 5000 for speed)
+    const sql = `
+      SELECT
+        v.surah,
+        v.ayah,
+        v.text_ar,
+        t.text,
+        t.translator_slug,
+        t.embedding
+      FROM translations t
+      JOIN verses v ON v.id = t.verse_id
+      WHERE t.lang_code = ? AND t.embedding IS NOT NULL
+      LIMIT 5000
+    `;
 
-  // Step 3: Score Quran verses by similarity
-  const scored = rows
-    .filter((r) => r.embedding)
-    .map((r) => ({
-      surah: r.surah,
-      ayah: r.ayah,
-      text_ar: r.text_ar,
-      text: r.text,
-      translator_slug: r.translator_slug,
-      similarity: cosineSimilarity(queryEmbedding, new Float32Array(r.embedding)),
-    }))
-    .sort((a, b) => b.similarity - a.similarity)
-    .slice(0, 5);
+    const rows = await db.select<
+      {
+        surah: number;
+        ayah: number;
+        text_ar: string;
+        text: string;
+        translator_slug: string;
+        embedding: ArrayBuffer;
+      }[]
+    >(sql, [lang]);
+
+    // Step 3: Score by cosine similarity, cap at 5 results
+    scored = rows
+      .filter((r) => r.embedding)
+      .map((r) => ({
+        surah: r.surah,
+        ayah: r.ayah,
+        text_ar: r.text_ar,
+        text: r.text,
+        translator_slug: r.translator_slug,
+        similarity: cosineSimilarity(queryEmbedding, new Float32Array(r.embedding)),
+      }))
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, 5);
+  }
 
   // Step 4: Search hadith corpus (Arabic FTS5, top 2 results)
-  const hadithResults = await searchHadithForAI(query, 2);
+  const hadithResults = lowEnd ? [] : await searchHadithForAI(query, 2);
 
-  // Step 5: Build combined prompt with Quran + Hadith context
-  const quranContext = scored
-    .map((v) => `[Quran ${v.surah}:${v.ayah}] ${v.text}`)
-    .join('\n');
-
-  const hadithContext = hadithResults
-    .map((h) => {
-      const book = h.book_name_en || h.book_name_ar;
-      return `[Hadith — ${book} #${h.num_in_book}]\n${h.matn_ar.slice(0, 300)}`;
-    })
-    .join('\n\n');
-
+  // Step 5: Build structured context and strict prompt
   let explanation: string;
-  if (hadithResults.length > 0 || scored.length > 0) {
+  if (scored.length === 0 && hadithResults.length === 0) {
+    explanation = lang === 'bn'
+      ? 'প্রদত্ত উৎসে পাওয়া যায়নি।'
+      : 'Not found in provided sources.';
+  } else if (lowEnd) {
+    // Low-end: extractive only, no LLM
+    explanation = formatVersesFallback(scored, query, lang);
+  } else {
+    const ctx = buildStructuredContext(scored, hadithResults);
     try {
       const prompt = buildHadithPrompt(query, scored, hadithResults, lang);
-      explanation = await generate(prompt, 200);
-      if (!explanation) throw new Error('Empty generation');
+      const raw = await generate(prompt, 150);
+      if (raw && validateOutput(raw, ctx)) {
+        explanation = raw;
+      } else {
+        if (raw) console.warn('[Explain] Output failed grounding validation, using extractive fallback');
+        explanation = formatVersesFallback(scored, query, lang);
+      }
     } catch (err) {
       console.error('[Explain] Generation failed:', err);
       explanation = formatVersesFallback(scored, query, lang);
     }
-  } else {
-    explanation = await explainVerse(query, scored, lang);
   }
 
-  return { explanation, verses: scored, hadith: hadithResults };
+  const result = { explanation, verses: scored, hadith: hadithResults };
+  cacheSet(cacheKey, result);
+  return result;
 }
 
 /**
- * Build a prompt that includes both Quran verses and hadith.
+ * Build a strict grounding prompt for combined Quran + Hadith context.
  */
 function buildHadithPrompt(
   query: string,
@@ -448,39 +619,6 @@ function buildHadithPrompt(
   hadith: HadithContext[],
   lang: string = 'en'
 ): string {
-  const quranPart = verses.length > 0
-    ? verses.map((v) => `[Quran ${v.surah}:${v.ayah}] ${v.text}`).join('\n')
-    : '';
-
-  const hadithPart = hadith.length > 0
-    ? hadith.map((h) => {
-        const book = h.book_name_en || h.book_name_ar;
-        return `[Hadith — ${book} #${h.num_in_book}]\n${h.matn_ar.slice(0, 300)}`;
-      }).join('\n\n')
-    : '';
-
-  if (lang === 'bn') {
-    const sources = [];
-    if (quranPart) sources.push('কুরআনের আয়াত', quranPart);
-    if (hadithPart) sources.push('হাদিস (কুতুব আল-সিত্তাহ)', hadithPart);
-    const sourceList = sources.join('\n\n');
-    return `তুমি একজন ইসলামিক গবেষণা সহকারী। প্রশ্ন "${query}" — নিচের সূত্রগুলো থেকে ২-৩ বাক্যে উত্তর দাও। সংখ্যা স্বাভাবিকভাবে উল্লেখ করো। কপি করো না — নিজের ভাষায় লিখো।
-
-সূত্র:
-${sourceList}
-
-সংক্ষিপ্ত উত্তর:`;
-  }
-
-  const sources = [];
-  if (quranPart) sources.push('Quran verses', quranPart);
-  if (hadithPart) sources.push('Hadith (Kutub al-Sittah)', hadithPart);
-  const sourceList = sources.join('\n\n');
-  return `You are an Islamic research assistant. Answer the question "${query}" using the sources below.
-Write a concise 2-3 sentence paragraph in your own words. Cite sources naturally like (Quran 2:255) or (Hadith: Bukhari #1). Do NOT copy text verbatim.
-
-Sources:
-${sourceList}
-
-Answer:`;
+  const ctx = buildStructuredContext(verses, hadith);
+  return buildStrictPrompt(query, ctx, lang);
 }

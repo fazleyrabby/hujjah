@@ -13,6 +13,22 @@ env.allowRemoteModels = false;
 
 const MODEL_PATH = '/models/qwen-onnx';
 
+// Phase 3: Detect model capability tier from path name.
+// 0.5B models: greedy decode, extractive only (max 80 tokens).
+// 1.5B models: controlled summarization (max 150 tokens).
+function detectModelTier(modelPath: string): '0.5B' | '1.5B' | 'unknown' {
+  if (/0\.5[Bb]|500[Mm]/.test(modelPath)) return '0.5B';
+  if (/1\.5[Bb]|1500[Mm]/.test(modelPath)) return '1.5B';
+  return 'unknown';
+}
+
+const MODEL_TIER = detectModelTier(MODEL_PATH);
+const MAX_TOKENS_BY_TIER: Record<string, number> = {
+  '0.5B': 80,
+  '1.5B': 150,
+  unknown: 150,
+};
+
 let generator: Awaited<ReturnType<typeof pipeline>> | null = null;
 let modelLoading = false;
 
@@ -65,7 +81,10 @@ async function init() {
 }
 
 self.addEventListener('message', async (event: MessageEvent<GenMessage>) => {
-  const { id, type, prompt, maxNewTokens = 80 } = event.data;
+  const { id, type, prompt } = event.data;
+  // Phase 3: Cap tokens by model tier; caller hint is advisory only
+  const tierMax = MAX_TOKENS_BY_TIER[MODEL_TIER] ?? 150;
+  const maxNewTokens = Math.min(event.data.maxNewTokens ?? tierMax, tierMax);
 
   if (type === 'init') {
     try {
@@ -94,9 +113,10 @@ self.addEventListener('message', async (event: MessageEvent<GenMessage>) => {
       chatPrompt,
       {
         max_new_tokens: maxNewTokens,
-        temperature: 0.3,
-        do_sample: true,
-        top_p: 0.9,
+        // Phase 3: 0.5B uses greedy decode (temp=0) for stability
+        temperature: MODEL_TIER === '0.5B' ? 0 : 0.3,
+        do_sample: MODEL_TIER !== '0.5B',
+        top_p: MODEL_TIER === '0.5B' ? 1.0 : 0.9,
         return_full_text: false,
       }
     );

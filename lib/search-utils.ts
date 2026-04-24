@@ -2,6 +2,65 @@
  * Pure search classification logic — testable without Tauri/SQLite.
  */
 
+// ─── Phase 1: Query Normalization ───
+
+/**
+ * Strip Arabic diacritics (harakat) and tatweel.
+ * FTS5 unicode61 strips during indexing; we must strip from queries too.
+ */
+export function stripArabicDiacritics(text: string): string {
+  return text
+    .replace(/[\u064B-\u0652\u0670\u0640]/g, '') // harakat + tatweel
+    .replace(/[أإآٱ]/g, 'ا')                       // alif variants → bare alif
+    .replace(/ى/g, 'ي');                           // alif maqsura → ya
+}
+
+/**
+ * Normalize Bengali unicode variants (composed vs decomposed).
+ */
+function normalizeBengali(text: string): string {
+  return text.normalize('NFC');
+}
+
+/**
+ * Minimal English stemming: lowercase + strip common suffixes.
+ * Not a full Porter stemmer — just enough to improve FTS recall.
+ */
+function stemEnglish(word: string): string {
+  return word
+    .toLowerCase()
+    .replace(/(?:ing|tion|tions|ness|ment|ful|less|ity|ies|ied)$/, '')
+    .replace(/(?:ers|ings|ments)$/, '')
+    .replace(/(?:er|es|ed|s)$/, '');
+}
+
+/**
+ * Normalize a query for better FTS5 recall.
+ * Applies language-specific transformations BEFORE search.
+ */
+export function normalizeQuery(query: string, lang?: 'en' | 'bn' | 'ar'): string {
+  if (!query.trim()) return query;
+
+  const detectedLang = lang ?? detectLang(query);
+
+  // Arabic: strip diacritics + normalize alif/ya
+  if (/[\u0600-\u06FF]/.test(query)) {
+    return stripArabicDiacritics(query.trim());
+  }
+
+  if (detectedLang === 'bn') {
+    return normalizeBengali(query.trim());
+  }
+
+  // English: lowercase + light stemming on multi-word queries
+  const words = query.trim().toLowerCase().split(/\s+/);
+  if (words.length > 1) {
+    // Only stem content words (skip very short words that may be stop words)
+    return words.map((w) => (w.length > 4 ? stemEnglish(w) : w)).join(' ');
+  }
+  return query.trim().toLowerCase();
+}
+
 /**
  * Auto-detect whether a query string is Bengali or English.
  * Checks for Bengali Unicode block (U+0980–U+09FF).
