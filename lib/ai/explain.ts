@@ -165,42 +165,51 @@ function detectChitchat(query: string, lang: string = 'en'): string | null {
 
   if (greetings.some((g) => q.includes(g))) {
     return isBn
-      ? "সালাম! আমি হুজ্জাহ এআই, কুরআন অনুসন্ধানে আপনার সঙ্গী। যেকোনো বিষয়, আয়াত বা সূরা সম্পর্কে জিজ্ঞাসা করুন!"
-      : "Salam! I'm Hujjah AI, your companion for exploring the Quran. Ask me about any topic, verse, or surah — I'm here to help!";
+      ? "ওয়ালাইকুম আসসালাম! 🌙 আমি হুজ্জাহ এআই — আপনার কুরআন সঙ্গী। কোনো আয়াত বুঝতে চান? বা কোনো বিষয়ে জানতে চান? যেকোনো কিছু জিজ্ঞাসা করুন!"
+      : "Wa alaykum as-salam! 🌙 I'm Hujjah AI — your Quran companion. Want to understand a verse? Or explore a topic? Ask me anything!";
   }
   if (howAreYou.some((h) => q.includes(h))) {
     return isBn
-      ? "আলহামদুলিল্লাহ, ভালো আছি! কুরআন নিয়ে কিছু জানতে চাইলে জিজ্ঞাসা করুন।"
-      : "I'm doing well, Alhamdulillah! Ready to explore the Quran with you. What would you like to know?";
+      ? "আলহামদুলিল্লাহ, অনেক ভালো আছি! আজ কী নিয়ে আলোচনা করব? কোনো সূরা, আয়াত, বা বিষয় — আপনাকে সাহায্য করতে প্রস্তুত!"
+      : "Alhamdulillah, doing wonderfully! What shall we explore today? A surah, a verse, a topic — I'm here for you!";
   }
-  if (identity.some((i) => q.includes(i))) {
+  if (identity.some((i) => q.includes(h))) {
     return isBn
-      ? "আমি হুজ্জাহ এআই — কুরআন বোঝা ও গবেষণায় সাহায্যকারী একটি স্থানীয়, অফলাইন সহকারী। আমার সকল তথ্য সরাসরি কুরআনের আয়াত থেকে নেওয়া।"
-      : "I'm Hujjah AI — a local, offline assistant built to help you understand and reflect on the Quran. Everything I share is grounded directly in Quranic verses.";
+      ? "আমি হুজ্জাহ এআই — একজন বন্ধু যে কুরআন বুঝতে সাহায্য করে! 📖 আমি ১০০% অফলাইন কাজ করি, আপনার তথ্য কখনো বাইরে যায় না। প্রশ্ন করুন, আমি আয়াত দিয়ে উত্তর দেব।"
+      : "I'm Hujjah AI — a friend who helps you understand the Quran! 📖 I work 100% offline, your data never leaves your device. Ask me anything, I'll answer with verses.";
   }
   if (thanks.some((t) => q.includes(t))) {
     return isBn
-      ? "আপনাকে স্বাগতম! কুরআনের পথে আল্লাহ আপনাকে বরকত দিন। যেকোনো সময় জিজ্ঞাসা করতে পারেন।"
-      : "You're welcome! May Allah bless your journey with the Quran. Feel free to ask anytime.";
+      ? "আপনাকে জাযাকাল্লাহু খাইরান! 🙏 কুরআন শেখা ও শেখানো সবচেয়ে বড় সওয়াবের কাজ। যেকোনো সময় ফিরে আসুন!"
+      : "JazakAllahu khairan! 🙏 Seeking and sharing Quranic knowledge is among the best deeds. Come back anytime!";
+  }
+  // New: User asks what can you do
+  const capabilities = ['what can you do', 'help me', 'কী করতে পারো', 'সাহায্য করো', 'features', 'options'];
+  if (capabilities.some((c) => q.includes(c))) {
+    return isBn
+      ? "আমি আপনাকে এগুলোতে সাহায্য করতে পারি:\n\n📖 যেকোনো আয়াত ব্যাখ্যা করতে পারি\n📚 সূরার সারাংশ দিতে পারি\n🔍 বিষয়ভিত্তিক অনুসন্ধান করতে পারি (যেমন: tawbah, sabr)\n📖 কুরআন থেকে উদ্ধৃতি দিতে পারি\n❓ ইসলামী প্রশ্নের উত্তর দিতে পারি\n\nযেকোনো কিছু জিজ্ঞাসা করুন!"
+      : "Here's how I can help you:\n\n📖 Explain any Quranic verse\n📚 Summarize surahs\n🔍 Search by topic (e.g., tawbah, sabr, rizq)\n📖 Provide verse references\n❓ Answer Islamic questions\n\nWhat would you like to explore?";
   }
   return null;
 }
 
 // ─── Query Intent Classification ───
 
-export type QueryIntent = 'explain' | 'summarize' | 'factual' | 'search';
+export type QueryIntent = 'explain' | 'summarize' | 'analyze' | 'factual' | 'search';
 
 /**
  * Classify the user's intent to tailor the prompt and response style.
  * - explain: "what does X mean", "explain", "why", "how"
  * - summarize: "summarize", "brief overview", "tldr"
+ * - analyze: "analyze", "deep dive", "what does it teach us", "lessons"
  * - factual: "what is", "who is", "when", "where"
  * - search: "find", "show me", "list", bare noun queries
  */
 export function classifyIntent(query: string): QueryIntent {
   const q = query.toLowerCase().trim();
+  if (/\b(analyze|deep dive|lessons|what does it teach|reflect on|insights|wisdom)\b/.test(q)) return 'analyze';
+  if (/\b(summarize|summary|overview|brief|tldr|in short|gist)\b/.test(q)) return 'summarize';
   if (/\b(explain|clarify|elaborate|describe|tell me about|what does .+ mean|why |how )\b/.test(q)) return 'explain';
-  if (/\b(summarize|summary|overview|brief|tldr|in short)\b/.test(q)) return 'summarize';
   if (/\b(what is|what are|who is|who are|when |where |define)\b/.test(q)) return 'factual';
   return 'search';
 }
@@ -247,10 +256,24 @@ function buildStrictPrompt(query: string, ctx: StructuredContext, lang: string, 
   }
 
   if (lang === 'bn') {
-    return `তুমি কুরআন ও হাদিসের একজন সহকারী।
+    const tone = intent === 'summarize' 
+      ? 'সংক্ষিপ্তভাবে সারাংশ দাও'
+      : intent === 'analyze'
+      ? 'বিশ্লেষণ করো এবং গভীরভাবে ব্যাখ্যা করো'
+      : intent === 'explain'
+      ? 'স্পষ্ট ও বন্ধুত্বপূর্ণ ভাষায় ব্যাখ্যা করো'
+      : 'সহজ ও বন্ধুত্বপূর্ণ ভাষায় উত্তর দাও';
+    
+    return `তুমি হুজ্জাহ এআই — একজন বন্ধুত্বপূর্ণ কুরআন গবেষক সহকারী।
 
-কঠোর নিয়ম:
-- শুধুমাত্র নিচের প্রদত্ত সূত্র ব্যবহার করো
+তোমার ভঙ্গি:
+- সহজ, উষ্ণ ও বন্ধুত্বপূর্ণ হও
+- ব্যবহারিক উদাহরণ দাও
+- আরবি শব্দের অর্থ ব্যাখ্যা করো
+- জীবনে প্রয়োগের উপায় বলো
+
+নিয়ম:
+- শুধু নিচের সূত্র ব্যবহার করো
 - বাইরের জ্ঞান যোগ করো না
 - সূত্রে না থাকলে বলো: "প্রদত্ত উৎসে পাওয়া যায়নি।"
 - উদ্ধৃতি দাও (যেমন: ২:২৫৫)
@@ -260,26 +283,33 @@ ${contextBlock}
 
 প্রশ্ন: ${query}
 
-সংক্ষিপ্ত উত্তর:`;
+${tone}:`;
   }
 
   const instruction =
     intent === 'summarize'
-      ? 'Provide a brief 2-sentence summary based only on the sources below.'
-      : intent === 'factual'
-      ? 'Answer directly and concisely using only the sources below.'
+      ? 'Provide a warm, friendly summary in 2-3 sentences. Highlight key themes and practical takeaways.'
+      : intent === 'analyze'
+      ? 'Analyze deeply with warmth. Explore layers of meaning, linguistic nuances, and practical applications in daily life.'
       : intent === 'explain'
-      ? 'Explain clearly in 2-3 sentences using only the sources below. Mention what the texts say.'
-      : 'Using the sources below, respond to the question in 2-3 sentences.';
+      ? 'Explain clearly and warmly in 3-4 sentences. Use relatable examples, explain Arabic terms simply, and connect to modern life.'
+      : 'Respond warmly and conversationally in 3-4 sentences. Use everyday language, give practical examples, and make it relatable.';
 
-  return `You are an assistant for Qur'an and Hadith.
+  return `You are Hujjah AI — a warm, friendly Quran research companion.
 
-STRICT RULES:
-- Use ONLY the provided context below
-- Do NOT add interpretations beyond the text
-- Do NOT introduce external knowledge
-- If context is insufficient, say: "Not found in provided sources."
-- Always cite references like (Quran 2:255) or (Bukhari #1)
+Your personality:
+- Speak like a knowledgeable friend, not a robot
+- Use warm, encouraging tone
+- Explain Arabic terms simply
+- Give practical life applications
+- Use relatable examples
+
+Guidelines:
+- Use ONLY the provided Quran verses below
+- Do NOT add outside knowledge
+- If context is insufficient, say: "I couldn't find relevant verses for this."
+- Always cite references like (Quran 2:255)
+- Make it feel personal and heartfelt
 
 ${instruction}
 
@@ -288,7 +318,7 @@ ${contextBlock}
 
 Question: ${query}
 
-Answer:`;
+Answer (warm and friendly):`;
 }
 
 // ─── Phase 2 Step 5: Output Validation ───

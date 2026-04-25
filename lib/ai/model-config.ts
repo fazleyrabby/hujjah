@@ -9,8 +9,8 @@
 // Options:
 //   'all-MiniLM-L6-v2'  → 384-dim, ~23MB, fast, English-centric
 //   'bge-m3'            → 1024-dim, ~550MB, multilingual (Arabic/Bengali/English)
-export const EMBEDDING_MODEL = 'all-MiniLM-L6-v2' as const;
-export const EMBEDDING_DIM = 384;
+export const EMBEDDING_MODEL = 'bge-m3' as const;
+export const EMBEDDING_DIM = 1024;
 
 // ─── Generation Model ───
 // Options:
