@@ -129,26 +129,42 @@ function truncate(text: string, maxLen: number = 120): string {
 function formatVersesFallback(verses: VerseContext[], query: string = '', lang: string = 'en'): string {
   if (verses.length === 0) {
     return lang === 'bn'
-      ? 'এই বিষয়ে কোনো আয়াত পাওয়া যায়নি।'
-      : 'No relevant verses found for this topic.';
+      ? `আমি এই বিষয়ে সরাসরি কুরআনের আয়াত খুঁজে পাইনি। তবে আপনি যদি আরও বিস্তারিত জানতে চান, অন্য কীওয়ার্ড দিয়ে চেষ্টা করতে পারেন, অথবা আমাকে সরাসরি জিজ্ঞাসা করুন — আমি আমার জ্ঞান থেকে সাহায্য করব।`
+      : `I couldn't find direct Quranic verses on this exact topic. However, feel free to ask me directly — I can share insights from my knowledge, or you could try different keywords to find related verses.`;
   }
 
   const refs = verses.map((v) => `${v.surah}:${v.ayah}`).join(', ');
   const top = verses.slice(0, 3);
 
   if (lang === 'bn') {
-    const intro = query.trim()
-      ? `কুরআনে "${query}" সম্পর্কে কয়েকটি প্রাসঙ্গিক আয়াত:`
-      : `প্রাসঙ্গিক আয়াতসমূহ (${refs}):`;
+    const intros = [
+      `কুরআনে "${query}" সম্পর্কে কয়েকটি চমৎকার আয়াত পেয়েছি:`,
+      `"${query}" বিষয়ে কুরআন যা বলেছে, তার কিছু অংশ:`,
+      `আপনার প্রশ্নের সাথে মিলে এমন কিছু আয়াত:`
+    ];
+    const intro = intros[Math.floor(Math.random() * intros.length)];
     const snippets = top.map((v) => `• [${v.surah}:${v.ayah}] ${truncate(v.text, 180)}`).join('\n\n');
-    return `${intro}\n\n${snippets}\n\nএই আয়াতগুলো থেকে বোঝা যায় যে এ বিষয়ে কুরআন স্পষ্ট নির্দেশনা দিয়েছে।`;
+    const closings = [
+      `এই আয়াতগুলোর মাধ্যমে কুরআন আমাদের সুন্দর নির্দেশনা দিয়েছে।`,
+      `এগুলো থেকে আমরা গভীর শিক্ষা পেতে পারি।`,
+      `আশা করি এই আয়াতগুলো আপনাকে সাহায্য করবে।`
+    ];
+    return `${intro}\n\n${snippets}\n\n${closings[Math.floor(Math.random() * closings.length)]}`;
   }
 
-  const intro = query.trim()
-    ? `Here is what the Quran says about "${query}":`
-    : `Relevant verses (${refs}):`;
+  const intros = [
+    `Here is what the Quran beautifully says about "${query}":`,
+    `I found some meaningful verses related to "${query}":`,
+    `The Quran offers wonderful guidance on "${query}":`
+  ];
+  const intro = query.trim() ? intros[Math.floor(Math.random() * intros.length)] : `Relevant verses (${refs}):`;
   const snippets = top.map((v) => `• [${v.surah}:${v.ayah}] ${truncate(v.text, 180)}`).join('\n\n');
-  return `${intro}\n\n${snippets}\n\nThese verses offer guidance on this matter from the Quranic perspective.`;
+  const closings = [
+    `These verses offer profound guidance on this matter.`,
+    `There's deep wisdom in these verses for us to reflect on.`,
+    `I hope these verses bring clarity and peace to your heart.`
+  ];
+  return `${intro}\n\n${snippets}\n\n${closings[Math.floor(Math.random() * closings.length)]}`;
 }
 
 /**
@@ -271,12 +287,15 @@ function buildStrictPrompt(query: string, ctx: StructuredContext, lang: string, 
 - ব্যবহারিক উদাহরণ দাও
 - আরবি শব্দের অর্থ ব্যাখ্যা করো
 - জীবনে প্রয়োগের উপায় বলো
+- প্রশ্নের ধরন অনুযায়ী ভিন্ন ভিন্নভাবে উত্তর দাও
 
 নিয়ম:
-- শুধু নিচের সূত্র ব্যবহার করো
-- বাইরের জ্ঞান যোগ করো না
-- সূত্রে না থাকলে বলো: "প্রদত্ত উৎসে পাওয়া যায়নি।"
+- প্রাথমিকভাবে কুরআনের আয়াত ব্যবহার করো
+- প্রয়োজনে সাধারণ ইসলামী জ্ঞান যোগ করতে পারো
+- স্পষ্ট ও সুন্দর করে উত্তর দাও
 - উদ্ধৃতি দাও (যেমন: ২:২৫৫)
+
+প্রশ্নের ধরন: ${intent}
 
 সূত্র:
 ${contextBlock}
@@ -288,92 +307,58 @@ ${tone}:`;
 
   const instruction =
     intent === 'summarize'
-      ? 'Provide a warm, friendly summary in 2-3 sentences. Highlight key themes and practical takeaways.'
+      ? 'Provide a warm, friendly summary. Highlight key themes and practical takeaways. Use your own words, not just repeating the text.'
       : intent === 'analyze'
-      ? 'Analyze deeply with warmth. Explore layers of meaning, linguistic nuances, and practical applications in daily life.'
+      ? 'Analyze deeply with warmth. Explore layers of meaning, linguistic nuances, historical context, and practical applications. Be insightful and thought-provoking.'
       : intent === 'explain'
-      ? 'Explain clearly and warmly in 3-4 sentences. Use relatable examples, explain Arabic terms simply, and connect to modern life.'
-      : 'Respond warmly and conversationally in 3-4 sentences. Use everyday language, give practical examples, and make it relatable.';
+      ? 'Explain clearly and warmly. Use relatable examples, explain Arabic terms simply, connect to modern life, and provide depth without being verbose.'
+      : 'Respond warmly and conversationally. Use everyday language, give practical examples, draw connections, and make it feel like a friendly discussion.';
 
   return `You are Hujjah AI — a warm, friendly Quran research companion.
 
 Your personality:
-- Speak like a knowledgeable friend, not a robot
-- Use warm, encouraging tone
-- Explain Arabic terms simply
-- Give practical life applications
-- Use relatable examples
+- Speak like a knowledgeable friend having a thoughtful conversation
+- Use warm, encouraging tone with occasional enthusiasm
+- Explain Arabic terms simply and beautifully
+- Give practical life applications and spiritual insights
+- Adapt your response style based on the question type
+- When summarizing: synthesize ideas, don't just list
+- When analyzing: go deep, explore wisdom and lessons
+- When explaining: be clear, use analogies and examples
 
 Guidelines:
-- Use ONLY the provided Quran verses below
-- Do NOT add outside knowledge
-- If context is insufficient, say: "I couldn't find relevant verses for this."
+- Base your answer primarily on the Quran verses provided
+- You may supplement with general Islamic knowledge when helpful
 - Always cite references like (Quran 2:255)
-- Make it feel personal and heartfelt
+- Be natural, not robotic — vary sentence structure
+- Use phrases like "Interestingly," "What's beautiful here," "You might notice"
+- If the context doesn't fully answer, say so honestly but offer what you can
 
-${instruction}
+Query type: ${intent}
 
-Context:
+Context from Quran:
 ${contextBlock}
 
 Question: ${query}
 
-Answer (warm and friendly):`;
+Answer (natural, warm, and insightful):`;
 }
 
 // ─── Phase 2 Step 5: Output Validation ───
 
 /**
- * Check if generated output is grounded in provided context.
- * Much more permissive than strict word overlap — allows common theological
- * terms and citation patterns that the prompt explicitly asks for.
+ * Light validation — just check response isn't empty or clearly off-topic.
+ * Allows LLM creativity and general knowledge.
  */
-function validateOutput(output: string, ctx: StructuredContext): boolean {
+function validateOutput(output: string, _ctx: StructuredContext): boolean {
   if (!output || output.length < 10) return false;
-
-  // Build word set from all context text — keep alphanumerics, not just a-z
-  const contextText = [
-    ...ctx.quran.map((v) => v.translation),
-    ...ctx.hadith.map((h) => h.arabic),
-  ].join(' ').toLowerCase();
-
-  const contextWords = new Set(
-    contextText.split(/\s+/).map((w) => w.replace(/[^a-z0-9]/g, '')).filter(Boolean)
-  );
-
-  // Extract content words from output
-  const outputWords = output
-    .toLowerCase()
-    .split(/\s+/)
-    .map((w) => w.replace(/[^a-z0-9]/g, ''))
-    .filter((w) => w.length > 3);
-
-  if (outputWords.length === 0) return true;
-
-  // Always-allowed words the prompt itself instructs the model to use
-  const allowedWords = new Set([
-    'quran', 'koran', 'hadith', 'allah', 'god', 'prophet', 'muhammad',
-    'islam', 'muslim', 'verse', 'verses', 'ayah', 'surah', 'chapter',
-    'source', 'sources', 'context', 'provided', 'according', 'teaches',
-    'teaching', 'command', 'commands', 'mercy', 'merciful', 'patient',
-    'patience', 'prayer', 'prayers', 'faith', 'believe', 'believers',
-    'reward', 'paradise', 'hell', 'sin', 'sins', 'forgive', 'forgiveness',
-    'guidance', 'guide', 'truth', 'worship', 'obey', 'obedience', 'heart',
-    'soul', 'world', 'hereafter', 'life', 'death', 'creation', 'creator',
-    'lord', 'master', 'king', 'power', 'knowledge', 'wise', 'wisdom',
-    'justice', 'just', 'grace', 'blessing', 'blessings', 'peace',
-  ]);
-
-  const misses = outputWords.filter((w) => {
-    if (allowedWords.has(w)) return false;
-    if (contextWords.has(w)) return false;
-    // Allow numeric verse references like 2236, 2255
-    if (/^\d{3,4}$/.test(w)) return false;
-    return true;
-  }).length;
-
-  // Very permissive: allow up to 80% novel words (the model paraphrases)
-  return misses / outputWords.length < 0.8;
+  
+  // Reject if it looks like a refusal or error
+  const lower = output.toLowerCase();
+  if (lower.includes('i cannot') && lower.includes('answer')) return false;
+  if (lower.includes('not found in provided sources') && output.length < 50) return false;
+  
+  return true;
 }
 
 // ─── Phase 6: Low-End Device Detection ───

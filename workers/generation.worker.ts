@@ -117,9 +117,11 @@ self.addEventListener('message', async (event: MessageEvent<GenMessage>) => {
       chatPrompt,
       {
         max_new_tokens: maxNewTokens,
-        temperature: MODEL_TIER === '0.5B' ? 0 : 0.3,
-        do_sample: MODEL_TIER !== '0.5B',
-        top_p: MODEL_TIER === '0.5B' ? 1.0 : 0.9,
+        temperature: 0.7,  // More creative responses
+        do_sample: true,
+        top_p: 0.95,
+        top_k: 50,
+        repetition_penalty: 1.1,  // Reduce repetition
         return_full_text: false,
       }
     );
