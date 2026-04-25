@@ -83,20 +83,18 @@ async fn purge_legacy_storage(app: AppHandle) -> Result<String, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .setup(|app| {
-            init_db(&app.handle(), "hujjah-quran.db", "hujjah-quran.db");
-            init_db(&app.handle(), "hujjah-hadith-core.db", "hujjah-hadith-core.db");
-            Ok(())
-        })
-        .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_sql::Builder::default()
                 .add_migrations("sqlite:hujjah-quran.db", vec![])
                 .add_migrations("sqlite:hujjah-hadith-core.db", vec![])
                 .build(),
         )
+        .setup(|app| {
+            // Initialize DBs BEFORE plugins to avoid concurrent write conflicts
+            init_db(&app.handle(), "hujjah-quran.db", "hujjah-quran.db");
+            init_db(&app.handle(), "hujjah-hadith-core.db", "hujjah-hadith-core.db");
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             purge_legacy_storage,
             hydrator::check_tier_status,

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AudioProvider } from "@/contexts/AudioContext";
 import AudioPlayer from "@/components/AudioPlayer";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 export const metadata: Metadata = {
   title: "Hujjah — Local Islamic Research",
@@ -16,10 +17,12 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body suppressHydrationWarning>
-        <AudioProvider>
-          {children}
-          <AudioPlayer />
-        </AudioProvider>
+        <ErrorBoundary>
+          <AudioProvider>
+            {children}
+            <AudioPlayer />
+          </AudioProvider>
+        </ErrorBoundary>
       </body>
     </html>
   );

@@ -1,0 +1,40 @@
+/Users/rabbi/.venv/hujjah-mlx/lib/python3.13/site-packages/mlx_lm/server.py:1723: UserWarning: mlx_lm.server is not recommended for production as it only implements basic security checks.
+  warnings.warn(
+2026-04-25 09:40:25,148 - INFO - Starting httpd at 127.0.0.1 on port 8080...
+127.0.0.1 - - [25/Apr/2026 09:40:44] "GET /v1/models HTTP/1.1" 200 -
+2026-04-25 09:40:44,669 - INFO - Prompt Cache: 0 sequences, 0.00 GB
+2026-04-25 09:40:44,669 - INFO - - assistant: 0 sequences, 0.00 GB
+2026-04-25 09:40:44,669 - INFO - - user: 0 sequences, 0.00 GB
+2026-04-25 09:40:44,669 - INFO - - system: 0 sequences, 0.00 GB
+127.0.0.1 - - [25/Apr/2026 09:40:44] "POST /v1/chat/completions HTTP/1.1" 200 -
+2026-04-25 09:40:44,860 - INFO - Prompt Cache: 0 sequences, 0.00 GB
+2026-04-25 09:40:44,860 - INFO - - assistant: 0 sequences, 0.00 GB
+2026-04-25 09:40:44,860 - INFO - - user: 0 sequences, 0.00 GB
+2026-04-25 09:40:44,860 - INFO - - system: 0 sequences, 0.00 GB
+127.0.0.1 - - [25/Apr/2026 09:40:44] "POST /v1/chat/completions HTTP/1.1" 200 -
+2026-04-25 09:40:45,038 - INFO - Prompt Cache: 0 sequences, 0.00 GB
+2026-04-25 09:40:45,038 - INFO - - assistant: 0 sequences, 0.00 GB
+2026-04-25 09:40:45,038 - INFO - - user: 0 sequences, 0.00 GB
+2026-04-25 09:40:45,038 - INFO - - system: 0 sequences, 0.00 GB
+127.0.0.1 - - [25/Apr/2026 09:40:45] "POST /v1/chat/completions HTTP/1.1" 200 -
+2026-04-25 09:40:45,214 - INFO - Prompt Cache: 0 sequences, 0.00 GB
+2026-04-25 09:40:45,214 - INFO - - assistant: 0 sequences, 0.00 GB
+2026-04-25 09:40:45,214 - INFO - - user: 0 sequences, 0.00 GB
+2026-04-25 09:40:45,214 - INFO - - system: 0 sequences, 0.00 GB
+127.0.0.1 - - [25/Apr/2026 09:40:45] "POST /v1/chat/completions HTTP/1.1" 200 -
+2026-04-25 09:40:45,390 - INFO - Prompt Cache: 0 sequences, 0.00 GB
+2026-04-25 09:40:45,390 - INFO - - assistant: 0 sequences, 0.00 GB
+2026-04-25 09:40:45,390 - INFO - - user: 0 sequences, 0.00 GB
+2026-04-25 09:40:45,390 - INFO - - system: 0 sequences, 0.00 GB
+127.0.0.1 - - [25/Apr/2026 09:40:45] "POST /v1/chat/completions HTTP/1.1" 200 -
+2026-04-25 09:40:45,576 - INFO - Prompt Cache: 0 sequences, 0.00 GB
+2026-04-25 09:40:45,576 - INFO - - assistant: 0 sequences, 0.00 GB
+2026-04-25 09:40:45,576 - INFO - - user: 0 sequences, 0.00 GB
+2026-04-25 09:40:45,576 - INFO - - system: 0 sequences, 0.00 GB
+127.0.0.1 - - [25/Apr/2026 09:40:45] "POST /v1/chat/completions HTTP/1.1" 200 -
+2026-04-25 09:40:53,084 - INFO - Prompt processing progress: 150/1344
+2026-04-25 09:40:53,084 - INFO - Prompt processing progress: 150/1509
+2026-04-25 09:40:53,084 - INFO - Prompt processing progress: 150/1428
+2026-04-25 09:40:53,084 - INFO - Prompt processing progress: 150/1807
+2026-04-25 09:40:53,084 - INFO - Prompt processing progress: 150/1573
+2026-04-25 09:40:53,084 - INFO - Prompt processing progress: 150/1681

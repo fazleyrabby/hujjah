@@ -8,7 +8,7 @@
 import { env, pipeline } from '@huggingface/transformers';
 
 // NOTE: Keep in sync with lib/ai/model-config.ts
-const EMBEDDING_MODEL = 'bge-m3';
+const EMBEDDING_MODEL = 'all-MiniLM-L6-v2';
 
 // Configure local model path (relative to the worker location)
 env.localModelPath = '/models';

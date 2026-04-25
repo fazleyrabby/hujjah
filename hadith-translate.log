@@ -1,0 +1,14 @@
+
+=== Hadith Bulk Translator ===
+  Lang:        en
+  Book:        all
+  MLX server:  http://localhost:8080/v1/chat/completions
+  Batch size:  50
+  API batch:   6
+  Concurrency: 6
+  Translator:  qwen3.5-9b
+  Model:       /Users/rabbi/ai/models/Qwen3.5-9B-OptiQ-4bit
+
+  ✓ MLX server reachable
+  Rows to translate: 30,671
+

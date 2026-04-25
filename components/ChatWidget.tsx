@@ -37,6 +37,10 @@ export default function ChatWidget({ lang, onNavigateToVerse }: ChatWidgetProps)
     if (!input.trim() || loading) return;
     const text = input.trim();
     setInput('');
+    
+    // Lazy-load model on first use
+    console.log('[ChatWidget] Sending message, model will load on demand...');
+    
     await sendMessage(text, lang);
   };
 

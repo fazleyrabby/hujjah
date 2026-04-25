@@ -10,6 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "title": "Hujjah",
@@ -17,7 +18,12 @@
         "height": 800,
         "resizable": true,
         "fullscreen": false,
-        "center": true
+        "center": true,
+        "devtools": true,
+        "transparent": false,
+        "decorations": true,
+        "visible": true,
+        "userAgent": "Hujjah/0.1.0"
       }
     ],
     "security": {

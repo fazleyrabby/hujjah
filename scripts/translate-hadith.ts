@@ -217,6 +217,13 @@ const insertStmt = db.prepare(`
     (@hadithId, @langCode, @matnText, @translator)
 `);
 
+function getTranslationCount(lang: string): number {
+  const row = db
+    .prepare(`SELECT count(*) as c FROM hadith_translations WHERE lang_code = ?`)
+    .get(lang) as { c: number };
+  return row.c;
+}
+
 function fetchPendingRows(lang: string, bookFilter: string, limit: number): HadithRow[] {
   let sql = `
     SELECT
@@ -260,20 +267,6 @@ const matnCache = new Map<string, string>();
 let done = 0;
 let errors = 0;
 let startTime = Date.now();
-
-function printProgress(total: number): void {
-  const elapsed = (Date.now() - startTime) / 1000;
-  const rate = done / Math.max(elapsed, 1);
-  const remaining = total - done;
-  const eta = rate > 0 ? Math.round(remaining / rate) : 0;
-  const etaStr = eta > 3600
-    ? `${Math.floor(eta / 3600)}h ${Math.floor((eta % 3600) / 60)}m`
-    : `${Math.floor(eta / 60)}m ${eta % 60}s`;
-
-  process.stdout.write(
-    `\r  [${done}/${total}] ${errors} errors | ${rate.toFixed(1)} req/s | ETA: ${etaStr}   `
-  );
-}
 
 // ─── Promise pool (lightweight p-limit) ─────────────────────────────────────
 
@@ -418,16 +411,19 @@ async function main() {
   }
 
   // Fetch pending rows
+  const beforeCount = getTranslationCount(LANG);
   const rows = fetchPendingRows(LANG, BOOK_FILTER, ROW_LIMIT);
   const total = rows.length;
 
+  console.log(`  DB ${LANG.toUpperCase()} count before: ${beforeCount.toLocaleString()}`);
   if (total === 0) {
     console.log('  ✓ Nothing to translate (all rows done or no match)');
     db.close();
     return;
   }
 
-  console.log(`  Rows to translate: ${total.toLocaleString()}\n`);
+  console.log(`  Rows to translate: ${total.toLocaleString()}`);
+  console.log(`  DB ${LANG.toUpperCase()} count before: ${beforeCount.toLocaleString()}\n`);
 
   // API_BATCH: hadiths per API call (amortizes per-request overhead)
   // Safe default: 10 (2× faster than 5, same memory/CPU pressure)
@@ -467,12 +463,19 @@ async function main() {
     const batchResults: Array<{ hadithId: number; matnText: string } | null> = [];
     for (const r of apiResults) {
       batchResults.push(...r.results);
-      done += r.translated;
+      for (const item of r.results) {
+        if (item !== null) {
+          done++;
+          if (done % 100 === 0) {
+            const currentCount = getTranslationCount(LANG);
+            console.log(`  → ${done} done | DB: ${currentCount.toLocaleString()}`);
+          }
+        }
+      }
       errors += r.errCount;
     }
-    printProgress(total);
 
-    // Commit batch in a single transaction
+    // Commit and log live DB count
     const commitBatch = db.transaction(() => {
       for (const r of batchResults) {
         if (r === null) continue;
@@ -485,19 +488,20 @@ async function main() {
       }
     });
     commitBatch();
+    const currentCount = getTranslationCount(LANG);
+    process.stdout.write(
+      `\r  [${done}/${total}] DB: ${currentCount.toLocaleString()} | ${errors} errors    `
+    );
   }
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   console.log(`\n\n  ✓ Done in ${elapsed}s`);
   console.log(`    Translated: ${done}`);
   console.log(`    Errors:     ${errors}`);
-  console.log(`    Skipped:    ${total - done - errors}`);
 
-  // Final count
-  const countRow = db
-    .prepare(`SELECT count(*) as c FROM hadith_translations WHERE lang_code = ?`)
-    .get(LANG) as { c: number };
-  console.log(`    Total ${LANG.toUpperCase()} translations in DB: ${countRow.c.toLocaleString()}`);
+  const afterCount = getTranslationCount(LANG);
+  console.log(`  DB ${LANG.toUpperCase()} count after:  ${afterCount.toLocaleString()}`);
+  console.log(`  Added: ${afterCount - beforeCount}`);
 
   db.close();
 }

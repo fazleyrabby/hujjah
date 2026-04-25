@@ -86,9 +86,20 @@ export default function Home() {
         }
       }
     }).catch(console.error);
+    
+    // Lazy-load AI models on first chat open (not on startup)
+    // This prevents crashes from loading models immediately
   }, []);
 
   // ─── Dark Mode Sync ───
+  useEffect(() => {
+    // Load saved preference
+    const saved = localStorage.getItem('hujjah-dark');
+    if (saved) {
+      setDarkMode(saved === 'true');
+    }
+  }, []);
+
   useEffect(() => {
     const root = document.documentElement;
     if (darkMode) {
@@ -96,6 +107,7 @@ export default function Home() {
     } else {
       root.classList.remove('dark');
     }
+    localStorage.setItem('hujjah-dark', String(darkMode));
   }, [darkMode]);
 
   // ─── Debounced Search ───

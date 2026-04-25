@@ -8,7 +8,7 @@
 import { env, pipeline } from '@huggingface/transformers';
 
 // NOTE: Keep in sync with lib/ai/model-config.ts
-const GENERATION_MODEL = 'qwen2.5-1.5b';
+const GENERATION_MODEL = 'qwen-onnx';
 const MODEL_PATH = `/models/${GENERATION_MODEL}`;
 
 // Detect model capability tier from model name.
@@ -64,16 +64,21 @@ async function init() {
 
   modelLoading = true;
   try {
-    console.log(`[GenerationWorker] Loading ${GENERATION_MODEL}...`);
+    console.log(`[GenerationWorker] Loading ${GENERATION_MODEL} from ${MODEL_PATH}...`);
+    console.log('[GenerationWorker] env.localModelPath:', env.localModelPath);
+    console.log('[GenerationWorker] env.allowLocalModels:', env.allowLocalModels);
+    console.log('[GenerationWorker] Current memory usage:', performance.memory ? `${Math.round(performance.memory.usedJSHeapSize / 1048576)}MB` : 'N/A');
 
     generator = await pipeline('text-generation', MODEL_PATH, {
       quantized: true,
       local_files_only: true,
     } as Record<string, unknown>);
 
-    console.log(`[GenerationWorker] ${GENERATION_MODEL} loaded (tier: ${MODEL_TIER})`);
+    console.log(`[GenerationWorker] ✅ ${GENERATION_MODEL} loaded successfully (tier: ${MODEL_TIER})`);
+    console.log('[GenerationWorker] Memory after load:', performance.memory ? `${Math.round(performance.memory.usedJSHeapSize / 1048576)}MB` : 'N/A');
   } catch (err) {
-    console.error('[GenerationWorker] Failed to load model:', err);
+    console.error('[GenerationWorker] ❌ Failed to load model:', err);
+    self.postMessage({ id: 'init', type: 'error', error: `Model load failed: ${err instanceof Error ? err.message : String(err)}` } as GenResponse);
     throw err;
   } finally {
     modelLoading = false;
