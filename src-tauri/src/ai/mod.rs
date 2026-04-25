@@ -5,3 +5,4 @@ pub mod model_downloader;
 pub mod inference_engine;
 pub mod throttle_guard;
 pub mod llama;
+pub mod model_manager;
