@@ -15,6 +15,21 @@ export const USE_LLAMA_CPP: boolean =
 console.log('[AI] llama.cpp enabled:', USE_LLAMA_CPP);
 
 /**
+ * Load the GGUF model manually.
+ * Call this before first inference to avoid auto-load on startup.
+ */
+export async function loadLlamaModel(path: string): Promise<void> {
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('load_llama_model', { path });
+    console.log('[Llama] Model loaded:', path);
+  } catch (err) {
+    console.error('[Llama] Model load failed:', err);
+    throw err;
+  }
+}
+
+/**
  * Run inference via llama.cpp Rust backend.
  * Called ONLY when NEXT_PUBLIC_USE_LLAMA_CPP=true.
  */
