@@ -12,6 +12,7 @@
 import { getDB } from '@/lib/db';
 import { embedOne, cosineSimilarity } from './embedding';
 import { searchHadithKeyword, type HadithResult } from '@/lib/hadith-db';
+import { withNativeFallback } from './native';
 
 export interface VerseContext {
   surah: number;
@@ -528,11 +529,29 @@ async function fetchVerseRange(surah: number, startAyah: number, endAyah: number
 }
 
 /**
- * Retrieve relevant verses for a query, then explain them.
- * This is the full RAG pipeline: query → embed → retrieve → explain.
- * Also retrieves relevant hadith from the Kutub al-Sittah corpus.
+ * Native AI inference stub (Phase 4).
+ * Called ONLY when NEXT_PUBLIC_USE_NATIVE_AI=true.
+ * Currently returns mock response; will be wired to Rust backend.
  */
-export async function explainQuery(
+async function nativeExplainQuery(
+  query: string,
+  _lang: string = 'en'
+): Promise<{ explanation: string; verses: VerseContext[]; hadith: HadithContext[] }> {
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    const response = await invoke<string>('run_inference', { prompt: query });
+    return { explanation: response, verses: [], hadith: [] };
+  } catch (err) {
+    console.warn('[NativeAI] Inference failed:', err);
+    throw err;
+  }
+}
+
+/**
+ * Original Transformers.js RAG pipeline.
+ * Always works, used as fallback.
+ */
+async function jsExplainQuery(
   query: string,
   lang: string = 'en'
 ): Promise<{ explanation: string; verses: VerseContext[]; hadith: HadithContext[] }> {
@@ -665,6 +684,22 @@ export async function explainQuery(
   const result = { explanation, verses: scored, hadith: hadithResults };
   cacheSet(cacheKey, result);
   return result;
+}
+
+/**
+ * Public API: routes to native or Transformers.js based on feature flag.
+ * Default: Transformers.js (native disabled).
+ * If native fails, falls back to Transformers.js automatically.
+ */
+export async function explainQuery(
+  query: string,
+  lang: string = 'en'
+): Promise<{ explanation: string; verses: VerseContext[]; hadith: HadithContext[] }> {
+  return withNativeFallback(
+    () => nativeExplainQuery(query, lang),
+    () => jsExplainQuery(query, lang),
+    'explainQuery'
+  );
 }
 
 /**

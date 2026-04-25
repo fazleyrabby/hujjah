@@ -87,8 +87,10 @@ export default function Home() {
       }
     }).catch(console.error);
     
-    // Lazy-load AI models on first chat open (not on startup)
-    // This prevents crashes from loading models immediately
+    // Phase 1: Hardware profiler (non-breaking, logs only)
+    import('@/lib/hardware').then(({ logHardwareProfile }) => {
+      logHardwareProfile();
+    }).catch(console.error);
   }, []);
 
   // ─── Dark Mode Sync ───

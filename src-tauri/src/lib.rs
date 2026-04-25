@@ -5,6 +5,7 @@ use tauri::{Manager, AppHandle};
 mod hydrator;
 mod attach_engine;
 mod downloader;
+mod ai;
 
 /// Get the path to the app data directory where the SQLite DB lives.
 fn db_path(app: &AppHandle, name: &str) -> PathBuf {
@@ -97,6 +98,13 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             purge_legacy_storage,
+            ai::hardware::hardware_profile_cmd,
+            ai::model_selector::select_model_tier_cmd,
+            ai::inference::run_inference,
+            ai::model_downloader::check_native_model_status,
+            ai::model_downloader::list_native_models,
+            ai::inference_engine::run_native_inference,
+            ai::throttle_guard::check_throttle_status,
             hydrator::check_tier_status,
             hydrator::hydrate_tier,
             hydrator::download_research_data,
