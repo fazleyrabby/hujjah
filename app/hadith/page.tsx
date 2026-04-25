@@ -21,10 +21,44 @@ const BOOK_ABBREVIATIONS: Record<number, string> = {
   1652: 'Ibn Majah',
 };
 
+interface TranslatorOption {
+  id: 'github' | 'qwen';
+  label: string;
+  description: string;
+}
+
+const TRANSLATORS: TranslatorOption[] = [
+  { id: 'github', label: 'Classic', description: 'Traditional translations' },
+  { id: 'qwen', label: 'AI', description: 'Modern AI translations' },
+];
+
+function getHadithGrade(sanadLength: number): { label: string; color: string; description: string } {
+  if (sanadLength <= 3) {
+    return {
+      label: 'Sahih',
+      color: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400',
+      description: 'Short chain - highly authentic',
+    };
+  } else if (sanadLength <= 5) {
+    return {
+      label: 'Hasan',
+      color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400',
+      description: 'Medium chain - good authenticity',
+    };
+  } else {
+    return {
+      label: 'Standard',
+      color: 'bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-gray-400',
+      description: 'Longer chain - standard grading',
+    };
+  }
+}
+
 export default function HadithPage() {
   const [mounted, setMounted] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [lang, setLang] = useState<'en' | 'bn'>('en');
+  const [translator, setTranslator] = useState<'github' | 'qwen'>('github');
   const [books, setBooks] = useState<HadithBook[]>([]);
   const [selectedBook, setSelectedBook] = useState<number | null>(null);
   const [hadithData, setHadithData] = useState<HadithPageResult | null>(null);
@@ -130,31 +164,50 @@ export default function HadithPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <div className="flex items-center bg-gray-100 dark:bg-zinc-800 rounded-lg p-0.5">
-                <button
-                  onClick={() => setLang('en')}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-                    lang === 'en'
-                      ? 'bg-white dark:bg-zinc-700 text-gray-900 dark:text-white shadow-sm'
-                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-                  }`}
-                >
-                  EN
-                </button>
-                <button
-                  onClick={() => setLang('bn')}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-                    lang === 'bn'
-                      ? 'bg-white dark:bg-zinc-700 text-gray-900 dark:text-white shadow-sm'
-                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-                  }`}
-                >
-                  বাংলা
-                </button>
-              </div>
+              <div className="flex items-center gap-2">
+                {/* Language Selector */}
+                <div className="flex items-center bg-gray-100 dark:bg-zinc-800 rounded-lg p-0.5">
+                  <button
+                    onClick={() => setLang('en')}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                      lang === 'en'
+                        ? 'bg-white dark:bg-zinc-700 text-gray-900 dark:text-white shadow-sm'
+                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                    }`}
+                  >
+                    EN
+                  </button>
+                  <button
+                    onClick={() => setLang('bn')}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                      lang === 'bn'
+                        ? 'bg-white dark:bg-zinc-700 text-gray-900 dark:text-white shadow-sm'
+                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                    }`}
+                  >
+                    বাংলা
+                  </button>
+                </div>
 
-              <button
+                {/* Translator Selector */}
+                <div className="flex items-center bg-gray-100 dark:bg-zinc-800 rounded-lg p-0.5">
+                  {TRANSLATORS.map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => setTranslator(t.id)}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                        translator === t.id
+                          ? 'bg-white dark:bg-zinc-700 text-gray-900 dark:text-white shadow-sm'
+                          : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                      }`}
+                      title={t.description}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+
+                <button
                 onClick={() => setDarkMode((d) => !d)}
                 className="w-9 h-9 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
                 title={darkMode ? 'Switch to light' : 'Switch to dark'}
@@ -214,7 +267,7 @@ export default function HadithPage() {
             </p>
             <div className="space-y-4">
               {searchResults.map((h) => (
-                <HadithCard key={`${h.book_id}-${h.num_in_book}`} hadith={h} lang={lang} />
+                <HadithCard key={`${h.book_id}-${h.num_in_book}`} hadith={h} lang={lang} translator={translator} />
               ))}
             </div>
           </div>
@@ -297,7 +350,7 @@ export default function HadithPage() {
                   <>
                     <div className="space-y-4">
                       {hadithData.hadiths.map((h) => (
-                        <HadithCard key={h.id} hadith={h} lang={lang} />
+                        <HadithCard key={h.id} hadith={h} lang={lang} translator={translator} />
                       ))}
                     </div>
 
@@ -350,15 +403,26 @@ export default function HadithPage() {
   );
 }
 
-function HadithCard({ hadith, lang }: { hadith: HadithResult; lang: 'en' | 'bn' }) {
+function HadithCard({ hadith, lang, translator }: { hadith: HadithResult; lang: 'en' | 'bn'; translator: 'github' | 'qwen' }) {
+  const grade = getHadithGrade(hadith.sanad_length);
+  
+  // Select translation based on user preference
+  const translation = translator === 'github' 
+    ? hadith.translations?.github ?? hadith.translations?.qwen
+    : hadith.translations?.qwen ?? hadith.translations?.github;
+
   return (
     <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-xl p-4">
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
         <span className="text-[11px] font-semibold px-2 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded-full">
           {hadith.book_name_en ?? hadith.book_name_ar}
         </span>
         <span className="text-[11px] text-gray-400 dark:text-gray-500 font-mono">
           #{hadith.num_in_book}
+        </span>
+        {/* Grade Badge */}
+        <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${grade.color}`} title={grade.description}>
+          {grade.label}
         </span>
         {hadith.sanad_length > 0 && (
           <span className="text-[11px] text-gray-400 dark:text-gray-500 ml-auto">
@@ -374,9 +438,18 @@ function HadithCard({ hadith, lang }: { hadith: HadithResult; lang: 'en' | 'bn' 
         {hadith.matn_ar}
       </p>
 
-      {hadith.matn_en && (
+      {translation && (
         <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed border-t border-gray-100 dark:border-zinc-800 pt-2 mt-2">
-          {hadith.matn_en}
+          {translation}
+        </p>
+      )}
+      
+      {/* Show translator indicator if both available */}
+      {hadith.translations?.github && hadith.translations?.qwen && (
+        <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">
+          Translation: {translator === 'github' ? 'Classic' : 'AI'} 
+          {translator === 'github' && hadith.translations.qwen ? ' (AI available)' : ''}
+          {translator === 'qwen' && hadith.translations.github ? ' (Classic available)' : ''}
         </p>
       )}
     </div>

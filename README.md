@@ -50,6 +50,7 @@ Hadith data comes from the Sanadset 650K corpus. Chunked CSVs are processed by:
 npm run build:hadith           # Kutub al-Sittah only (~36K hadith)
 npm run build:hadith:full      # Full 650K corpus (~2.4GB output)
 python3 scripts/split-hadith-tiers.py  # Core + Research split in one run
+npx ts-node scripts/import-github-hadith-translations.ts  # Import classic translations
 ```
 
 Output: `src-tauri/resources/hujjah-hadith-*.db`
@@ -63,7 +64,7 @@ Output: `src-tauri/resources/hujjah-hadith-*.db`
 | Quran DB | SQLite `hujjah-quran.db` | 6,236 verses, 68K+ translations, FTS5, vectors |
 | Hadith DB | SQLite `hujjah-hadith-core.db` | 36K Kutub al-Sittah hadith, FTS5, narrators |
 | Hadith DB | SQLite `hujjah-hadith-research.db` | 615K additional hadith (downloadable) |
-| Embedding | Local ONNX `all-MiniLM-L6-v2` | 384-dim sentence embeddings |
+| Embedding | Local ONNX `bge-m3` | 1024-dim multilingual embeddings |
 | LLM | Local ONNX `qwen-onnx` (Qwen2.5-0.5B) | Text generation for AI explanations |
 
 ### Quran Schema
@@ -84,6 +85,7 @@ CREATE TABLE narrators (id, name_ar);
 CREATE TABLE hadith_narrators (hadith_id, narrator_id, position);
 CREATE TABLE narrator_edges (from_narrator_id, to_narrator_id, hadith_count);
 CREATE VIRTUAL TABLE hadith_search_idx USING fts5(matn_ar, hadith_id, book_id);
+CREATE TABLE hadith_translations (hadith_id, lang_code, matn_text, translator);
 ```
 
 ## Search Features
@@ -92,8 +94,8 @@ CREATE VIRTUAL TABLE hadith_search_idx USING fts5(matn_ar, hadith_id, book_id);
 - **Surah Navigation**: Click any surah name in the sidebar
 - **Keyword Search**: FTS5 full-text search with highlighted snippets
 - **Auto Language Detection**: Automatically switches between English and Bengali FTS5 index based on input script
-- **Semantic Search**: Local AI embedding search via all-MiniLM-L6-v2
-- **Translator Selector**: View any surah with a specific translator
+- **Semantic Search**: Local AI embedding search via BGE-M3
+- **Translator Selector**: Switch between Classic (GitHub) and AI (Qwen) translations
 - **Hadith Domain**: Toggle to Quran or Hadith; use `@hadith prayer` to route hadith search directly
 
 ## Audio Features
@@ -111,6 +113,16 @@ CREATE VIRTUAL TABLE hadith_search_idx USING fts5(matn_ar, hadith_id, book_id);
 - **Source Citations**: Every AI response shows referenced surah:ayah or hadith book + number
 - **100% Offline**: qwen-onnx model runs in a Web Worker — no data leaves device
 
+## Hadith Grading
+
+Hadith authenticity is graded by sanad chain length (shorter = stronger):
+
+| Grade | Sanad Length | Color | Description |
+|---|---|---|---|
+| **Sahih** | 1-3 narrators | 🟢 Emerald | Highly authentic |
+| **Hasan** | 4-5 narrators | 🟡 Amber | Good authenticity |
+| **Standard** | 6+ narrators | ⚪ Gray | Standard grading |
+
 ## Pages
 
 | Route | Purpose |
@@ -119,6 +131,19 @@ CREATE VIRTUAL TABLE hadith_search_idx USING fts5(matn_ar, hadith_id, book_id);
 | `/about` | Data sources, privacy, links |
 | `/settings` | DB stats, model status, reset |
 | `/chain` | Sanad chain explorer — search narrators, browse teachers/students, view hadith graphs |
+| `/hadith` | Hadith vault — browse all 6 books with translations and grading |
+
+## Data Sources
+
+| Source | Content | Status |
+|---|---|---|
+| Tanzil.net | Quran Arabic Uthmani text | ✅ Verified |
+| Tanzil.net | Quran translations (9 English, 2 Bengali) | ✅ Verified |
+| Sanadset 650K | Hadith corpus (Kutub al-Sittah + more) | ✅ Verified |
+| GitHub (fawazahmed0/hadith-api) | Classic hadith translations (EN + BN) | ✅ Imported |
+| everyayah.com | Audio MP3s (Alafasy) | ✅ Streaming + cache |
+| HuggingFace | BGE-M3 (ONNX embedding) | ✅ Local |
+| HuggingFace | Qwen2.5-0.5B-Instruct (ONNX) | ✅ Local |
 
 ## License
 

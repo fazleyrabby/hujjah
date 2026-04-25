@@ -85,7 +85,7 @@ export async function createEmbeddingPipeline() {
     await initAIEnvironment();
   }
 
-  return pipeline('feature-extraction', 'all-MiniLM-L6-v2', {
+  return pipeline('feature-extraction', 'bge-m3', {
     quantized: true,
   } as any);
 }

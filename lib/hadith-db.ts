@@ -29,6 +29,11 @@ export interface HadithResult {
   sanad_length: number;
   rank: number;
   snippet?: string;
+  // Multiple translations
+  translations?: {
+    qwen?: string | null;      // AI translation
+    github?: string | null;    // Classic translation from GitHub API
+  };
 }
 
 // ─── DB Connection ───
@@ -163,14 +168,16 @@ export async function searchHadithKeyword(
         h.num_in_book,
         h.hadith_ar,
         h.matn_ar,
-        ht.matn_text AS matn_en,
+        ht_qwen.matn_text AS matn_en,
+        ht_github.matn_text AS github_translation,
         h.sanad_length,
         bm25(hadith_search_idx) AS rank,
         snippet(hadith_search_idx, 0, '<mark>', '</mark>', '...', 32) AS snippet
       FROM hadith_search_idx
       JOIN hadiths h ON h.id = hadith_search_idx.rowid
       JOIN hadith_books b ON b.id = h.book_id
-      LEFT JOIN hadith_translations ht ON ht.hadith_id = h.id AND ht.lang_code = ? AND ht.translator = 'qwen3.5-9b'
+      LEFT JOIN hadith_translations ht_qwen ON ht_qwen.hadith_id = h.id AND ht_qwen.lang_code = ? AND ht_qwen.translator = 'qwen3.5-9b'
+      LEFT JOIN hadith_translations ht_github ON ht_github.hadith_id = h.id AND ht_github.lang_code = ? AND ht_github.translator = 'github-classic'
       WHERE hadith_search_idx MATCH ?
       ORDER BY
         bm25(hadith_search_idx) +
@@ -179,7 +186,7 @@ export async function searchHadithKeyword(
              ELSE 0 END
       LIMIT ?
     `;
-    rows = await db.select<any[]>(sql, [lang, cleanQuery, Math.min(limit, 50)]);
+    rows = await db.select<any[]>(sql, [lang, lang, cleanQuery, Math.min(limit, 50)]);
   }
 
   return (rows ?? []).map((r) => ({
@@ -190,10 +197,14 @@ export async function searchHadithKeyword(
     num_in_book: r.num_in_book,
     hadith_ar: r.hadith_ar,
     matn_ar: r.matn_ar,
-    matn_en: r.matn_en ?? null,
+    matn_en: r.github_translation ?? r.matn_en ?? null,
     sanad_length: r.sanad_length,
     rank: r.rank,
     snippet: r.snippet ?? r.matn_ar.slice(0, 160) + '...',
+    translations: {
+      qwen: r.matn_en ?? null,
+      github: r.github_translation ?? null,
+    },
   }));
 }
 
@@ -214,16 +225,18 @@ export async function getHadithByRef(
       h.num_in_book,
       h.hadith_ar,
       h.matn_ar,
-      ht.matn_text AS matn_en,
+      ht_qwen.matn_text AS matn_en,
+      ht_github.matn_text AS github_translation,
       h.sanad_length,
       0 AS rank
     FROM hadiths h
     JOIN hadith_books b ON b.id = h.book_id
-    LEFT JOIN hadith_translations ht ON ht.hadith_id = h.id AND ht.lang_code = ? AND ht.translator = 'qwen3.5-9b'
+    LEFT JOIN hadith_translations ht_qwen ON ht_qwen.hadith_id = h.id AND ht_qwen.lang_code = ? AND ht_qwen.translator = 'qwen3.5-9b'
+    LEFT JOIN hadith_translations ht_github ON ht_github.hadith_id = h.id AND ht_github.lang_code = ? AND ht_github.translator = 'github-classic'
     WHERE h.book_id = ? AND h.num_in_book = ?
     LIMIT 1
   `;
-  const rows = await db.select<any[]>(sql, [lang, bookId, numInBook]);
+  const rows = await db.select<any[]>(sql, [lang, lang, bookId, numInBook]);
   if (rows.length === 0) return null;
   const r = rows[0];
   return {
@@ -234,10 +247,14 @@ export async function getHadithByRef(
     num_in_book: r.num_in_book,
     hadith_ar: r.hadith_ar,
     matn_ar: r.matn_ar,
-    matn_en: r.matn_en ?? null,
+    matn_en: r.matn_en ?? r.github_translation ?? null,
     sanad_length: r.sanad_length,
     rank: 0,
     snippet: r.matn_ar,
+    translations: {
+      qwen: r.matn_en ?? null,
+      github: r.github_translation ?? null,
+    },
   };
 }
 
@@ -273,17 +290,19 @@ export async function getHadithsByBook(
       h.num_in_book,
       h.hadith_ar,
       h.matn_ar,
-      ht.matn_text AS matn_en,
+      ht_qwen.matn_text AS matn_en,
+      ht_github.matn_text AS github_translation,
       h.sanad_length,
       0 AS rank
     FROM hadiths h
     JOIN hadith_books b ON b.id = h.book_id
-    LEFT JOIN hadith_translations ht ON ht.hadith_id = h.id AND ht.lang_code = ? AND ht.translator = 'qwen3.5-9b'
+    LEFT JOIN hadith_translations ht_qwen ON ht_qwen.hadith_id = h.id AND ht_qwen.lang_code = ? AND ht_qwen.translator = 'qwen3.5-9b'
+    LEFT JOIN hadith_translations ht_github ON ht_github.hadith_id = h.id AND ht_github.lang_code = ? AND ht_github.translator = 'github-classic'
     WHERE h.book_id = ?
     ORDER BY h.num_in_book ASC
     LIMIT ? OFFSET ?
   `;
-  const rows = await db.select<any[]>(sql, [lang, bookId, perPage, offset]);
+  const rows = await db.select<any[]>(sql, [lang, lang, bookId, perPage, offset]);
 
   return {
     hadiths: rows.map((r) => ({
@@ -294,10 +313,14 @@ export async function getHadithsByBook(
       num_in_book: r.num_in_book,
       hadith_ar: r.hadith_ar,
       matn_ar: r.matn_ar,
-      matn_en: r.matn_en ?? null,
+      matn_en: r.matn_en ?? r.github_translation ?? null,
       sanad_length: r.sanad_length,
       rank: r.rank,
       snippet: r.matn_ar,
+      translations: {
+        qwen: r.matn_en ?? null,
+        github: r.github_translation ?? null,
+      },
     })),
     total,
     totalPages: Math.ceil(total / perPage),
