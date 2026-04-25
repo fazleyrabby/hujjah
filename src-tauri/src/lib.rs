@@ -105,6 +105,7 @@ pub fn run() {
             ai::model_downloader::list_native_models,
             ai::inference_engine::run_native_inference,
             ai::throttle_guard::check_throttle_status,
+            ai::llama::run_llama,
             hydrator::check_tier_status,
             hydrator::hydrate_tier,
             hydrator::download_research_data,

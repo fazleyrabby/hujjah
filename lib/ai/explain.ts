@@ -13,6 +13,7 @@ import { getDB } from '@/lib/db';
 import { embedOne, cosineSimilarity } from './embedding';
 import { searchHadithKeyword, type HadithResult } from '@/lib/hadith-db';
 import { withNativeFallback } from './native';
+import { withLlamaFallback, USE_LLAMA_CPP } from './llama';
 import { logInferenceStart, logInferenceEnd } from './rollout';
 
 export interface VerseContext {
@@ -717,16 +718,48 @@ export async function explainQuery(
 ): Promise<{ explanation: string; verses: VerseContext[]; hadith: HadithContext[] }> {
   const start = logInferenceStart('fallback', query.length);
   try {
-    const result = await withNativeFallback(
-      () => nativeExplainQuery(query, lang),
-      () => jsExplainQuery(query, lang),
-      'explainQuery'
-    );
+    let result;
+    if (USE_LLAMA_CPP) {
+      // Phase 1: Route to llama.cpp (candle GGUF engine)
+      result = await withLlamaFallback(
+        () => llamaExplainQuery(query, lang),
+        () => jsExplainQuery(query, lang),
+        'explainQuery'
+      );
+    } else {
+      // Legacy: Route to native AI stub or Transformers.js
+      result = await withNativeFallback(
+        () => nativeExplainQuery(query, lang),
+        () => jsExplainQuery(query, lang),
+        'explainQuery'
+      );
+    }
     logInferenceEnd(start, 'fallback', query.length, result.explanation.length);
     return result;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logInferenceEnd(start, 'fallback', query.length, 0, message);
+    throw err;
+  }
+}
+
+/**
+ * llama.cpp GGUF inference (Phase 1+).
+ * Called ONLY when NEXT_PUBLIC_USE_LLAMA_CPP=true.
+ */
+async function llamaExplainQuery(
+  query: string,
+  _lang: string = 'en'
+): Promise<{ explanation: string; verses: VerseContext[]; hadith: HadithContext[] }> {
+  const start = logInferenceStart('llama.cpp', query.length);
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    const response = await invoke<string>('run_llama', { prompt: query });
+    logInferenceEnd(start, 'llama.cpp', query.length, response.length);
+    return { explanation: response, verses: [], hadith: [] };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logInferenceEnd(start, 'llama.cpp', query.length, 0, message);
     throw err;
   }
 }
