@@ -13,6 +13,7 @@ import { getDB } from '@/lib/db';
 import { embedOne, cosineSimilarity } from './embedding';
 import { searchHadithKeyword, type HadithResult } from '@/lib/hadith-db';
 import { withNativeFallback } from './native';
+import { logInferenceStart, logInferenceEnd } from './rollout';
 
 export interface VerseContext {
   surah: number;
@@ -537,11 +538,15 @@ async function nativeExplainQuery(
   query: string,
   _lang: string = 'en'
 ): Promise<{ explanation: string; verses: VerseContext[]; hadith: HadithContext[] }> {
+  const start = logInferenceStart('native', query.length);
   try {
     const { invoke } = await import('@tauri-apps/api/core');
     const response = await invoke<string>('run_inference', { prompt: query });
+    logInferenceEnd(start, 'native', query.length, response.length);
     return { explanation: response, verses: [], hadith: [] };
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logInferenceEnd(start, 'native', query.length, 0, message);
     console.warn('[NativeAI] Inference failed:', err);
     throw err;
   }
@@ -555,37 +560,45 @@ async function jsExplainQuery(
   query: string,
   lang: string = 'en'
 ): Promise<{ explanation: string; verses: VerseContext[]; hadith: HadithContext[] }> {
-  // Fast path: greetings / small talk — no RAG needed
-  const chitchat = detectChitchat(query, lang);
-  if (chitchat) {
-    return { explanation: chitchat, verses: [], hadith: [] };
-  }
+  const start = logInferenceStart('transformers.js', query.length);
 
-  // Phase 7: Check query cache (last 10 queries)
-  const cacheKey = `${lang}:${query.trim().toLowerCase()}`;
-  const cached = cacheGet(cacheKey);
-  if (cached) return cached;
+  try {
+    // Fast path: greetings / small talk — no RAG needed
+    const chitchat = detectChitchat(query, lang);
+    if (chitchat) {
+      logInferenceEnd(start, 'transformers.js', query.length, chitchat.length);
+      return { explanation: chitchat, verses: [], hadith: [] };
+    }
 
-  // Classify intent to tailor prompt
-  const intent = classifyIntent(query);
+    // Phase 7: Check query cache (last 10 queries)
+    const cacheKey = `${lang}:${query.trim().toLowerCase()}`;
+    const cached = cacheGet(cacheKey);
+    if (cached) {
+      logInferenceEnd(start, 'transformers.js', query.length, cached.explanation.length);
+      return cached;
+    }
 
-  // Phase 6: Low-end device — keyword-only, no embedding
-  const lowEnd = isLowEndDevice();
+    // Classify intent to tailor prompt
+    const intent = classifyIntent(query);
 
-  // Try to detect specific surah / verse references first
-  const specificVerses = await detectSpecificVerses(query, lang);
-  if (specificVerses && specificVerses.length > 0) {
-    const explanation = await explainVerse(query, specificVerses, lang);
-    const result = { explanation, verses: specificVerses, hadith: [] };
-    cacheSet(cacheKey, result);
-    return result;
-  }
+    // Phase 6: Low-end device — keyword-only, no embedding
+    const lowEnd = isLowEndDevice();
 
-  const db = await getDB();
+    // Try to detect specific surah / verse references first
+    const specificVerses = await detectSpecificVerses(query, lang);
+    if (specificVerses && specificVerses.length > 0) {
+      const explanation = await explainVerse(query, specificVerses, lang);
+      const result = { explanation, verses: specificVerses, hadith: [] };
+      cacheSet(cacheKey, result);
+      logInferenceEnd(start, 'transformers.js', query.length, explanation.length);
+      return result;
+    }
 
-  let scored: VerseContext[] = [];
+    const db = await getDB();
 
-  if (lowEnd) {
+    let scored: VerseContext[] = [];
+
+    if (lowEnd) {
     // Low-end: FTS5 keyword search only, no embedding computation
     const ftsQuery = query.trim().toLowerCase();
     const ftsSql = `
@@ -683,23 +696,39 @@ async function jsExplainQuery(
 
   const result = { explanation, verses: scored, hadith: hadithResults };
   cacheSet(cacheKey, result);
+  logInferenceEnd(start, 'transformers.js', query.length, explanation.length);
   return result;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logInferenceEnd(start, 'transformers.js', query.length, 0, message);
+    throw err;
+  }
 }
 
 /**
  * Public API: routes to native or Transformers.js based on feature flag.
  * Default: Transformers.js (native disabled).
  * If native fails, falls back to Transformers.js automatically.
+ * Phase 8: Logs all inference attempts for rollout monitoring.
  */
 export async function explainQuery(
   query: string,
   lang: string = 'en'
 ): Promise<{ explanation: string; verses: VerseContext[]; hadith: HadithContext[] }> {
-  return withNativeFallback(
-    () => nativeExplainQuery(query, lang),
-    () => jsExplainQuery(query, lang),
-    'explainQuery'
-  );
+  const start = logInferenceStart('fallback', query.length);
+  try {
+    const result = await withNativeFallback(
+      () => nativeExplainQuery(query, lang),
+      () => jsExplainQuery(query, lang),
+      'explainQuery'
+    );
+    logInferenceEnd(start, 'fallback', query.length, result.explanation.length);
+    return result;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logInferenceEnd(start, 'fallback', query.length, 0, message);
+    throw err;
+  }
 }
 
 /**
