@@ -91,6 +91,19 @@ export default function Home() {
     import('@/lib/hardware').then(({ logHardwareProfile }) => {
       logHardwareProfile();
     }).catch(console.error);
+
+    // Phase 4: Auto-load llama.cpp model if enabled
+    if (process.env.NEXT_PUBLIC_USE_LLAMA_CPP === 'true') {
+      const modelPath = process.env.LLAMA_MODEL_PATH;
+      if (modelPath) {
+        console.log('[App] Auto-loading llama.cpp model:', modelPath);
+        import('@tauri-apps/api/core').then(({ invoke }) => {
+          invoke('load_llama_model', { path: modelPath })
+            .then(() => console.log('[App] Model loaded successfully'))
+            .catch((err) => console.error('[App] Model load failed:', err));
+        }).catch(console.error);
+      }
+    }
   }, []);
 
   // ─── Dark Mode Sync ───
