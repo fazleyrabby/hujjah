@@ -16,7 +16,7 @@ export const EMBEDDING_DIM = 1024;
 // Options:
 //   'qwen-onnx'           → Qwen2.5-0.5B, ~512MB, fast, basic quality
 //   'qwen2.5-1.5b'        → Qwen2.5-1.5B-Instruct Q4F16, ~1.2GB, much better quality
-export const GENERATION_MODEL = 'qwen-onnx' as const;
+export const GENERATION_MODEL = 'qwen2.5-1.5b' as const;
 
 // ─── Model base path (relative to public/models symlink) ───
 export const MODEL_BASE_PATH = '/models';

@@ -7,12 +7,18 @@
 
 /**
  * Check if llama.cpp native inference is enabled.
- * Default: false — always falls back to Transformers.js.
+ * Default: true — uses 1.5B GGUF model for best quality.
+ * Falls back to Transformers.js if disabled.
  */
 export const USE_LLAMA_CPP: boolean =
-  process.env.NEXT_PUBLIC_USE_LLAMA_CPP === 'true';
+  process.env.NEXT_PUBLIC_USE_LLAMA_CPP !== 'false';
+
+export const DEFAULT_LLAMA_MODEL_PATH: string =
+  process.env.NEXT_PUBLIC_LLAMA_MODEL_PATH ||
+  '/Users/rabbi/Desktop/Projects/hujjah/src-tauri/resources/models/qwen-1.5b-q4/qwen2.5-1.5b-instruct-q4_k_m.gguf';
 
 console.log('[AI] llama.cpp enabled:', USE_LLAMA_CPP);
+console.log('[AI] llama.cpp model path:', DEFAULT_LLAMA_MODEL_PATH);
 
 /**
  * Load the GGUF model manually.

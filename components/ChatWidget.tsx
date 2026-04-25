@@ -14,6 +14,7 @@ export default function ChatWidget({ lang, onNavigateToVerse }: ChatWidgetProps)
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [input, setInput] = useState('');
+  const [modelLoaded, setModelLoaded] = useState(false);
   const { messages, loading, error, sendMessage, translateMessage, clearChat } = useChat();
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -31,6 +32,24 @@ export default function ChatWidget({ lang, onNavigateToVerse }: ChatWidgetProps)
       setTimeout(() => inputRef.current?.focus(), 100);
     }
   }, [open]);
+
+  // Load 1.5B model on first chat open
+  useEffect(() => {
+    if (open && !modelLoaded) {
+      console.log('[ChatWidget] Loading 1.5B model for chat...');
+      import('@/lib/ai/llama').then(({ loadLlamaModel, DEFAULT_LLAMA_MODEL_PATH }) => {
+        loadLlamaModel(DEFAULT_LLAMA_MODEL_PATH)
+          .then(() => {
+            console.log('[ChatWidget] 1.5B model loaded successfully');
+            setModelLoaded(true);
+          })
+          .catch((err) => {
+            console.warn('[ChatWidget] Model load failed, will use fallback:', err);
+            setModelLoaded(true); // Mark as attempted so we don't retry
+          });
+      }).catch(console.error);
+    }
+  }, [open, modelLoaded]);
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -157,6 +176,11 @@ export default function ChatWidget({ lang, onNavigateToVerse }: ChatWidgetProps)
                 <p className="text-xs text-gray-400 dark:text-gray-500">
                   {isBn ? 'যেমন: "সালাত সম্পর্কে ব্যাখ্যা করুন"' : 'e.g., "explain the concept of tawbah"'}
                 </p>
+                {open && !modelLoaded && (
+                  <p className="text-xs text-teal-600 dark:text-teal-400 mt-2 animate-pulse">
+                    {isBn ? '🧠 ১.৫ বিলিয়ন প্যারামিটার মডেল লোড হচ্ছে...' : '🧠 Loading 1.5B parameter model...'}
+                  </p>
+                )}
               </div>
             )}
 

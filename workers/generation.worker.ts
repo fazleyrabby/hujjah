@@ -8,7 +8,7 @@
 import { env, pipeline } from '@huggingface/transformers';
 
 // NOTE: Keep in sync with lib/ai/model-config.ts
-const GENERATION_MODEL = 'qwen-onnx';
+const GENERATION_MODEL = 'qwen2.5-1.5b';
 const MODEL_PATH = `/models/${GENERATION_MODEL}`;
 
 // Detect model capability tier from model name.
