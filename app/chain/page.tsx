@@ -7,6 +7,7 @@ import {
   getNarratorEdges,
   getHadithsForEdge,
   getNarratorGraph,
+  getHadithChain,
   type NarratorNode,
   type NarratorEdge,
   type HadithChain,
@@ -161,6 +162,18 @@ function getNarratorName(node: NarratorNode, lang: Lang): string {
   return node.name_en ?? node.name_ar;
 }
 
+function getEdgeNarratorName(e: NarratorEdge, type: 'from' | 'to', lang: Lang): string {
+  if (type === 'from') {
+    if (lang === 'bn') return (e as any).from_name_bn ?? (e as any).from_name_en ?? e.from_name;
+    if (lang === 'ar') return e.from_name;
+    return (e as any).from_name_en ?? e.from_name;
+  } else {
+    if (lang === 'bn') return (e as any).to_name_bn ?? (e as any).to_name_en ?? e.to_name;
+    if (lang === 'ar') return e.to_name;
+    return (e as any).to_name_en ?? e.to_name;
+  }
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ChainPage() {
@@ -176,6 +189,7 @@ export default function ChainPage() {
   const [edgeHadith, setEdgeHadith] = useState<HadithChain[]>([]);
   const [graphMode, setGraphMode] = useState(false);
   const [graphData, setGraphData] = useState<{ nodes: NarratorNode[]; edges: NarratorEdge[] } | null>(null);
+  const [hadithChainData, setHadithChainData] = useState<{ hadith: any; chain: NarratorNode[] } | null>(null);
 
   const t = CHAIN_I18N[lang];
   const isRtl = lang === 'ar';
@@ -186,6 +200,17 @@ export default function ChainPage() {
     if (saved) setDarkMode(saved === 'true');
     const savedLang = localStorage.getItem('hujjah-chain-lang') as Lang | null;
     if (savedLang && ['en', 'bn', 'ar'].includes(savedLang)) setLang(savedLang);
+
+    // Check for hadith param
+    const params = new URLSearchParams(window.location.search);
+    const hId = params.get('hadith');
+    if (hId) {
+      setLoading(true);
+      getHadithChain(Number(hId))
+        .then(setHadithChainData)
+        .catch(console.error)
+        .finally(() => setLoading(false));
+    }
   }, []);
 
   useEffect(() => {
@@ -313,8 +338,93 @@ export default function ChainPage() {
             </div>
           )}
 
+          {/* Hadith Chain View (Linear Sanad) */}
+          {hadithChainData && !selectedNarrator && results.length === 0 && (
+            <div className="mt-8 animate-in fade-in slide-in-from-top-4 duration-500">
+              <div className="bg-white dark:bg-zinc-900 border border-teal-200 dark:border-teal-800/50 rounded-2xl shadow-sm overflow-hidden">
+                {/* Hadith Header */}
+                <div className="bg-teal-50/50 dark:bg-teal-900/10 px-6 py-4 border-b border-teal-100 dark:border-teal-800/30">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-teal-700 dark:text-teal-400 bg-teal-100 dark:bg-teal-900/40 px-2 py-0.5 rounded">
+                        {hadithChainData.hadith.book_name_en || hadithChainData.hadith.book_name_ar}
+                      </span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">#{hadithChainData.hadith.num_in_book}</span>
+                    </div>
+                    <button 
+                      onClick={() => setHadithChainData(null)}
+                      className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed font-arabic text-right mb-2" dir="rtl">
+                    {hadithChainData.hadith.matn_ar}
+                  </p>
+                  {(lang === 'en' ? hadithChainData.hadith.matn_en : hadithChainData.hadith.matn_bn) && (
+                    <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed border-t border-teal-100/50 dark:border-teal-800/20 pt-2">
+                      {lang === 'en' ? hadithChainData.hadith.matn_en : (hadithChainData.hadith.matn_bn || hadithChainData.hadith.matn_en)}
+                    </p>
+                  )}
+                </div>
+
+                {/* Vertical Sanad */}
+                <div className="px-6 py-8 relative">
+                  {/* Connecting Line */}
+                  <div className="absolute left-[2.25rem] top-8 bottom-8 w-0.5 bg-gradient-to-b from-teal-500/50 to-teal-500/10" />
+
+                  <div className="space-y-6">
+                    {hadithChainData.chain.map((n, i) => (
+                      <div key={n.id} className="relative flex gap-4 group">
+                        {/* Timeline Marker */}
+                        <div className="relative z-10 flex-shrink-0 w-10 h-10 rounded-full bg-white dark:bg-zinc-900 border-2 border-teal-500 flex items-center justify-center text-teal-600 dark:text-teal-400 font-bold text-sm shadow-sm group-hover:scale-110 transition-transform">
+                          {i + 1}
+                        </div>
+
+                        {/* Narrator Card */}
+                        <button
+                          onClick={() => handleSelectNarrator(n)}
+                          className="flex-1 text-left p-4 rounded-xl border border-gray-100 dark:border-zinc-800 hover:border-teal-300 dark:hover:border-teal-700 hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-all shadow-sm group-hover:shadow-md"
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <div>
+                              <h5 className="font-arabic text-base text-gray-900 dark:text-white" dir="rtl">{n.name_ar}</h5>
+                              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                {getNarratorName(n, lang)}
+                              </p>
+                            </div>
+                            {n.reliability && (
+                              <span className={clsx('text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider', RELIABILITY_COLORS[n.reliability] || 'bg-gray-100')}>
+                                {t.reliability[n.reliability] || n.reliability}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {n.tabaqah && (
+                              <span className="text-[10px] text-gray-400 dark:text-gray-500 border border-gray-100 dark:border-zinc-800 px-1.5 py-0.5 rounded">
+                                {t.tabaqahLabels[n.tabaqah]}
+                              </span>
+                            )}
+                            {n.death_year && (
+                              <span className="text-[10px] text-gray-400 dark:text-gray-500 border border-gray-100 dark:border-zinc-800 px-1.5 py-0.5 rounded">
+                                {t.died} {n.death_year} {t.ah}
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Guide — shown only before any narrator is selected */}
-          {!selectedNarrator && results.length === 0 && !query && (
+          {!selectedNarrator && results.length === 0 && !query && !hadithChainData && (
             <div className="mt-6 space-y-5">
               {/* How-to steps */}
               <div className="bg-teal-50 dark:bg-teal-900/10 border border-teal-100 dark:border-teal-800/40 rounded-xl p-4">
@@ -462,7 +572,12 @@ export default function ChainPage() {
                       )}
                       dir="rtl"
                     >
-                      <span className="text-sm text-gray-900 dark:text-white">{e.from_name}</span>
+                      <div className="flex flex-col text-right">
+                        <span className="text-sm text-gray-900 dark:text-white">{e.from_name}</span>
+                        {lang !== 'ar' && (
+                          <span className="text-[10px] text-gray-400 dark:text-gray-500">{getEdgeNarratorName(e, 'from', lang)}</span>
+                        )}
+                      </div>
                       <span className="text-xs text-teal-600 dark:text-teal-400 font-medium ml-2">
                         {t.hadithCount(e.hadith_count)}
                       </span>
@@ -491,7 +606,12 @@ export default function ChainPage() {
                       )}
                       dir="rtl"
                     >
-                      <span className="text-sm text-gray-900 dark:text-white">{e.to_name}</span>
+                      <div className="flex flex-col text-right">
+                        <span className="text-sm text-gray-900 dark:text-white">{e.to_name}</span>
+                        {lang !== 'ar' && (
+                          <span className="text-[10px] text-gray-400 dark:text-gray-500">{getEdgeNarratorName(e, 'to', lang)}</span>
+                        )}
+                      </div>
                       <span className="text-xs text-teal-600 dark:text-teal-400 font-medium ml-2">
                         {t.hadithCount(e.hadith_count)}
                       </span>

@@ -92,6 +92,8 @@ export async function getNarratorEdges(narratorId: number): Promise<{
     SELECT
       e.from_narrator_id,
       n.name_ar as from_name,
+      n.name_en as from_name_en,
+      n.name_bn as from_name_bn,
       e.to_narrator_id,
       nn.name_ar as to_name,
       e.hadith_count
@@ -108,6 +110,8 @@ export async function getNarratorEdges(narratorId: number): Promise<{
       n.name_ar as from_name,
       e.to_narrator_id,
       nn.name_ar as to_name,
+      nn.name_en as to_name_en,
+      nn.name_bn as to_name_bn,
       e.hadith_count
     FROM narrator_edges e
     JOIN narrators n ON n.id = e.from_narrator_id
@@ -139,9 +143,13 @@ export async function getHadithsForEdge(
       b.name_ar as book_name_ar,
       b.name_en as book_name_en,
       h.num_in_book,
-      h.matn_ar
+      h.matn_ar,
+      ht_en.matn_text as matn_en,
+      ht_bn.matn_text as matn_bn
     FROM hadiths h
     JOIN hadith_books b ON b.id = h.book_id
+    LEFT JOIN hadith_translations ht_en ON ht_en.hadith_id = h.id AND ht_en.lang_code = 'en'
+    LEFT JOIN hadith_translations ht_bn ON ht_bn.hadith_id = h.id AND ht_bn.lang_code = 'bn'
     JOIN hadith_narrators hn1 ON hn1.hadith_id = h.id
     JOIN hadith_narrators hn2 ON hn2.hadith_id = h.id AND hn2.position = hn1.position + 1
     WHERE hn1.narrator_id = ? AND hn2.narrator_id = ?
@@ -149,15 +157,7 @@ export async function getHadithsForEdge(
     LIMIT ?
   `;
 
-  const rows = await db.select<
-    {
-      hadith_id: number;
-      book_name_ar: string;
-      book_name_en: string | null;
-      num_in_book: number;
-      matn_ar: string;
-    }[]
-  >(sql, [fromNarratorId, toNarratorId, limit]);
+  const rows = await db.select<any[]>(sql, [fromNarratorId, toNarratorId, limit]);
 
   // Fetch chain for each hadith
   const result: HadithChain[] = [];
@@ -176,8 +176,9 @@ export async function getHadithsForEdge(
       book_name_en: r.book_name_en,
       num_in_book: r.num_in_book,
       matn_ar: r.matn_ar,
+      matn_en: r.matn_en || r.matn_bn, // Fallback
       chain,
-    });
+    } as any);
   }
 
   return result;
@@ -193,6 +194,8 @@ export async function getHadithChain(hadithId: number): Promise<{
     num_in_book: number;
     matn_ar: string;
     hadith_ar: string;
+    matn_en: string | null;
+    matn_bn: string | null;
   };
   chain: NarratorNode[];
 }> {
@@ -200,21 +203,16 @@ export async function getHadithChain(hadithId: number): Promise<{
 
   const hadithSql = `
     SELECT h.id, b.name_ar as book_name_ar, b.name_en as book_name_en,
-      h.num_in_book, h.matn_ar, h.hadith_ar
+      h.num_in_book, h.matn_ar, h.hadith_ar,
+      ht_en.matn_text as matn_en,
+      ht_bn.matn_text as matn_bn
     FROM hadiths h
     JOIN hadith_books b ON b.id = h.book_id
+    LEFT JOIN hadith_translations ht_en ON ht_en.hadith_id = h.id AND ht_en.lang_code = 'en'
+    LEFT JOIN hadith_translations ht_bn ON ht_bn.hadith_id = h.id AND ht_bn.lang_code = 'bn'
     WHERE h.id = ?
   `;
-  const hadithRows = await db.select<
-    {
-      id: number;
-      book_name_ar: string;
-      book_name_en: string | null;
-      num_in_book: number;
-      matn_ar: string;
-      hadith_ar: string;
-    }[]
-  >(hadithSql, [hadithId]);
+  const hadithRows = await db.select<any[]>(hadithSql, [hadithId]);
 
   const chainSql = `
     SELECT n.id, n.name_ar, n.name_en, n.name_bn, n.birth_year, n.death_year, n.tabaqah, n.reliability, n.city, n.data_source
@@ -257,6 +255,8 @@ export async function getNarratorGraph(
       JOIN narrators n ON n.id = e.from_narrator_id
       JOIN narrators nn ON nn.id = e.to_narrator_id
       WHERE e.from_narrator_id IN (${placeholders})
+      ORDER BY e.hadith_count DESC
+      LIMIT 100
     `;
     const outEdges = await db.select<NarratorEdge[]>(outSql, currentIds);
 

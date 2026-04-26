@@ -1,6 +1,6 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 
 export interface LangOption {
   code: string;
@@ -36,11 +36,25 @@ export default function AppNav({
   extra,
 }: AppNavProps) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  const isHome = pathname === '/';
 
   return (
     <div className="max-w-3xl mx-auto px-4 h-11 flex items-center justify-between gap-3">
-      {/* Left: logo + nav links */}
+      {/* Left: back button (if not home) + nav links */}
       <div className="flex items-center gap-0.5">
+        {!isHome && (
+          <button
+            onClick={() => router.back()}
+            className="p-1.5 mr-1 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
+            title="Go back"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+          </button>
+        )}
         <a
           href="/"
           className="text-sm font-bold text-gray-900 dark:text-white tracking-tight hover:text-teal-600 dark:hover:text-teal-400 transition-colors px-2 py-1"

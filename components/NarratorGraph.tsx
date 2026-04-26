@@ -2,49 +2,15 @@
 
 /**
  * components/NarratorGraph.tsx
- *
- * Force-directed graph for sanad chain visualization.
- * Nodes colored by tabaqah (generation), sized by degree.
- * Uses react-force-graph-2d, loaded dynamically (SSR-safe).
+ * 
+ * A clean, horizontally-scrollable hierarchical visualizer.
+ * Prevents overcrowding by using fixed spacing and a dynamic canvas width.
  */
 
-import dynamic from 'next/dynamic';
-import { useRef, useCallback, useMemo } from 'react';
+import { useMemo, useRef, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { NarratorNode, NarratorEdge } from '@/lib/chain-db';
-
-// SSR-safe dynamic import
-const ForceGraph2D = dynamic(() => import('react-force-graph-2d'), { ssr: false });
-
-// ─── Tabaqah config ───────────────────────────────────────────────────────────
-
-const TABAQAH_COLORS: Record<number, string> = {
-  1: '#10b981', // Sahaba — teal/green
-  2: '#3b82f6', // Tabi'un — blue
-  3: '#8b5cf6', // Tabi' al-Tabi'in — purple
-  4: '#f59e0b', // Later scholars — amber
-};
-const TABAQAH_LABELS: Record<number, string> = {
-  1: "Sahaba",
-  2: "Tabi'un",
-  3: "Tabi' al-Tabi'in",
-  4: "Later Scholar",
-};
-const DEFAULT_NODE_COLOR = '#6b7280'; // gray for unknown
-
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-interface GraphNode extends NarratorNode {
-  // react-force-graph adds x/y at runtime
-  x?: number;
-  y?: number;
-  degree?: number;
-}
-
-interface GraphLink {
-  source: number;
-  target: number;
-  hadith_count: number;
-}
+import { clsx } from 'clsx';
 
 interface Props {
   nodes: NarratorNode[];
@@ -52,11 +18,21 @@ interface Props {
   centerId: number;
   darkMode: boolean;
   onNodeClick: (node: NarratorNode) => void;
-  width?: number;
+  width?: number; // Base width of the container
   height?: number;
 }
 
-// ─── Component ───────────────────────────────────────────────────────────────
+const RELIABILITY_COLORS: Record<string, string> = {
+  thiqah: 'bg-emerald-500',
+  saduq:  'bg-blue-500',
+  daif:   'bg-amber-500',
+  mawdu:  'bg-red-500',
+};
+
+const NODE_WIDTH = 120;
+const NODE_HEIGHT = 45;
+const VERTICAL_GAP = 100;
+const HORIZONTAL_GAP = 40;
 
 export default function NarratorGraph({
   nodes,
@@ -64,116 +40,241 @@ export default function NarratorGraph({
   centerId,
   darkMode,
   onNodeClick,
-  width = 600,
-  height = 420,
+  width: containerWidth = 672,
+  height = 480,
 }: Props) {
-  const tooltipRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isFullScreen, setIsFullScreen] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
-  // Compute degree map for node sizing
-  const degreeMap = useMemo(() => {
-    const m = new Map<number, number>();
-    for (const e of edges) {
-      m.set(e.from_narrator_id, (m.get(e.from_narrator_id) ?? 0) + 1);
-      m.set(e.to_narrator_id, (m.get(e.to_narrator_id) ?? 0) + 1);
-    }
-    return m;
-  }, [edges]);
-
-  // Build graph data for react-force-graph
-  const graphData = useMemo(() => ({
-    nodes: nodes.map((n) => ({ ...n, degree: degreeMap.get(n.id) ?? 1 })) as GraphNode[],
-    links: edges.map((e) => ({
-      source: e.from_narrator_id,
-      target: e.to_narrator_id,
-      hadith_count: e.hadith_count,
-    })) as GraphLink[],
-  }), [nodes, edges, degreeMap]);
-
-  // Node color by tabaqah
-  const nodeColor = useCallback((node: GraphNode) => {
-    if (node.id === centerId) return '#0d9488'; // teal for center
-    return TABAQAH_COLORS[node.tabaqah ?? 0] ?? DEFAULT_NODE_COLOR;
-  }, [centerId]);
-
-  // Node size by degree
-  const nodeSize = useCallback((node: GraphNode) => {
-    if (node.id === centerId) return 8;
-    return 4 + Math.sqrt(node.degree ?? 1);
-  }, [centerId]);
-
-  // Edge width by hadith count
-  const linkWidth = useCallback((link: GraphLink) => {
-    return Math.max(1, Math.log(link.hadith_count + 1));
+  useEffect(() => {
+    setMounted(true);
   }, []);
 
-  // Tooltip on hover
-  const handleNodeHover = useCallback((node: GraphNode | null) => {
-    const tip = tooltipRef.current;
-    if (!tip) return;
-    if (!node) {
-      tip.style.display = 'none';
-      return;
+  // Lock body scroll when in fullscreen
+  useEffect(() => {
+    if (isFullScreen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
     }
-    const tabLabel = node.tabaqah ? TABAQAH_LABELS[node.tabaqah] ?? '' : '';
-    const deathStr = node.death_year ? `d. ${node.death_year} AH` : '';
-    const bnName = node.name_bn ? `<div class="text-teal-400 text-xs mt-0.5">${node.name_bn}</div>` : '';
-    const sourceBadge = node.data_source ? `<span class="text-gray-500 text-[10px] ml-1">(${node.data_source})</span>` : '';
-    const metaParts = [tabLabel, deathStr].filter(Boolean);
-    tip.innerHTML = `
-      <div class="font-semibold text-right" dir="rtl">${node.name_ar}${sourceBadge}</div>
-      ${node.name_en ? `<div class="text-gray-300 text-xs mt-0.5">${node.name_en}</div>` : ''}
-      ${bnName}
-      ${metaParts.length ? `<div class="text-gray-400 text-xs mt-0.5">${metaParts.join(' · ')}</div>` : ''}
-    `;
-    tip.style.display = 'block';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isFullScreen]);
+
+  // 1. Group nodes by Tabaqah (Generation)
+  const layers = useMemo(() => {
+    const grouped: Record<number, NarratorNode[]> = {};
+    nodes.forEach(n => {
+      const tab = n.tabaqah || 4;
+      if (!grouped[tab]) grouped[tab] = [];
+      grouped[tab].push(n);
+    });
+    
+    return Object.keys(grouped)
+      .map(Number)
+      .sort((a, b) => a - b)
+      .map(key => ({
+        tab: key,
+        nodes: grouped[key]
+      }));
+  }, [nodes]);
+
+  // 2. Calculate dynamic width and positions
+  const { nodePositions, totalWidth, totalHeight } = useMemo(() => {
+    const pos = new Map<number, { x: number; y: number }>();
+    
+    const activeWidth = isFullScreen ? (typeof window !== 'undefined' ? window.innerWidth : containerWidth) : containerWidth;
+    const activeHeight = isFullScreen ? (typeof window !== 'undefined' ? window.innerHeight : height) : height;
+
+    const maxNodesInLayer = Math.max(...layers.map(l => l.nodes.length), 1);
+    const calculatedWidth = Math.max(activeWidth, maxNodesInLayer * (NODE_WIDTH + HORIZONTAL_GAP) + 100);
+    const calculatedHeight = Math.max(activeHeight, layers.length * VERTICAL_GAP + 150);
+    
+    layers.forEach((layer, lIdx) => {
+      const y = (lIdx + 1) * VERTICAL_GAP;
+      const layerTotalWidth = layer.nodes.length * NODE_WIDTH + (layer.nodes.length - 1) * HORIZONTAL_GAP;
+      const startX = (calculatedWidth - layerTotalWidth) / 2;
+
+      layer.nodes.forEach((node, nIdx) => {
+        pos.set(node.id, {
+          x: startX + nIdx * (NODE_WIDTH + HORIZONTAL_GAP) + NODE_WIDTH / 2,
+          y
+        });
+      });
+    });
+
+    return { nodePositions: pos, totalWidth: calculatedWidth, totalHeight: calculatedHeight };
+  }, [layers, containerWidth, isFullScreen, height]);
+
+  // 3. Render curved paths for edges
+  const edgePaths = useMemo(() => {
+    return edges.map((edge, i) => {
+      const start = nodePositions.get(edge.from_narrator_id);
+      const end = nodePositions.get(edge.to_narrator_id);
+      if (!start || !end) return null;
+
+      const cp1y = start.y + VERTICAL_GAP / 2;
+      const cp2y = end.y - VERTICAL_GAP / 2;
+      const path = `M ${start.x} ${start.y} C ${start.x} ${cp1y}, ${end.x} ${cp2y}, ${end.x} ${end.y}`;
+      
+      const isRelatedToCenter = edge.from_narrator_id === centerId || edge.to_narrator_id === centerId;
+
+      return (
+        <path
+          key={`edge-${i}`}
+          d={path}
+          fill="none"
+          stroke={isRelatedToCenter ? 'rgba(20, 184, 166, 0.4)' : (darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)')}
+          strokeWidth={isRelatedToCenter ? 2 : 1}
+          markerEnd={isRelatedToCenter ? "url(#arrow-active)" : "url(#arrow-subtle)"}
+          className="transition-all duration-300"
+        />
+      );
+    });
+  }, [edges, nodePositions, centerId, darkMode]);
+
+  // Scroll to center on mount/change
+  useEffect(() => {
+    if (containerRef.current) {
+      const centerNode = nodePositions.get(centerId);
+      if (centerNode) {
+        const activeWidth = isFullScreen ? window.innerWidth : containerWidth;
+        containerRef.current.scrollLeft = centerNode.x - activeWidth / 2;
+      }
+    }
+  }, [centerId, nodePositions, containerWidth, isFullScreen]);
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsFullScreen(false);
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
   }, []);
 
-  const handleNodeClick = useCallback((node: GraphNode) => {
-    onNodeClick(node);
-  }, [onNodeClick]);
+  const content = (
+    <div 
+      className={clsx(
+        "bg-white dark:bg-[#0a0a0a] border-gray-100 dark:border-zinc-800 transition-all overflow-hidden",
+        isFullScreen ? "fixed inset-0 z-[100] w-screen h-screen" : "relative rounded-xl border w-full h-[480px]"
+      )}
+      style={!isFullScreen ? { width: containerWidth, height } : {}}
+    >
+      {/* Fixed UI Overlay */}
+      <div className="absolute inset-0 pointer-events-none z-[70]">
+        <div className="absolute top-4 right-4 flex gap-2 pointer-events-auto">
+          <button
+            onClick={() => setIsFullScreen(!isFullScreen)}
+            className="flex items-center gap-2 px-3 py-2 bg-white/95 dark:bg-zinc-900/95 border border-gray-200 dark:border-zinc-800 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors text-gray-500 dark:text-gray-400 backdrop-blur-md"
+          >
+            <span className="text-[10px] font-bold uppercase tracking-wider">
+              {isFullScreen ? "Exit Fullscreen" : "Fullscreen View"}
+            </span>
+            {isFullScreen ? (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+              </svg>
+            )}
+          </button>
+        </div>
 
-  const bg = darkMode ? '#18181b' : '#f9fafb';
-  const linkColor = darkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)';
-
-  return (
-    <div className="relative" style={{ width, height }}>
-      {/* Tooltip */}
-      <div
-        ref={tooltipRef}
-        className="hidden absolute z-10 bg-zinc-800 text-white text-xs px-3 py-2 rounded-lg shadow-lg pointer-events-none max-w-[200px]"
-        style={{ top: 8, left: 8 }}
-      />
-
-      {/* Legend */}
-      <div className="absolute top-2 right-2 z-10 flex flex-col gap-1 bg-white/80 dark:bg-zinc-900/80 rounded-lg px-2 py-1.5 text-xs backdrop-blur-sm">
-        {Object.entries(TABAQAH_LABELS).map(([k, label]) => (
-          <div key={k} className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: TABAQAH_COLORS[Number(k)] }} />
-            <span className="text-gray-600 dark:text-gray-400">{label}</span>
+        <div className="absolute bottom-4 left-4 inline-flex flex-col gap-1.5 bg-white/95 dark:bg-zinc-900/95 p-3 rounded-xl border border-gray-200 dark:border-zinc-800 text-[10px] shadow-xl backdrop-blur-md pointer-events-auto">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-teal-500 shadow-[0_0_8px_rgba(20,184,166,0.4)]" />
+            <span className="text-gray-700 dark:text-gray-300 font-bold">Selected Narrator</span>
           </div>
-        ))}
-        <div className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: DEFAULT_NODE_COLOR }} />
-          <span className="text-gray-600 dark:text-gray-400">Unknown</span>
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+            <span className="text-gray-600 dark:text-gray-400">Trustworthy (Thiqa)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+            <span className="text-gray-600 dark:text-gray-400">Weak (Daif)</span>
+          </div>
+          <div className="mt-1 pt-1.5 border-t border-gray-100 dark:border-zinc-800 text-[9px] text-gray-400 font-medium">
+            {isFullScreen ? "ESC to exit" : "Drag or scroll to explore"}
+          </div>
         </div>
       </div>
 
-      <ForceGraph2D
-        graphData={graphData}
-        width={width}
-        height={height}
-        backgroundColor={bg}
-        nodeVal={nodeSize as (node: object) => number}
-        nodeColor={nodeColor as (node: object) => string}
-        nodeLabel=""
-        linkWidth={linkWidth as (link: object) => number}
-        linkColor={() => linkColor}
-        onNodeClick={handleNodeClick as (node: object) => void}
-        onNodeHover={handleNodeHover as (node: object | null) => void}
-        cooldownTicks={80}
-        enableNodeDrag
-        enableZoomInteraction
-      />
+      <div 
+        ref={containerRef}
+        className="w-full h-full overflow-auto scroll-smooth"
+      >
+        <div style={{ width: totalWidth, height: totalHeight, position: 'relative' }}>
+          <svg width={totalWidth} height={totalHeight} className="absolute inset-0 pointer-events-none">
+            <defs>
+              <marker id="arrow-subtle" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill={darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'} />
+              </marker>
+              <marker id="arrow-active" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="rgba(20, 184, 166, 0.5)" />
+              </marker>
+            </defs>
+            {edgePaths}
+          </svg>
+
+          {nodes.map(node => {
+            const pos = nodePositions.get(node.id);
+            if (!pos) return null;
+            
+            const isCenter = node.id === centerId;
+            const reliabilityColor = node.reliability ? RELIABILITY_COLORS[node.reliability] : 'bg-gray-300 dark:bg-zinc-700';
+
+            return (
+              <button
+                key={node.id}
+                onClick={() => onNodeClick(node)}
+                className={clsx(
+                  "absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center group transition-all hover:z-50",
+                  isCenter ? "z-40" : "z-20"
+                )}
+                style={{ left: pos.x, top: pos.y }}
+              >
+                <div className={clsx(
+                  "w-10 h-10 rounded-full flex items-center justify-center border-2 transition-transform group-hover:scale-110 shadow-sm",
+                  isCenter 
+                    ? "bg-teal-500 border-teal-400 scale-110 shadow-teal-500/20" 
+                    : "bg-white dark:bg-zinc-800 border-gray-100 dark:border-zinc-700"
+                )}>
+                  <div className={clsx(
+                    "w-2 h-2 rounded-full",
+                    isCenter ? "bg-white" : reliabilityColor
+                  )} />
+                </div>
+
+                <div className="mt-2 text-center pointer-events-none">
+                  <div className={clsx(
+                    "font-arabic text-xs leading-none whitespace-nowrap px-2 py-1 rounded bg-white/80 dark:bg-zinc-900/80 backdrop-blur-sm",
+                    isCenter ? "text-teal-600 dark:text-teal-400 font-bold" : "text-gray-900 dark:text-gray-100"
+                  )}>
+                    {node.name_ar}
+                  </div>
+                  {node.name_en && (
+                    <div className="text-[9px] text-gray-400 dark:text-gray-500 mt-0.5 truncate max-w-[100px]">
+                      {node.name_en}
+                    </div>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
+
+  if (!mounted) return null;
+
+  if (isFullScreen) {
+    return createPortal(content, document.body);
+  }
+
+  return content;
 }
