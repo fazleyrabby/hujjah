@@ -18,6 +18,12 @@ import {
   type ChatThread,
 } from '@/lib/chat-storage';
 
+function detectLang(text: string): 'en' | 'bn' | 'ar' {
+  if (/[\u0980-\u09FF]/.test(text)) return 'bn';
+  if (/[\u0600-\u06FF\u0750-\u077F]/.test(text)) return 'ar';
+  return 'en';
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -146,13 +152,16 @@ export function useChat(initialThreadId?: string) {
     });
   }, []);
 
-  const sendMessage = useCallback(async (text: string, lang: string = 'en') => {
+  const sendMessage = useCallback(async (text: string, _preferredLang: string = 'en') => {
     if (!text.trim()) return;
+
+    // Auto-detect language from user input — AI replies in the same language
+    const detectedLang = detectLang(text.trim());
 
     // Ensure we have a thread
     let currentThreadId = state.threadId;
     if (!currentThreadId) {
-      currentThreadId = createThread(lang);
+      currentThreadId = createThread(detectedLang);
     }
 
     abortRef.current = false;
@@ -161,7 +170,7 @@ export function useChat(initialThreadId?: string) {
       id: makeId(),
       role: 'user',
       text: text.trim(),
-      lang,
+      lang: detectedLang,
       timestamp: Date.now(),
     };
 
@@ -174,7 +183,7 @@ export function useChat(initialThreadId?: string) {
     }));
 
     try {
-      const result = await explainQuery(text.trim(), lang);
+      const result = await explainQuery(text.trim(), detectedLang);
 
       if (abortRef.current) return;
 
@@ -182,7 +191,7 @@ export function useChat(initialThreadId?: string) {
         id: makeId(),
         role: 'assistant',
         text: result.explanation,
-        lang,
+        lang: detectedLang,
         verses: result.verses,
         hadith: result.hadith,
         timestamp: Date.now(),
@@ -205,16 +214,17 @@ export function useChat(initialThreadId?: string) {
   }, [state.threadId, createThread]);
 
   /**
-   * Toggle the language of a specific assistant message.
-   * Shows per-message loading spinner while fetching.
+   * Switch the language of a specific assistant message.
+   * Re-runs the RAG pipeline with the original user question in the target language
+   * (instead of raw translation) so verses are retrieved in the correct language.
    */
   const translateMessage = useCallback(async (msgId: string, targetLang: string) => {
-    // Check cache first
     const msg = state.messages.find((m) => m.id === msgId);
     if (!msg || msg.role !== 'assistant') return;
+    if (msg.lang === targetLang) return;
 
+    // Check cache: did we already generate this answer in the target language?
     if (msg.altLang === targetLang && msg.altText) {
-      // Cached — swap immediately
       setState((prev) => ({
         ...prev,
         messages: prev.messages.map((m) =>
@@ -241,6 +251,7 @@ export function useChat(initialThreadId?: string) {
     }));
 
     try {
+      // Re-run RAG with the original question in the target language
       const result = await explainQuery(userMsg.text, targetLang);
       setState((prev) => ({
         ...prev,
@@ -252,8 +263,8 @@ export function useChat(initialThreadId?: string) {
                 lang: targetLang,
                 altText: m.text,
                 altLang: m.lang,
-                verses: result.verses.length > 0 ? result.verses : m.verses,
-                hadith: result.hadith.length > 0 ? result.hadith : m.hadith,
+                verses: result.verses,
+                hadith: result.hadith,
                 isTranslating: false,
               }
             : m

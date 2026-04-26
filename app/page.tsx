@@ -18,6 +18,7 @@ import { useQuranAudio } from '@/contexts/AudioContext';
 import { useRAG } from '@/hooks/useRAG';
 import ChatWidget from '@/components/ChatWidget';
 import LinkedVerseText from '@/components/LinkedVerseText';
+import AppNav from '@/components/AppNav';
 import { clsx } from 'clsx';
 
 const SUPPORTED_LANGS = [
@@ -304,76 +305,17 @@ export default function Home() {
 
       {/* ─── Main Content ─── */}
       <main className="flex-1 min-w-0 bg-base">
-        {/* Sticky top bar: header + disclaimer + search — single solid block */}
+        {/* Sticky top bar: nav + disclaimer + search — single solid block */}
         <div className="sticky top-0 z-50 bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800">
-          {/* Header */}
-          <header>
-            <div className="max-w-3xl mx-auto px-6 py-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div>
-                    <h1 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">Hujjah</h1>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                      {stats.verses > 0
-                        ? `${stats.verses.toLocaleString()} verses · ${stats.translations.toLocaleString()} translations`
-                        : 'Local Islamic Research Engine'}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  {/* Language Toggle */}
-                  <div className="flex items-center bg-gray-100 dark:bg-zinc-800 rounded-lg p-0.5">
-                    {SUPPORTED_LANGS.map((l) => (
-                      <button
-                        key={l.code}
-                        onClick={() => handleLangChange(l.code)}
-                        className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-                          lang === l.code
-                            ? 'bg-white dark:bg-zinc-700 text-gray-900 dark:text-white shadow-sm'
-                            : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-                        }`}
-                      >
-                        {l.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Dark Mode Toggle */}
-                  <button
-                    onClick={() => setDarkMode((d) => !d)}
-                    className="w-9 h-9 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
-                    title={darkMode ? 'Switch to light' : 'Switch to dark'}
-                  >
-                    {darkMode ? (
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                      </svg>
-                    ) : (
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                      </svg>
-                    )}
-                  </button>
-
-                  {/* Hadith Link */}
-                  <a
-                    href="/hadith"
-                    className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
-                  >
-                    Hadith
-                  </a>
-
-                  {/* About Link */}
-                  <a
-                    href="/about"
-                    className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
-                  >
-                    About
-                  </a>
-                </div>
-              </div>
-            </div>
+          {/* Nav */}
+          <header className="border-b border-gray-100 dark:border-zinc-800">
+            <AppNav
+              lang={lang}
+              onLangChange={handleLangChange}
+              langs={[{ code: 'en', label: 'EN' }, { code: 'bn', label: 'বাং' }, { code: 'ar', label: 'عر' }]}
+              darkMode={darkMode}
+              onDarkModeToggle={() => setDarkMode((d) => !d)}
+            />
           </header>
 
           {/* Disclaimer */}

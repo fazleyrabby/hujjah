@@ -213,6 +213,7 @@ pub struct DownloadState {
 }
 
 impl DownloadState {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self::default()
     }

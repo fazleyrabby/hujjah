@@ -11,6 +11,7 @@
 
 import { getDB } from '@/lib/db';
 import { embedOne, cosineSimilarity } from './embedding';
+import { retrieveHybrid } from './retrieve';
 import { searchHadithForAI, type HadithResult } from '@/lib/hadith-db';
 import { withNativeFallback } from './native';
 import { withLlamaFallback, USE_LLAMA_CPP } from './llama';
@@ -297,71 +298,25 @@ function buildStrictPrompt(query: string, ctx: StructuredContext, lang: string, 
   }
 
   if (lang === 'bn') {
-    const tone = intent === 'summarize' 
-      ? 'সংক্ষিপ্তভাবে সারাংশ দাও'
-      : intent === 'analyze'
-      ? 'বিশ্লেষণ করো এবং গভীরভাবে ব্যাখ্যা করো'
-      : intent === 'explain'
-      ? 'স্পষ্ট ও বন্ধুত্বপূর্ণ ভাষায় ব্যাখ্যা করো'
-      : 'সহজ ও বন্ধুত্বপূর্ণ ভাষায় উত্তর দাও';
-    
-    return `তুমি হুজ্জাহ এআই — একজন বন্ধুত্বপূর্ণ কুরআন গবেষক সহকারী।
+    return `তুমি হুজ্জাহ এআই। শুধুমাত্র নিচের আয়াত ও হাদিস ব্যবহার করে প্রশ্নের সরাসরি উত্তর দাও। "ধন্যবাদ" দিয়ে শুরু করো না। সাধারণ ইসলামিক ওভারভিউ দিও না। ঠিক যা জানতে চাওয়া হয়েছে তার উত্তর দাও।
 
-তোমার ভঙ্গি:
-- সহজ, উষ্ণ ও বন্ধুত্বপূর্ণ হও
-- ব্যবহারিক উদাহরণ দাও
-- আরবি শব্দের অর্থ ব্যাখ্যা করো
-- জীবনে প্রয়োগের উপায় বলো
-- প্রশ্নের ধরন অনুযায়ী ভিন্ন ভিন্নভাবে উত্তর দাও
-
-নিয়ম:
-- প্রাথমিকভাবে কুরআনের আয়াত ব্যবহার করো
-- প্রয়োজনে সাধারণ ইসলামী জ্ঞান যোগ করতে পারো
-- স্পষ্ট ও সুন্দর করে উত্তর দাও
-- উদ্ধৃতি দাও (যেমন: ২:২৫৫)
-
-প্রশ্নের ধরন: ${intent}
-
-সূত্র:
+আয়াতসমূহ:
 ${contextBlock}
 
 প্রশ্ন: ${query}
 
-${tone}:`;
+উত্তর (আয়াত রেফারেন্স দাও যেমন ২:২৫৫):`;
   }
 
   if (lang === 'ar') {
-    const tone = intent === 'summarize'
-      ? 'قدم ملخصاً موجزاً'
-      : intent === 'analyze'
-      ? 'حلل وتعمق في الشرح'
-      : intent === 'explain'
-      ? 'اشرح بلغة واضحة وودودة'
-      : 'أجب بلغة سهلة وودودة';
+    return `أنت هجة AI. أجب على السؤال باستخدام الآيات والأحاديث المقدمة فقط. كن محدداً ومباشراً. لا تبدأ بـ"شكراً". لا تعطِ نظرة عامة إسلامية. أجب على السؤال المحدد المطروح.
 
-    return `أنت "هجة AI" — مساعد باحث قرآني ودود.
-
-أسلوبك:
-- كن سهلاً ودافئاً وودوداً
-- قدم أمثلة عملية
-- اشرح معاني الكلمات القرآنية
-- اذكر طرق التطبيق في الحياة
-- أجب بطرق مختلفة حسب نوع السؤال
-
-القواعد:
-- استخدم آيات القرآن الكريم بشكل أساسي
-- يمكنك إضافة معرفة إسلامية عامة عند الحاجة
-- أجب بوضوح وجمال
-- اذكر المراجع (مثلاً: ٢:٢٥٥)
-
-نوع السؤال: ${intent}
-
-المصادر:
+الآيات:
 ${contextBlock}
 
 السؤال: ${query}
 
-${tone}:`;
+الإجابة (اذكر المراجع مثل ٢:٢٥٥):`;
   }
 
   const instruction =
@@ -373,34 +328,14 @@ ${tone}:`;
       ? 'Explain clearly and warmly. Use relatable examples, explain Arabic terms simply, connect to modern life, and provide depth without being verbose.'
       : 'Respond warmly and conversationally. Use everyday language, give practical examples, draw connections, and make it feel like a friendly discussion.';
 
-  return `You are Hujjah AI — a warm, friendly Quran research companion.
+  return `You are Hujjah AI. Answer the question using ONLY the provided Quran verses and hadith. Be specific and direct. Do NOT start with "Thank you". Do NOT give a generic Islamic overview. Answer the EXACT question asked.
 
-Your personality:
-- Speak like a knowledgeable friend having a thoughtful conversation
-- Use warm, encouraging tone with occasional enthusiasm
-- Explain Arabic terms simply and beautifully
-- Give practical life applications and spiritual insights
-- Adapt your response style based on the question type
-- When summarizing: synthesize ideas, don't just list
-- When analyzing: go deep, explore wisdom and lessons
-- When explaining: be clear, use analogies and examples
-
-Guidelines:
-- Base your answer primarily on the Quran verses provided
-- You may supplement with general Islamic knowledge when helpful
-- Always cite references like (Quran 2:255)
-- Be natural, not robotic — vary sentence structure
-- Use phrases like "Interestingly," "What's beautiful here," "You might notice"
-- If the context doesn't fully answer, say so honestly but offer what you can
-
-Query type: ${intent}
-
-Context from Quran:
+Verses:
 ${contextBlock}
 
 Question: ${query}
 
-Answer (natural, warm, and insightful):`;
+Answer (${intent}, cite verse refs like 2:255):`;
 }
 
 // ─── Phase 2 Step 5: Output Validation ───
@@ -725,49 +660,15 @@ async function jsExplainQuery(
       scored = [];
     }
   } else {
-    // Step 1: Embed the query
-    const queryEmbedding = await embedOne(query);
-
-    // Step 2: Load translations with embeddings
-    let rows: any[] = [];
-
-    if (lang === 'ar') {
-      const sql = `
-        SELECT v.surah, v.ayah, v.text_ar, v.text_ar as text, 'arabic' as translator_slug, v.embedding
-        FROM verses v
-        WHERE v.embedding IS NOT NULL
-      `;
-      rows = await db.select(sql);
-    } else {
-      const sql = `
-        SELECT
-          v.surah,
-          v.ayah,
-          v.text_ar,
-          t.text,
-          t.translator_slug,
-          t.embedding
-        FROM translations t
-        JOIN verses v ON v.id = t.verse_id
-        WHERE t.lang_code = ? AND t.embedding IS NOT NULL
-        LIMIT 5000
-      `;
-      rows = await db.select(sql, [lang]);
-    }
-
-    // Step 3: Score by cosine similarity, cap at 5 results
-    scored = rows
-      .filter((r) => r.embedding)
-      .map((r) => ({
-        surah: r.surah,
-        ayah: r.ayah,
-        text_ar: r.text_ar,
-        text: r.text,
-        translator_slug: r.translator_slug,
-        similarity: cosineSimilarity(queryEmbedding, new Float32Array(r.embedding)),
-      }))
-      .sort((a, b) => b.similarity - a.similarity)
-      .slice(0, 5);
+    // Use hybrid retrieval: FTS5 pre-filter → embedding rerank
+    const hybridResults = await retrieveHybrid(query, lang, 5);
+    scored = hybridResults.map((r) => ({
+      surah: r.surah,
+      ayah: r.ayah,
+      text_ar: r.text_ar,
+      text: r.text,
+      translator_slug: r.translator_slug,
+    }));
   }
 
   // Step 4: Search hadith corpus (github-classic only, top 2 results)
@@ -872,17 +773,30 @@ export async function explainQuery(
 }
 
 /**
+ * Translate text via llama.cpp.
+ * Bypasses RAG — simple translate prompt.
+ */
+async function translateWithLlama(text: string, targetLang: string): Promise<string> {
+  const langName = targetLang === 'bn' ? 'Bengali' : targetLang === 'ar' ? 'Arabic' : 'English';
+  const prompt = `Translate the following text to ${langName}. Keep all Quran references like (2:255) intact. Output only the translation.
+
+Text: ${text}`;
+  const { invoke } = await import('@tauri-apps/api/core');
+  const response = await invoke<string>('run_llama', { prompt });
+  return response.trim();
+}
+
+/**
  * Format prompt for Qwen2.5-Instruct chat template.
  * Required so the GGUF model understands the conversation structure.
  */
 function formatLlamaPrompt(userPrompt: string): string {
-  return `<|im_start|>user\n${userPrompt}<|im_end|>\n<|im_start|>assistant\n`;
+  return `</s><|user|>\n${userPrompt}</s><|assistant|>\n`;
 }
 
 /**
  * llama.cpp GGUF inference with full RAG pipeline.
- * Retrieves relevant verses + hadith via BGE-M3 embeddings,
- * builds a grounded prompt, then sends to llama.cpp for generation.
+ * For Bengali queries: translate to EN → RAG (EN verses) → generate EN → translate to BN.
  */
 async function llamaExplainQuery(
   query: string,
@@ -892,10 +806,13 @@ async function llamaExplainQuery(
   try {
     const { invoke } = await import('@tauri-apps/api/core');
 
-    // Classify intent to tailor prompt style
-    const intent = classifyIntent(query);
+    // Bengali pipeline: translate query to English, run RAG in English, translate answer back
+    if (lang === 'bn') {
+      return llamaExplainBengali(query, start, invoke);
+    }
 
-    // Try specific surah/verse reference detection first (fastest path)
+    // English / Arabic: standard RAG
+    const intent = classifyIntent(query);
     const specificVerses = await detectSpecificVerses(query, lang);
 
     let verses: VerseContext[] = [];
@@ -904,53 +821,92 @@ async function llamaExplainQuery(
     if (specificVerses && specificVerses.length > 0) {
       verses = specificVerses;
     } else {
-      // Semantic retrieval: embed query → cosine similarity vs stored BGE-M3 embeddings
-      const db = await getDB();
-      const queryEmbedding = await embedOne(query);
-
-      let rows: any[] = [];
-      if (lang === 'ar') {
-        const sql = `
-          SELECT v.surah, v.ayah, v.text_ar, v.text_ar as text, 'arabic' as translator_slug, v.embedding
-          FROM verses v
-          WHERE v.embedding IS NOT NULL
-        `;
-        rows = await db.select(sql);
-      } else {
-        const sql = `
-          SELECT v.surah, v.ayah, v.text_ar, t.text, t.translator_slug, t.embedding
-          FROM translations t
-          JOIN verses v ON v.id = t.verse_id
-          WHERE t.lang_code = ? AND t.embedding IS NOT NULL
-          LIMIT 5000
-        `;
-        rows = await db.select(sql, [lang]);
-      }
-
-      verses = rows
-        .filter((r: any) => r.embedding)
-        .map((r: any) => ({
-          surah: r.surah,
-          ayah: r.ayah,
-          text_ar: r.text_ar,
-          text: r.text,
-          translator_slug: r.translator_slug,
-          similarity: cosineSimilarity(queryEmbedding, new Float32Array(r.embedding)),
-        }))
-        .sort((a: any, b: any) => b.similarity - a.similarity)
-        .slice(0, 5);
-
-      // Hadith retrieval via FTS5
+      const hybridResults = await retrieveHybrid(query, lang, 5);
+      verses = hybridResults.map((r) => ({
+        surah: r.surah,
+        ayah: r.ayah,
+        text_ar: r.text_ar,
+        text: r.text,
+        translator_slug: r.translator_slug,
+      }));
       hadith = await retrieveHadithContext(query, 2);
     }
 
-    // Build grounded prompt with retrieved context
     const groundedPrompt = buildHadithPrompt(query, verses, hadith, lang, intent);
     const formattedPrompt = formatLlamaPrompt(groundedPrompt);
-
     const response = await invoke<string>('run_llama', { prompt: formattedPrompt });
     logInferenceEnd(start, 'llama.cpp', query.length, response.length);
     return { explanation: response, verses, hadith };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logInferenceEnd(start, 'llama.cpp', query.length, 0, message);
+    throw err;
+  }
+}
+
+/**
+ * Bengali query pipeline:
+ * 1. Retrieve Bengali verses using the Bengali query (BGE-M3 is multilingual)
+ * 2. Format verses as a readable Bengali response (no LLM generation — avoids garbled output)
+ * 3. If user needs more, they can toggle to English for a full AI answer
+ */
+async function llamaExplainBengali(
+  query: string,
+  start: ReturnType<typeof logInferenceStart>,
+  _invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown>
+): Promise<{ explanation: string; verses: VerseContext[]; hadith: HadithContext[] }> {
+  try {
+    const intent = classifyIntent(query);
+
+    // Step 1: Retrieve Bengali verses using the Bengali query
+    const hybridResults = await retrieveHybrid(query, 'bn', 5);
+    const verses = hybridResults.map((r) => ({
+      surah: r.surah,
+      ayah: r.ayah,
+      text_ar: r.text_ar,
+      text: r.text,
+      translator_slug: r.translator_slug,
+    }));
+
+    // Step 2: Retrieve hadith using the Bengali query
+    const hadith = await retrieveHadithContext(query, 2);
+
+    // Step 3: Format as Bengali response (extractive — no LLM generation)
+    let explanation: string;
+    if (verses.length === 0 && hadith.length === 0) {
+      explanation = 'এই বিষয়ে কোনো আয়াত বা হাদিস পাওয়া যায়নি।';
+    } else if (intent === 'summarize' && verses.length >= 3) {
+      // For surah summary requests, show the verses directly
+      const surahName = verses[0]?.surah ? `সূরা ${verses[0].surah}` : '';
+      explanation = `${surahName} থেকে প্রাসঙ্গিক আয়াতসমূহ:\n\n` +
+        verses.slice(0, 5).map((v) => `[${v.surah}:${v.ayah}] ${v.text}`).join('\n\n');
+    } else {
+      // General query — format with Bengali intro
+      explanation = formatVersesFallback(verses, query, 'bn');
+    }
+
+    logInferenceEnd(start, 'llama.cpp', query.length, explanation.length);
+    return { explanation, verses, hadith };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logInferenceEnd(start, 'llama.cpp', query.length, 0, message);
+    throw err;
+  }
+}
+
+    // Step 3: Retrieve hadith using English query
+    const hadith = await retrieveHadithContext(englishQuery, 2);
+
+    // Step 4: Generate English answer
+    const groundedPrompt = buildHadithPrompt(query, verses, hadith, 'en', intent);
+    const formattedPrompt = formatLlamaPrompt(groundedPrompt);
+    const englishAnswer = await invoke<string>('run_llama', { prompt: formattedPrompt });
+
+    // Step 5: Show English answer with Bengali note
+    // NLLB is too heavy for browser (~3GB RAM). Will be added when desktop Rust backend is ready.
+    const fallbackNote = 'বাংলা উত্তর শীঘ্রই আসছে। ইংরেজি উত্তর দেখানো হলো:\n\n';
+    logInferenceEnd(start, 'llama.cpp', query.length, englishAnswer.length);
+    return { explanation: fallbackNote + englishAnswer, verses, hadith };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logInferenceEnd(start, 'llama.cpp', query.length, 0, message);

@@ -286,9 +286,13 @@ impl LlamaEngine {
 
         let body = json!({
             "prompt": prompt,
-            "n_predict": 256,
+            "n_predict": 512,
             "temperature": 0.7,
-            "stop": ["<|im_end|>", "<|im_start|>user"],
+            "top_p": 0.9,
+            "repeat_penalty": 1.1,
+            "seed": -1,
+            "cache_prompt": false,
+            "stop": ["<|im_end|>", "<|im_start|>user", "<|im_start|>"],
         });
 
         let response = ureq::post(&format!("{}/completion", self.server_url))

@@ -66,6 +66,18 @@ export async function loadLlamaModel(path?: string): Promise<void> {
 }
 
 /**
+ * Translate text to a target language using llama.cpp directly.
+ * Bypasses RAG — just a simple translate prompt.
+ */
+export async function translateText(text: string, targetLang: string): Promise<string> {
+  const langName = targetLang === 'bn' ? 'Bengali' : targetLang === 'ar' ? 'Arabic' : 'English';
+  const prompt = `<|im_start|>user\nTranslate the following Islamic explanation to ${langName}. Keep all Quran references like (2:255) intact. Output only the translation, nothing else.\n\n${text}<|im_end|>\n<|im_start|>assistant\n`;
+  const { invoke } = await import('@tauri-apps/api/core');
+  const response = await invoke<string>('run_llama', { prompt });
+  return response.trim();
+}
+
+/**
  * Run inference via llama.cpp Rust backend.
  */
 export async function runLlamaInference(prompt: string): Promise<string> {

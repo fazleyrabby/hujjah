@@ -63,6 +63,7 @@ pub fn get_model_info(app: &AppHandle, tier: &str, filename: &str) -> ModelInfo 
 }
 
 /// Ensure model directory exists.
+#[allow(dead_code)]
 pub fn ensure_model_dir(app: &AppHandle, tier: &str) -> Result<PathBuf, String> {
     let dir = model_dir(app, tier);
     if !dir.exists() {
@@ -90,6 +91,7 @@ pub async fn check_model_cache(app: AppHandle) -> Result<Vec<ModelInfo>, String>
 
 /// Get path to model if it exists.
 /// Returns None if model not found.
+#[allow(dead_code)]
 pub fn get_model_path_if_exists(
     app: &AppHandle,
     tier: &str,

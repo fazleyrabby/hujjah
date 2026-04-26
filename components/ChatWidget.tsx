@@ -13,7 +13,6 @@ interface ChatWidgetProps {
 
 export default function ChatWidget({ lang, onNavigateToVerse }: ChatWidgetProps) {
   const [open, setOpen] = useState(false);
-  const [expanded, setExpanded] = useState(false);
   const [input, setInput] = useState('');
   const [modelLoaded, setModelLoaded] = useState(false);
   const [showThreads, setShowThreads] = useState(false);
@@ -75,11 +74,11 @@ export default function ChatWidget({ lang, onNavigateToVerse }: ChatWidgetProps)
     setInput('');
     setShowThreads(false);
     await sendMessage(text, lang);
+    inputRef.current?.focus();
   };
 
   const handleNavigateToVerse = (surah: number, ayah: number) => {
     setOpen(false);
-    setExpanded(false);
     onNavigateToVerse?.(surah, ayah);
   };
 
@@ -116,41 +115,18 @@ export default function ChatWidget({ lang, onNavigateToVerse }: ChatWidgetProps)
     <>
       {/* Floating Toggle Button */}
       {!open && (
-        <div className="fixed bottom-[72px] right-6 z-[60] flex flex-col items-end gap-2">
-          {/* Recent chats preview on hover/click */}
-          {recentThreads.length > 0 && (
-            <div className="bg-white dark:bg-zinc-800 rounded-xl shadow-lg border border-gray-200 dark:border-zinc-700 p-2 mb-1 animate-fade-in">
-              <p className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 px-2 py-1">
-                {t.recentChats}
-              </p>
-              {recentThreads.map((thread) => (
-                <button
-                  key={thread.id}
-                  onClick={() => { loadThread(thread.id); setOpen(true); }}
-                  className="block w-full text-left px-2 py-1.5 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-700 rounded-lg truncate max-w-[200px]"
-                >
-                  {thread.title}
-                </button>
-              ))}
-              <Link
-                href="/chat"
-                className="block w-full text-center px-2 py-1.5 text-[10px] text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/20 rounded-lg mt-1 border-t border-gray-100 dark:border-zinc-700"
-              >
-                {t.openFull} →
-              </Link>
-            </div>
-          )}
+        <div className="fixed bottom-[72px] right-6 z-[60]">
           <button
             onClick={() => setOpen(true)}
-            className="w-12 h-12 bg-teal-600 hover:bg-teal-500 text-white rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center group"
+            className="relative w-12 h-12 bg-teal-600 hover:bg-teal-500 text-white rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center group"
             title={t.chat}
           >
             <svg className="w-5 h-5 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
             </svg>
-            {messages.length > 0 && (
+            {threads.length > 0 && (
               <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
-                {messages.filter((m) => m.role === 'assistant').length}
+                {threads.length}
               </span>
             )}
           </button>
@@ -160,12 +136,7 @@ export default function ChatWidget({ lang, onNavigateToVerse }: ChatWidgetProps)
       {/* Chat Panel */}
       {open && (
         <div
-          className={clsx(
-            'fixed z-[60] bg-white dark:bg-zinc-900 shadow-2xl border border-gray-200 dark:border-zinc-700 flex flex-col overflow-hidden animate-fade-in',
-            expanded
-              ? 'inset-4 rounded-2xl'
-              : 'bottom-[72px] right-6 w-[380px] max-w-[calc(100vw-3rem)] h-[520px] max-h-[calc(100vh-7rem)] rounded-2xl'
-          )}
+          className="fixed z-[60] bg-white dark:bg-zinc-900 shadow-2xl border border-gray-200 dark:border-zinc-700 flex flex-col overflow-hidden animate-fade-in bottom-[72px] right-6 w-[380px] max-w-[calc(100vw-3rem)] h-[520px] max-h-[calc(100vh-7rem)] rounded-2xl"
         >
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-zinc-800 bg-teal-50 dark:bg-teal-900/20 flex-shrink-0">
@@ -211,17 +182,7 @@ export default function ChatWidget({ lang, onNavigateToVerse }: ChatWidgetProps)
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
                 </svg>
               </Link>
-              {/* Expand / Collapse */}
-              <button
-                onClick={() => setExpanded((e) => !e)}
-                className="p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
-                title={expanded ? t.collapse : t.expand}
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-                </svg>
-              </button>
-              {messages.length > 0 && (
+{messages.length > 0 && (
                 <button
                   onClick={clearChat}
                   className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors"
@@ -233,7 +194,7 @@ export default function ChatWidget({ lang, onNavigateToVerse }: ChatWidgetProps)
                 </button>
               )}
               <button
-                onClick={() => { setOpen(false); setExpanded(false); setShowThreads(false); }}
+                onClick={() => { setOpen(false); setShowThreads(false); }}
                 className="p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

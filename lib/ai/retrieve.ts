@@ -12,6 +12,33 @@
 import { getDB } from '@/lib/db';
 import { embedOne, cosineSimilarity, type EmbeddingVector } from './embedding';
 
+const englishStopwords = new Set([
+  'the', 'and', 'for', 'with', 'that', 'this', 'what', 'does', 'about', 'during',
+  'according', 'from', 'into', 'when', 'each', 'just', 'beyond', 'their', 'they',
+  'them', 'have', 'has', 'how', 'why', 'are', 'can', 'say', 'says', 'main',
+  'themes', 'concept', 'difference', 'between', 'required', 'importance', 'islam',
+  'quran', 'hadith', 'surah', 'explain', 'summarize', 'mentioned',
+]);
+
+function tokenizeForFts(query: string, lang: string): string {
+  const normalized = query
+    .toLowerCase()
+    .replace(/["']/g, ' ')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const tokens = normalized
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter((t) => {
+      if (lang === 'en') return t.length >= 3 && !englishStopwords.has(t);
+      return t.length >= 2;
+    });
+
+  return [...new Set(tokens)].slice(0, 8).join(' OR ');
+}
+
 export interface RetrievedVerse {
   id: number;
   surah: number;
@@ -122,6 +149,7 @@ export async function retrieveRelevantVerses(
 /**
  * Fast approximate retrieval using pre-filtering.
  * First runs FTS5 for candidate selection, then re-ranks by embedding similarity.
+ * Falls back to full semantic scan if FTS5 returns no candidates.
  */
 export async function retrieveHybrid(
   query: string,
@@ -139,40 +167,68 @@ export async function retrieveHybrid(
   const db = await getDB();
   const queryEmbedding = await embedOne(query);
 
-  // Step 1: Use FTS5 to get candidate set (much smaller than full table)
-  const ftsSql = `
-    SELECT
-      t.id,
-      v.surah,
-      s.name_en AS surah_name_en,
-      s.name_bn AS surah_name_bn,
-      v.ayah,
-      v.text_ar,
-      t.text,
-      t.translator_slug,
-      t.embedding
-    FROM quran_search_idx
-    JOIN translations t ON t.id = quran_search_idx.rowid
-    JOIN verses v ON v.id = t.verse_id
-    JOIN surahs s ON s.id = v.surah
-    WHERE quran_search_idx MATCH ? AND quran_search_idx.lang_code = ?
-    ORDER BY bm25(quran_search_idx)
-    LIMIT 50
-  `;
+  // Step 1: Use FTS5 to get candidate set with tokenized query
+  const ftsQuery = tokenizeForFts(query, lang);
+  let rows: {
+    id: number;
+    surah: number;
+    surah_name_en: string;
+    surah_name_bn: string;
+    ayah: number;
+    text_ar: string;
+    text: string;
+    translator_slug: string;
+    embedding: ArrayBuffer;
+  }[] = [];
 
-  const rows = await db.select<
-    {
-      id: number;
-      surah: number;
-      surah_name_en: string;
-      surah_name_bn: string;
-      ayah: number;
-      text_ar: string;
-      text: string;
-      translator_slug: string;
-      embedding: ArrayBuffer;
-    }[]
-  >(ftsSql, [query.trim(), lang]);
+  if (ftsQuery) {
+    const ftsSql = `
+      SELECT
+        t.id,
+        v.surah,
+        s.name_en AS surah_name_en,
+        s.name_bn AS surah_name_bn,
+        v.ayah,
+        v.text_ar,
+        t.text,
+        t.translator_slug,
+        t.embedding
+      FROM quran_search_idx
+      JOIN translations t ON t.id = quran_search_idx.rowid
+      JOIN verses v ON v.id = t.verse_id
+      JOIN surahs s ON s.id = v.surah
+      WHERE quran_search_idx MATCH ? AND quran_search_idx.lang_code = ?
+      ORDER BY bm25(quran_search_idx)
+      LIMIT 100
+    `;
+
+    try {
+      rows = await db.select(ftsSql, [ftsQuery, lang]);
+    } catch {
+      // FTS5 syntax error — fall through to full scan
+    }
+  }
+
+  // Step 1b: If FTS5 returned nothing, fall back to full semantic scan
+  if (rows.length === 0) {
+    const scanSql = `
+      SELECT
+        t.id,
+        v.surah,
+        s.name_en AS surah_name_en,
+        s.name_bn AS surah_name_bn,
+        v.ayah,
+        v.text_ar,
+        t.text,
+        t.translator_slug,
+        t.embedding
+      FROM translations t
+      JOIN verses v ON v.id = t.verse_id
+      JOIN surahs s ON s.id = v.surah
+      WHERE t.lang_code = ? AND t.embedding IS NOT NULL
+    `;
+    rows = await db.select(scanSql, [lang]);
+  }
 
   // Step 2: Re-rank by embedding similarity
   const scored: RetrievedVerse[] = [];

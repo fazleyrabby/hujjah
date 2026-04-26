@@ -11,7 +11,6 @@ export default function ChatPage() {
   const [input, setInput] = useState('');
   const [modelLoaded, setModelLoaded] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [activeLang, setActiveLang] = useState('en');
 
   const {
     threadId,
@@ -24,8 +23,14 @@ export default function ChatPage() {
     loadThread,
     createThread,
     removeThread,
-    clearChat,
   } = useChat();
+
+  const [activeLang, setActiveLang] = useState(
+    () => threads.find((thread) => thread.id === threadId)?.lang ?? 'en'
+  );
+
+  // Auto-detect input language for RTL/text direction
+  const [inputLang, setInputLang] = useState<'en' | 'bn' | 'ar'>('en');
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -55,11 +60,37 @@ export default function ChatPage() {
     if (!input.trim() || loading) return;
     const text = input.trim();
     setInput('');
+    // sendMessage auto-detects language from input text
     await sendMessage(text, activeLang);
   };
 
   const handleNavigateToVerse = (surah: number, ayah: number) => {
     router.push(`/?surah=${surah}&ayah=${ayah}`);
+  };
+
+  const handleCreateThread = () => {
+    createThread(activeLang);
+    setSidebarOpen(false);
+  };
+
+  const handleLoadThread = (id: string) => {
+    const thread = threads.find((item) => item.id === id);
+    if (thread?.lang) {
+      setActiveLang(thread.lang);
+    }
+    loadThread(id);
+    setSidebarOpen(false);
+  };
+
+  const handleRemoveThread = (event: React.MouseEvent<HTMLButtonElement>, id: string) => {
+    event.stopPropagation();
+    if (id === threadId) {
+      const nextThread = threads.find((thread) => thread.id !== id);
+      if (nextThread?.lang) {
+        setActiveLang(nextThread.lang);
+      }
+    }
+    removeThread(id);
   };
 
   const isBn = activeLang === 'bn';
@@ -78,19 +109,30 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="h-screen flex bg-white dark:bg-zinc-900">
+    <div className="relative h-screen overflow-hidden bg-white dark:bg-zinc-900 md:flex">
+      {sidebarOpen && (
+        <button
+          type="button"
+          aria-label="Close thread sidebar"
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 z-30 bg-black/30 md:hidden"
+        />
+      )}
+
       {/* Sidebar — Thread List */}
       <aside
         className={clsx(
-          'flex-shrink-0 border-r border-gray-200 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-950 flex flex-col transition-all duration-300',
-          sidebarOpen ? 'w-72' : 'w-0 overflow-hidden'
+          'fixed inset-y-0 left-0 z-40 flex w-72 max-w-[85vw] flex-col overflow-hidden border-r border-gray-200 bg-gray-50 dark:border-zinc-800 dark:bg-zinc-950 transition-transform duration-300 md:static md:z-0 md:max-w-none md:transition-[width]',
+          sidebarOpen
+            ? 'translate-x-0 md:w-72'
+            : '-translate-x-full md:w-0 md:translate-x-0 md:border-r-0'
         )}
       >
         {/* Sidebar Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-zinc-800">
           <h2 className="text-lg font-bold text-gray-900 dark:text-white">{t.title}</h2>
           <button
-            onClick={() => createThread(activeLang)}
+            onClick={handleCreateThread}
             className="p-2 bg-teal-600 hover:bg-teal-500 text-white rounded-lg transition-colors"
             title={t.newChat}
           >
@@ -111,18 +153,18 @@ export default function ChatPage() {
             <div
               key={thread.id}
               className={clsx(
-                'group flex items-center gap-2 px-4 py-3 cursor-pointer border-b border-gray-100 dark:border-zinc-800',
+                'group flex items-center gap-2 px-4 py-3 cursor-pointer border-b border-gray-100 dark:border-zinc-800 min-w-0',
                 thread.id === threadId
                   ? 'bg-white dark:bg-zinc-900 border-l-4 border-l-teal-600'
                   : 'hover:bg-white dark:hover:bg-zinc-900 border-l-4 border-l-transparent'
               )}
             >
               <button
-                onClick={() => loadThread(thread.id)}
-                className="flex-1 text-left"
+                onClick={() => handleLoadThread(thread.id)}
+                className="flex-1 min-w-0 text-left"
               >
                 <p className={clsx(
-                  'text-sm font-medium truncate',
+                  'text-sm font-medium truncate block',
                   thread.id === threadId ? 'text-teal-700 dark:text-teal-400' : 'text-gray-800 dark:text-gray-200'
                 )}>
                   {thread.title}
@@ -132,7 +174,7 @@ export default function ChatPage() {
                 </p>
               </button>
               <button
-                onClick={(e) => { e.stopPropagation(); removeThread(thread.id); }}
+                onClick={(e) => handleRemoveThread(e, thread.id)}
                 className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-400 hover:text-red-500 rounded-md transition-opacity"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -319,10 +361,16 @@ export default function ChatPage() {
               ref={inputRef}
               type="text"
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                setInput(e.target.value);
+                const v = e.target.value;
+                if (/[\u0600-\u06FF\u0750-\u077F]/.test(v)) setInputLang('ar');
+                else if (/[\u0980-\u09FF]/.test(v)) setInputLang('bn');
+                else setInputLang('en');
+              }}
               placeholder={t.placeholder}
               disabled={loading}
-              dir={activeLang === 'ar' ? 'rtl' : 'ltr'}
+              dir={inputLang === 'ar' ? 'rtl' : 'ltr'}
               className="flex-1 px-5 py-3 bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-2xl text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50"
             />
             <button

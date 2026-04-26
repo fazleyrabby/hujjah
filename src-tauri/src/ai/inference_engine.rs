@@ -1,8 +1,6 @@
-use std::path::PathBuf;
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager};
-use candle_core::{Device, Tensor};
-use candle_transformers::generation::LogitsProcessor;
+use tauri::AppHandle;
+use candle_core::Device;
 use tokenizers::Tokenizer;
 use crate::ai::model_selector::ModelTier;
 use crate::ai::model_downloader::{check_model_status, ModelStatus};
@@ -10,6 +8,7 @@ use crate::ai::model_downloader::{check_model_status, ModelStatus};
 /// Inference session for Lite model (0.5B).
 /// Wrapped in Option so we can explicitly drop it.
 struct InferenceSession {
+    #[allow(dead_code)]
     device: Device,
     tokenizer: Tokenizer,
     // Model would go here — stub for now
