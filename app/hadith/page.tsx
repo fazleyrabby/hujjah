@@ -57,6 +57,14 @@ function getHadithGrade(sanadLength: number): { label: string; color: string; de
   }
 }
 
+function cleanHadithText(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/<[^>]*>/g, '') // Strip all <TAGS>
+    .replace(/\s+/g, ' ')    // Normalize whitespace
+    .trim();
+}
+
 export default function HadithPage() {
   const [mounted, setMounted] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
@@ -384,7 +392,7 @@ export default function HadithPage() {
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
               <div className="space-y-4">
                 <p className="font-arabic text-xl leading-loose text-gray-900 dark:text-white text-right" dir="rtl">
-                  {selectedFullHadith.hadith_ar || selectedFullHadith.matn_ar}
+                  {cleanHadithText(selectedFullHadith.hadith_ar || selectedFullHadith.matn_ar)}
                 </p>
                 
                 {/* Translations */}
