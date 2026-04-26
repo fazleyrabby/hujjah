@@ -327,9 +327,9 @@ export default function ChainPage() {
 
           {results.length > 0 && (
             <div className="mt-2 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl shadow-sm overflow-hidden">
-              {results.map((n) => (
+              {results.map((n, i) => (
                 <button
-                  key={n.id}
+                  key={`${n.id}-${i}`}
                   onClick={() => handleSelectNarrator(n)}
                   className="w-full px-4 py-3 text-right border-b border-gray-100 dark:border-zinc-800 last:border-0 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors"
                   dir={isRtl ? 'rtl' : 'ltr'}
@@ -394,7 +394,7 @@ export default function ChainPage() {
 
                   <div className="space-y-6">
                     {hadithChainData.chain.map((n, i) => (
-                      <div key={n.id} className="relative flex gap-4 group">
+                      <div key={`chain-${n.id}-${i}`} className="relative flex gap-4 group">
                         {/* Timeline Marker */}
                         <div className="relative z-10 flex-shrink-0 w-10 h-10 rounded-full bg-white dark:bg-zinc-900 border-2 border-teal-500 flex items-center justify-center text-teal-600 dark:text-teal-400 font-bold text-sm shadow-sm group-hover:scale-110 transition-transform">
                           {i + 1}
@@ -578,9 +578,9 @@ export default function ChainPage() {
                   {t.teachers}
                 </h4>
                 <div className="space-y-2">
-                  {edges.teachers.map((e) => (
+                  {edges.teachers.map((e, i) => (
                     <button
-                      key={`t-${e.from_narrator_id}`}
+                      key={`t-${e.from_narrator_id}-${i}`}
                       onClick={() => handleSelectEdge(e)}
                       className={clsx(
                         'w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors',
@@ -612,9 +612,9 @@ export default function ChainPage() {
                   {t.students}
                 </h4>
                 <div className="space-y-2">
-                  {edges.students.map((e) => (
+                  {edges.students.map((e, i) => (
                     <button
-                      key={`s-${e.to_narrator_id}`}
+                      key={`s-${e.to_narrator_id}-${i}`}
                       onClick={() => handleSelectEdge(e)}
                       className={clsx(
                         'w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors',
@@ -646,8 +646,8 @@ export default function ChainPage() {
                   {t.hadithLabel(selectedEdge.from_name, selectedEdge.to_name)}
                 </h4>
                 <div className="space-y-4">
-                  {edgeHadith.map((h) => (
-                    <div key={h.hadith_id} className="border-b border-gray-100 dark:border-zinc-800 last:border-0 pb-4 last:pb-0">
+                  {edgeHadith.map((h, i) => (
+                    <div key={`edge-h-${h.hadith_id}-${i}`} className="border-b border-gray-100 dark:border-zinc-800 last:border-0 pb-4 last:pb-0">
                       <div className="flex items-center gap-2 mb-2">
                         <span className="text-xs font-bold text-white bg-gray-900 dark:bg-teal-700 px-2 py-0.5 rounded">
                           {h.book_name_en || h.book_name_ar}
@@ -656,12 +656,12 @@ export default function ChainPage() {
                       </div>
                       {/* Chain */}
                       <div className="flex flex-wrap items-center gap-1 mb-2">
-                        {h.chain.map((n, i) => (
-                          <span key={n.id} className="flex items-center gap-1">
+                        {h.chain.map((n, ci) => (
+                          <span key={`node-${n.id}-${ci}`} className="flex items-center gap-1">
                             <span className="text-xs text-teal-700 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/20 px-2 py-0.5 rounded-full">
                               {getNarratorName(n, lang)}
                             </span>
-                            {i < h.chain.length - 1 && (
+                            {ci < h.chain.length - 1 && (
                               <span className="text-gray-400 dark:text-gray-600">→</span>
                             )}
                           </span>
