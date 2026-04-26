@@ -8,7 +8,8 @@ Privacy-first, offline-capable Islamic research engine. Search the Quran in Engl
 - **Tauri 2.0** — Cross-platform native app shell
 - **Native SQLite** via `@tauri-apps/plugin-sql` — No browser storage limits
 - **FTS5** full-text search with `unicode61` tokenizer
-- **Transformers.js** — Local ONNX models for embeddings + text generation
+- **Transformers.js** — Local ONNX model for embeddings (BGE-M3)
+- **llama.cpp** — Local GGUF inference server (llama-server) for text generation
 
 ## Development
 
@@ -65,7 +66,7 @@ Output: `src-tauri/resources/hujjah-hadith-*.db`
 | Hadith DB | SQLite `hujjah-hadith-core.db` | 36K Kutub al-Sittah hadith, FTS5, narrators |
 | Hadith DB | SQLite `hujjah-hadith-research.db` | 615K additional hadith (downloadable) |
 | Embedding | Local ONNX `bge-m3` | 1024-dim multilingual embeddings |
-| LLM | Local ONNX `qwen-onnx` (Qwen2.5-0.5B) | Text generation for AI explanations |
+| LLM | Local GGUF via llama-server (Qwen2.5-0.5B / Qwen2.5-1.5B) | Text generation for AI chatbot + explanations |
 
 ### Quran Schema
 
@@ -107,11 +108,16 @@ CREATE TABLE hadith_translations (hadith_id, lang_code, matn_text, translator);
 
 ## AI Chat
 
-- **Floating Chat Widget**: Bottom-right toggle with message history
-- **RAG Pipeline**: Query → embed (Quran) + FTS5 (Hadith) → retrieve top sources → generate explanation
+- **Dedicated /chat Page**: Full-screen WhatsApp-style UI with persistent thread sidebar (up to 15 threads)
+- **Floating Chat Widget**: Bottom-right toggle for quick access alongside the full chat page
+- **Tiered Models**: 0.5B Q4 for mobile (<4GB RAM), 1.5B Q4 for desktop — auto-detected
+- **Apple Silicon GPU**: `-ngl 99` offload on M1/M2/M3 for zero UI freeze
+- **RAG Pipeline**: Query → embed (BGE-M3) + FTS5 (Quran + Hadith) → retrieve → generate
 - **Bilingual**: Responses in English or Bengali based on your language toggle
 - **Source Citations**: Every AI response shows referenced surah:ayah or hadith book + number
-- **100% Offline**: qwen-onnx model runs in a Web Worker — no data leaves device
+- **100% Offline**: GGUF models served via local llama-server — no data leaves device
+- **Per-Message Translation**: Language toggle shows loading spinner inside each message
+- **Source Navigation**: Click verse refs in chat to minimize chat and navigate to surah
 
 ## Hadith Grading
 
@@ -128,6 +134,7 @@ Hadith authenticity is graded by sanad chain length (shorter = stronger):
 | Route | Purpose |
 |---|---|
 | `/` | Search, surah reading, audio, AI chat |
+| `/chat` | Full-screen WhatsApp-style AI chatbot with thread history |
 | `/about` | Data sources, privacy, links |
 | `/settings` | DB stats, model status, reset |
 | `/chain` | Sanad chain explorer — search narrators, browse teachers/students, view hadith graphs |
@@ -143,7 +150,8 @@ Hadith authenticity is graded by sanad chain length (shorter = stronger):
 | GitHub (fawazahmed0/hadith-api) | Classic hadith translations (EN + BN) | ✅ Imported |
 | everyayah.com | Audio MP3s (Alafasy) | ✅ Streaming + cache |
 | HuggingFace | BGE-M3 (ONNX embedding) | ✅ Local |
-| HuggingFace | Qwen2.5-0.5B-Instruct (ONNX) | ✅ Local |
+| HuggingFace | Qwen2.5-0.5B-Instruct (Q4 GGUF) | ✅ Local |
+| HuggingFace | Qwen2.5-1.5B-Instruct (Q4 GGUF) | ✅ Local |
 
 ## License
 

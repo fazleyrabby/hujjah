@@ -2,8 +2,8 @@
  * lib/ai/embedding.ts
  *
  * Embedding Pipeline
- * - Loads configured model (all-MiniLM-L6-v2 or bge-m3) via Transformers.js
- * - Runs inside Web Worker to avoid blocking UI
+ * - Loads BGE-M3 embedding model via Transformers.js Web Worker
+ * - Runs off-thread to avoid blocking UI
  * - Caches model in memory (no re-loading per request)
  */
 
@@ -52,7 +52,7 @@ function makeId(): string {
 /**
  * Generate embeddings for one or more texts.
  * First call loads the model (~1-2s). Subsequent calls are fast.
- * Dimension depends on model config (384 for MiniLM, 1024 for BGE-M3).
+ * Dimension is 1024 (BGE-M3 multilingual).
  */
 export async function embed(texts: string[]): Promise<EmbeddingVector[]> {
   if (texts.length === 0) return [];

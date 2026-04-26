@@ -185,7 +185,7 @@ console.log(`  ${enRows.length} English rows to embed`);
 
 if (enRows.length > 0) {
   console.log('  📦 Loading model...');
-  const extractor = await pipeline('feature-extraction', 'all-MiniLM-L6-v2', { quantized: true });
+  const extractor = await pipeline('feature-extraction', 'bge-m3', { quantized: true });
   console.log('  ✅ Model loaded');
 
   const updateStmt = db.prepare('UPDATE translations SET embedding = ? WHERE id = ?');

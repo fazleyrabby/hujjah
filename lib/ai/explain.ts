@@ -11,10 +11,11 @@
 
 import { getDB } from '@/lib/db';
 import { embedOne, cosineSimilarity } from './embedding';
-import { searchHadithKeyword, type HadithResult } from '@/lib/hadith-db';
+import { searchHadithForAI, type HadithResult } from '@/lib/hadith-db';
 import { withNativeFallback } from './native';
 import { withLlamaFallback, USE_LLAMA_CPP } from './llama';
 import { logInferenceStart, logInferenceEnd } from './rollout';
+import { IS_MOCK_MODE, mockExplainQuery } from '@/lib/mocks';
 
 export interface VerseContext {
   surah: number;
@@ -35,11 +36,12 @@ export interface HadithContext {
 
 /**
  * Search hadith corpus for relevant results (FTS5 keyword search).
+ * Uses github-classic translations only (via searchHadithForAI from hadith-db).
  * Returns top matching hadith as HadithContext.
  */
-async function searchHadithForAI(query: string, limit = 3): Promise<HadithContext[]> {
+async function retrieveHadithContext(query: string, limit = 3): Promise<HadithContext[]> {
   try {
-    const results = await searchHadithKeyword(query, limit);
+    const results = await searchHadithForAI(query, limit);
     return results.map((r: HadithResult) => ({
       id: r.id,
       book_name_ar: r.book_name_ar,
@@ -128,9 +130,13 @@ function truncate(text: string, maxLen: number = 120): string {
 
 function formatVersesFallback(verses: VerseContext[], query: string = '', lang: string = 'en'): string {
   if (verses.length === 0) {
-    return lang === 'bn'
-      ? `আমি এই বিষয়ে সরাসরি কুরআনের আয়াত খুঁজে পাইনি। তবে আপনি যদি আরও বিস্তারিত জানতে চান, অন্য কীওয়ার্ড দিয়ে চেষ্টা করতে পারেন, অথবা আমাকে সরাসরি জিজ্ঞাসা করুন — আমি আমার জ্ঞান থেকে সাহায্য করব।`
-      : `I couldn't find direct Quranic verses on this exact topic. However, feel free to ask me directly — I can share insights from my knowledge, or you could try different keywords to find related verses.`;
+    if (lang === 'bn') {
+      return `আমি এই বিষয়ে সরাসরি কুরআনের আয়াত খুঁজে পাইনি। তবে আপনি যদি আরও বিস্তারিত জানতে চান, অন্য কীওয়ার্ড দিয়ে চেষ্টা করতে পারেন, অথবা আমাকে সরাসরি জিজ্ঞাসা করুন — আমি আমার জ্ঞান থেকে সাহায্য করব।`;
+    }
+    if (lang === 'ar') {
+      return `لم أتمكن من العثور على آيات قرآنية مباشرة حول هذا الموضوع بالضبط. ومع ذلك، لا تتردد في سؤالي مباشرة - يمكنني مشاركة الأفكار من معرفتي، أو يمكنك تجربة كلمات رئيسية مختلفة للعثور على الآيات ذات الصلة.`;
+    }
+    return `I couldn't find direct Quranic verses on this exact topic. However, feel free to ask me directly — I can share insights from my knowledge, or you could try different keywords to find related verses.`;
   }
 
   const refs = verses.map((v) => `${v.surah}:${v.ayah}`).join(', ');
@@ -148,6 +154,22 @@ function formatVersesFallback(verses: VerseContext[], query: string = '', lang: 
       `এই আয়াতগুলোর মাধ্যমে কুরআন আমাদের সুন্দর নির্দেশনা দিয়েছে।`,
       `এগুলো থেকে আমরা গভীর শিক্ষা পেতে পারি।`,
       `আশা করি এই আয়াতগুলো আপনাকে সাহায্য করবে।`
+    ];
+    return `${intro}\n\n${snippets}\n\n${closings[Math.floor(Math.random() * closings.length)]}`;
+  }
+
+  if (lang === 'ar') {
+    const intros = [
+      `إليك ما قاله القرآن الكريم عن "${query}":`,
+      `لقد وجدت بعض الآيات المتعلقة بـ "${query}":`,
+      `يقدم القرآن توجيهات رائعة حول "${query}":`
+    ];
+    const intro = query.trim() ? intros[Math.floor(Math.random() * intros.length)] : `آيات ذات صلة (${refs}):`;
+    const snippets = top.map((v) => `• [${v.surah}:${v.ayah}] ${truncate(v.text, 180)}`).join('\n\n');
+    const closings = [
+      `تقدم هذه الآيات توجيهاً عميقاً في هذا الشأن.`,
+      `هناك حكمة عميقة في هذه الآيات لنتأمل فيها.`,
+      `آمل أن تجلب هذه الآيات الوضوح والسلام إلى قلبك.`
     ];
     return `${intro}\n\n${snippets}\n\n${closings[Math.floor(Math.random() * closings.length)]}`;
   }
@@ -174,37 +196,39 @@ function formatVersesFallback(verses: VerseContext[], query: string = '', lang: 
 function detectChitchat(query: string, lang: string = 'en'): string | null {
   const q = query.toLowerCase().trim();
   const isBn = lang === 'bn';
-  const greetings = ['hi', 'hello', 'hey', 'salam', 'as-salamu alaykum', 'assalamualaikum', 'আসসালামু', 'সালাম', 'হ্যালো'];
-  const howAreYou = ['how are you', 'how r u', 'how is it going', 'কেমন আছ', 'কেমন আছেন'];
-  const identity = ['who are you', 'who am i talking to', 'what is your name', 'what are you', 'তুমি কে', 'আপনি কে'];
-  const thanks = ['thank you', 'thanks', 'shukran', 'jazakallah', 'ধন্যবাদ', 'জাযাকাল্লাহ', 'শুকরিয়া'];
+  const isAr = lang === 'ar';
+
+  const greetings = ['hi', 'hello', 'hey', 'salam', 'as-salamu alaykum', 'assalamualaikum', 'আসসালামু', 'সালাম', 'হ্যালো', 'مرحبا', 'السلام عليكم'];
+  const howAreYou = ['how are you', 'how r u', 'how is it going', 'কেমন আছ', 'কেমন আছেন', 'كيف حالك'];
+  const identity = ['who are you', 'who am i talking to', 'what is your name', 'what are you', 'তুমি কে', 'আপনি কে', 'من أنت'];
+  const thanks = ['thank you', 'thanks', 'shukran', 'jazakallah', 'ধন্যবাদ', 'জাযাকাল্লাহ', 'শুকরিয়া', 'شكرا', 'جزاك الله'];
 
   if (greetings.some((g) => q.includes(g))) {
-    return isBn
-      ? "ওয়ালাইকুম আসসালাম! 🌙 আমি হুজ্জাহ এআই — আপনার কুরআন সঙ্গী। কোনো আয়াত বুঝতে চান? বা কোনো বিষয়ে জানতে চান? যেকোনো কিছু জিজ্ঞাসা করুন!"
-      : "Wa alaykum as-salam! 🌙 I'm Hujjah AI — your Quran companion. Want to understand a verse? Or explore a topic? Ask me anything!";
+    if (isBn) return "ওয়ালাইকুম আসসালাম! 🌙 আমি হুজ্জাহ এআই — আপনার কুরআন সঙ্গী। কোনো আয়াত বুঝতে চান? বা কোনো বিষয়ে জানতে চান? যেকোনো কিছু জিজ্ঞাসা করুন!";
+    if (isAr) return "وعليكم السلام! 🌙 أنا هجة AI - رفيقك في القرآن. هل تريد فهم آية؟ أو استكشاف موضوع؟ اسألني أي شيء!";
+    return "Wa alaykum as-salam! 🌙 I'm Hujjah AI — your Quran companion. Want to understand a verse? Or explore a topic? Ask me anything!";
   }
   if (howAreYou.some((h) => q.includes(h))) {
-    return isBn
-      ? "আলহামদুলিল্লাহ, অনেক ভালো আছি! আজ কী নিয়ে আলোচনা করব? কোনো সূরা, আয়াত, বা বিষয় — আপনাকে সাহায্য করতে প্রস্তুত!"
-      : "Alhamdulillah, doing wonderfully! What shall we explore today? A surah, a verse, a topic — I'm here for you!";
+    if (isBn) return "আলহামদুলিল্লাহ, অনেক ভালো আছি! আজ কী নিয়ে আলোচনা করব? কোনো সূরা, আয়াত, বা বিষয় — আপনাকে সাহায্য করতে প্রস্তুত!";
+    if (isAr) return "الحمد لله، أنا بخير! ماذا سنستكشف اليوم؟ سورة، آية، أو موضوع - أنا هنا من أجلك!";
+    return "Alhamdulillah, doing wonderfully! What shall we explore today? A surah, a verse, a topic — I'm here for you!";
   }
-  if (identity.some((i) => q.includes(h))) {
-    return isBn
-      ? "আমি হুজ্জাহ এআই — একজন বন্ধু যে কুরআন বুঝতে সাহায্য করে! 📖 আমি ১০০% অফলাইন কাজ করি, আপনার তথ্য কখনো বাইরে যায় না। প্রশ্ন করুন, আমি আয়াত দিয়ে উত্তর দেব।"
-      : "I'm Hujjah AI — a friend who helps you understand the Quran! 📖 I work 100% offline, your data never leaves your device. Ask me anything, I'll answer with verses.";
+  if (identity.some((i) => q.includes(i))) {
+    if (isBn) return "আমি হুজ্জাহ এআই — একজন বন্ধু যে কুরআন বুঝতে সাহায্য করে! 📖 আমি ১০০% অফলাইন কাজ করি, আপনার তথ্য কখনো বাইরে যায় না। প্রশ্ন করুন, আমি আয়াত দিয়ে উত্তর দেব।";
+    if (isAr) return "أنا هجة AI - صديق يساعدك على فهم القرآن! 📖 أنا أعمل ١٠٠٪ بدون إنترنت، بياناتك لا تغادر جهازك أبدًا. اسألني أي شيء، وسأجيب بالآيات.";
+    return "I'm Hujjah AI — a friend who helps you understand the Quran! 📖 I work 100% offline, your data never leaves your device. Ask me anything, I'll answer with verses.";
   }
   if (thanks.some((t) => q.includes(t))) {
-    return isBn
-      ? "আপনাকে জাযাকাল্লাহু খাইরান! 🙏 কুরআন শেখা ও শেখানো সবচেয়ে বড় সওয়াবের কাজ। যেকোনো সময় ফিরে আসুন!"
-      : "JazakAllahu khairan! 🙏 Seeking and sharing Quranic knowledge is among the best deeds. Come back anytime!";
+    if (isBn) return "আপনাকে জাযাকাল্লাহু খাইরান! 🙏 কুরআন শেখা ও শেখানো সবচেয়ে বড় সওয়াবের কাজ। যেকোনো সময় ফিরে আসুন!";
+    if (isAr) return "جزاك الله خيراً! 🙏 البحث عن المعرفة القرآنية ومشاركتها من بين أفضل الأعمال. عد في أي وقت!";
+    return "JazakAllahu khairan! 🙏 Seeking and sharing Quranic knowledge is among the best deeds. Come back anytime!";
   }
   // New: User asks what can you do
-  const capabilities = ['what can you do', 'help me', 'কী করতে পারো', 'সাহায্য করো', 'features', 'options'];
+  const capabilities = ['what can you do', 'help me', 'কী করতে পারো', 'সাহায্য করো', 'features', 'options', 'ماذا يمكنك أن تفعل'];
   if (capabilities.some((c) => q.includes(c))) {
-    return isBn
-      ? "আমি আপনাকে এগুলোতে সাহায্য করতে পারি:\n\n📖 যেকোনো আয়াত ব্যাখ্যা করতে পারি\n📚 সূরার সারাংশ দিতে পারি\n🔍 বিষয়ভিত্তিক অনুসন্ধান করতে পারি (যেমন: tawbah, sabr)\n📖 কুরআন থেকে উদ্ধৃতি দিতে পারি\n❓ ইসলামী প্রশ্নের উত্তর দিতে পারি\n\nযেকোনো কিছু জিজ্ঞাসা করুন!"
-      : "Here's how I can help you:\n\n📖 Explain any Quranic verse\n📚 Summarize surahs\n🔍 Search by topic (e.g., tawbah, sabr, rizq)\n📖 Provide verse references\n❓ Answer Islamic questions\n\nWhat would you like to explore?";
+    if (isBn) return "আমি আপনাকে এগুলোতে সাহায্য করতে পারি:\n\n📖 যেকোনো আয়াত ব্যাখ্যা করতে পারি\n📚 সূরার সারাংশ দিতে পারি\n🔍 বিষয়ভিত্তিক অনুসন্ধান করতে পারি (যেমন: tawbah, sabr)\n📖 কুরআন থেকে উদ্ধৃতি দিতে পারি\n❓ ইসলামী প্রশ্নের উত্তর দিতে পারি\n\nযেকোনো কিছু জিজ্ঞাসা করুন!";
+    if (isAr) return "إليك كيف يمكنني مساعدتك:\n\n📖 شرح أي آية قرآنية\n📚 تلخيص السور\n🔍 البحث حسب الموضوع (مثل: التوبة، الصبر، الرزق)\n📖 تقديم مراجع الآيات\n❓ الإجابة على الأسئلة الإسلامية\n\nماذا تود أن تستكشف؟";
+    return "Here's how I can help you:\n\n📖 Explain any Quranic verse\n📚 Summarize surahs\n🔍 Search by topic (e.g., tawbah, sabr, rizq)\n📖 Provide verse references\n❓ Answer Islamic questions\n\nWhat would you like to explore?";
   }
   return null;
 }
@@ -223,10 +247,11 @@ export type QueryIntent = 'explain' | 'summarize' | 'analyze' | 'factual' | 'sea
  */
 export function classifyIntent(query: string): QueryIntent {
   const q = query.toLowerCase().trim();
-  if (/\b(analyze|deep dive|lessons|what does it teach|reflect on|insights|wisdom)\b/.test(q)) return 'analyze';
-  if (/\b(summarize|summary|overview|brief|tldr|in short|gist)\b/.test(q)) return 'summarize';
-  if (/\b(explain|clarify|elaborate|describe|tell me about|what does .+ mean|why |how )\b/.test(q)) return 'explain';
-  if (/\b(what is|what are|who is|who are|when |where |define)\b/.test(q)) return 'factual';
+  // English (with boundaries) + Bengali/Arabic (without boundaries for script compatibility)
+  if (/\b(analyze|deep dive|lessons|wisdom|insight|reflect)\b|(বিশ্লেষণ|শিক্ষা|তাৎপর্য|تأمل|تحليل|دروس|عبر|حكم)/.test(q)) return 'analyze';
+  if (/\b(summarize|summary|overview|brief|tldr)\b|(সারাংশ|সারসংক্ষেপ|সংক্ষিপ্ত|ملخص|خلاصة|موجز|نبذة)/.test(q)) return 'summarize';
+  if (/\b(explain|clarify|elaborate|describe|tell me about|what does .+ mean|why |how )\b|(ব্যাখ্যা|বর্ণনা|কিভাবে|কেন|تحدث|اشرح|وضح|صف|ما معنى|لماذا|كيف)/.test(q)) return 'explain';
+  if (/\b(what is|what are|who is|who are|when |where |define)\b|(কি|কে|কখন|কোথায়|সংজ্ঞা|ما هو|من هو|متى|أين|عرف)/.test(q)) return 'factual';
   return 'search';
 }
 
@@ -301,6 +326,40 @@ function buildStrictPrompt(query: string, ctx: StructuredContext, lang: string, 
 ${contextBlock}
 
 প্রশ্ন: ${query}
+
+${tone}:`;
+  }
+
+  if (lang === 'ar') {
+    const tone = intent === 'summarize'
+      ? 'قدم ملخصاً موجزاً'
+      : intent === 'analyze'
+      ? 'حلل وتعمق في الشرح'
+      : intent === 'explain'
+      ? 'اشرح بلغة واضحة وودودة'
+      : 'أجب بلغة سهلة وودودة';
+
+    return `أنت "هجة AI" — مساعد باحث قرآني ودود.
+
+أسلوبك:
+- كن سهلاً ودافئاً وودوداً
+- قدم أمثلة عملية
+- اشرح معاني الكلمات القرآنية
+- اذكر طرق التطبيق في الحياة
+- أجب بطرق مختلفة حسب نوع السؤال
+
+القواعد:
+- استخدم آيات القرآن الكريم بشكل أساسي
+- يمكنك إضافة معرفة إسلامية عامة عند الحاجة
+- أجب بوضوح وجمال
+- اذكر المراجع (مثلاً: ٢:٢٥٥)
+
+نوع السؤال: ${intent}
+
+المصادر:
+${contextBlock}
+
+السؤال: ${query}
 
 ${tone}:`;
   }
@@ -410,6 +469,12 @@ function buildPrompt(query: string, verses: VerseContext[], lang: string = 'en')
  * Falls back to extractive summary if model fails or output fails validation.
  */
 export async function explainVerse(query: string, verses: VerseContext[], lang: string = 'en'): Promise<string> {
+  if (IS_MOCK_MODE) {
+    const chitchat = detectChitchat(query, lang);
+    if (chitchat) return chitchat;
+    return mockExplainQuery(query, lang).explanation;
+  }
+
   // Handle greetings / small talk instantly without LLM
   const chitchat = detectChitchat(query, lang);
   if (chitchat) return chitchat;
@@ -449,25 +514,52 @@ async function detectSpecificVerses(query: string, lang: string): Promise<VerseC
   const q = query.toLowerCase();
   const db = await getDB();
 
-  // Pattern 1: "surah fatiha" / "surah al-baqarah" / "chapter 2"
-  const surahMatch = q.match(/(?:surah|chapter)\s+([\w\s-]+)/);
-  const numMatch = q.match(/(?:surah|chapter)\s+(\d+)/);
+  // Pattern 1: "surah fatiha" / "chapter 2" / "سورة الفاتحة"
+  const surahMatch = q.match(/(?:surah|chapter|সূরা|سورة)\s+([\w\s-]+|[\u0600-\u06FF\s]+)/);
+  const numMatch = q.match(/(?:surah|chapter|সূরা|سورة)\s+(\d+)/);
 
   let surahId: number | null = null;
 
   if (numMatch) {
     surahId = parseInt(numMatch[1], 10);
   } else if (surahMatch) {
-    const name = surahMatch[1].trim();
-    const sql = `SELECT id FROM surahs WHERE LOWER(name_en) = LOWER(?) OR LOWER(name_bn) = LOWER(?) LIMIT 1`;
-    const rows = await db.select<{ id: number }[]>(sql, [name, name]);
+    let name = surahMatch[1].trim();
+    // Search in en, bn, or ar surah names
+    // 1. Try exact match
+    const sql = `SELECT id FROM surahs WHERE LOWER(name_en) = LOWER(?) OR LOWER(name_bn) = LOWER(?) OR name_ar = ? LIMIT 1`;
+    let rows = await db.select<{ id: number }[]>(sql, [name, name, name]);
+    
+    // 2. Try match without "Al-" prefix
+    if (rows.length === 0 && (name.toLowerCase().startsWith('al-') || name.toLowerCase().startsWith('an-') || name.toLowerCase().startsWith('as-'))) {
+      const stripped = name.split('-').slice(1).join('-');
+      rows = await db.select<{ id: number }[]>(sql, [stripped, stripped, stripped]);
+    }
+    
+    // 3. Try partial match
+    if (rows.length === 0) {
+      const sql2 = `SELECT id FROM surahs WHERE LOWER(name_en) LIKE LOWER(?) OR LOWER(name_bn) LIKE LOWER(?) OR name_ar LIKE ? LIMIT 1`;
+      const pattern = `%${name}%`;
+      rows = await db.select<{ id: number }[]>(sql2, [pattern, pattern, pattern]);
+    }
+    
     if (rows.length > 0) surahId = rows[0].id;
+  }
 
-    // Try partial match
-    if (!surahId) {
-      const sql2 = `SELECT id FROM surahs WHERE LOWER(name_en) LIKE LOWER(?) OR LOWER(name_bn) LIKE LOWER(?) LIMIT 1`;
-      const rows2 = await db.select<{ id: number }[]>(sql2, [`%${name}%`, `%${name}%`]);
-      if (rows2.length > 0) surahId = rows2[0].id;
+  // Fallback: If no explicit "surah" keyword but intent is explain/summarize, check for surah name directly
+  // e.g., "summarize fatiha"
+  if (!surahId) {
+    const words = q.split(/\s+/);
+    for (const word of words) {
+      if (word.length < 4 && !/[\u0600-\u06FF]/.test(word)) continue;
+      // Skip common intent words
+      if (['summarize', 'summary', 'explain', 'analyze', 'wisdom', 'lessons'].includes(word)) continue;
+      
+      const sql = `SELECT id FROM surahs WHERE LOWER(name_en) = LOWER(?) OR LOWER(name_bn) = LOWER(?) OR name_ar = ? OR LOWER(name_en) LIKE LOWER(?) OR LOWER(name_bn) LIKE LOWER(?) LIMIT 1`;
+      const rows = await db.select<{ id: number }[]>(sql, [word, word, word, `%${word}%`, `%${word}%`]);
+      if (rows.length > 0) {
+        surahId = rows[0].id;
+        break;
+      }
     }
   }
 
@@ -636,31 +728,32 @@ async function jsExplainQuery(
     // Step 1: Embed the query
     const queryEmbedding = await embedOne(query);
 
-    // Step 2: Load translations with embeddings (limit to 5000 for speed)
-    const sql = `
-      SELECT
-        v.surah,
-        v.ayah,
-        v.text_ar,
-        t.text,
-        t.translator_slug,
-        t.embedding
-      FROM translations t
-      JOIN verses v ON v.id = t.verse_id
-      WHERE t.lang_code = ? AND t.embedding IS NOT NULL
-      LIMIT 5000
-    `;
+    // Step 2: Load translations with embeddings
+    let rows: any[] = [];
 
-    const rows = await db.select<
-      {
-        surah: number;
-        ayah: number;
-        text_ar: string;
-        text: string;
-        translator_slug: string;
-        embedding: ArrayBuffer;
-      }[]
-    >(sql, [lang]);
+    if (lang === 'ar') {
+      const sql = `
+        SELECT v.surah, v.ayah, v.text_ar, v.text_ar as text, 'arabic' as translator_slug, v.embedding
+        FROM verses v
+        WHERE v.embedding IS NOT NULL
+      `;
+      rows = await db.select(sql);
+    } else {
+      const sql = `
+        SELECT
+          v.surah,
+          v.ayah,
+          v.text_ar,
+          t.text,
+          t.translator_slug,
+          t.embedding
+        FROM translations t
+        JOIN verses v ON v.id = t.verse_id
+        WHERE t.lang_code = ? AND t.embedding IS NOT NULL
+        LIMIT 5000
+      `;
+      rows = await db.select(sql, [lang]);
+    }
 
     // Step 3: Score by cosine similarity, cap at 5 results
     scored = rows
@@ -677,8 +770,8 @@ async function jsExplainQuery(
       .slice(0, 5);
   }
 
-  // Step 4: Search hadith corpus (Arabic FTS5, top 2 results)
-  const hadithResults = lowEnd ? [] : await searchHadithForAI(query, 2);
+  // Step 4: Search hadith corpus (github-classic only, top 2 results)
+  const hadithResults = lowEnd ? [] : await retrieveHadithContext(query, 2);
 
   // Step 5: Build structured context and strict prompt
   let explanation: string;
@@ -731,31 +824,59 @@ export async function explainQuery(
   query: string,
   lang: string = 'en'
 ): Promise<{ explanation: string; verses: VerseContext[]; hadith: HadithContext[] }> {
+  // Mock mode: bypass all LLM infrastructure entirely
+  if (IS_MOCK_MODE) {
+    const chitchat = detectChitchat(query, lang);
+    if (chitchat) return { explanation: chitchat, verses: [], hadith: [] };
+    return mockExplainQuery(query, lang);
+  }
+
   const start = logInferenceStart('fallback', query.length);
+
+  // CRITICAL: Check chitchat BEFORE routing to any backend.
+  // Greetings should NEVER hit the LLM — they reply instantly.
+  const chitchat = detectChitchat(query, lang);
+  if (chitchat) {
+    logInferenceEnd(start, 'fallback', query.length, chitchat.length);
+    return { explanation: chitchat, verses: [], hadith: [] };
+  }
+
   try {
     let result;
     if (USE_LLAMA_CPP) {
-      // Phase 1: Route to llama.cpp (candle GGUF engine)
+      // Route to llama.cpp Rust backend
       result = await withLlamaFallback(
         () => llamaExplainQuery(query, lang),
         () => jsExplainQuery(query, lang),
         'explainQuery'
       );
     } else {
-      // Legacy: Route to native AI stub or Transformers.js
-      result = await withNativeFallback(
-        () => nativeExplainQuery(query, lang),
-        () => jsExplainQuery(query, lang),
-        'explainQuery'
-      );
+      // Legacy path disabled — llama.cpp is required
+      throw new Error('llama.cpp is disabled. Enable it in Settings to use AI chat.');
     }
     logInferenceEnd(start, 'fallback', query.length, result.explanation.length);
     return result;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logInferenceEnd(start, 'fallback', query.length, 0, message);
-    throw err;
+
+    // Graceful degradation: return error as assistant message
+    const errorExplanation = lang === 'bn'
+      ? `আমি দুঃখিত, AI ব্যাকএন্ডে একটি সমস্যা হয়েছে:\n\n${message}\n\nআপনি কি llama-cli ইনস্টল করেছেন? Settings > AI Model দেখুন।`
+      : lang === 'ar'
+      ? `عذراً، حدثت مشكلة في الواجهة الخلفية للذكاء الاصطناعي:\n\n${message}\n\nهل قمت بتثبيت llama-cli؟ راجع الإعدادات > نموذج الذكاء الاصطناعي.`
+      : `Sorry, there was an issue with the AI backend:\n\n${message}\n\nHave you installed llama-cli? Check Settings > AI Model.`;
+
+    return { explanation: errorExplanation, verses: [], hadith: [] };
   }
+}
+
+/**
+ * Format prompt for Qwen2.5-Instruct chat template.
+ * Required so the GGUF model understands the conversation structure.
+ */
+function formatLlamaPrompt(userPrompt: string): string {
+  return `<|im_start|>user\n${userPrompt}<|im_end|>\n<|im_start|>assistant\n`;
 }
 
 /**
@@ -769,7 +890,8 @@ async function llamaExplainQuery(
   const start = logInferenceStart('llama.cpp', query.length);
   try {
     const { invoke } = await import('@tauri-apps/api/core');
-    const response = await invoke<string>('run_llama', { prompt: query });
+    const formattedPrompt = formatLlamaPrompt(query);
+    const response = await invoke<string>('run_llama', { prompt: formattedPrompt });
     logInferenceEnd(start, 'llama.cpp', query.length, response.length);
     return { explanation: response, verses: [], hadith: [] };
   } catch (err) {

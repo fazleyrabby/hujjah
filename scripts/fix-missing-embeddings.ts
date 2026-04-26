@@ -24,7 +24,7 @@ async function main() {
     return;
   }
 
-  const extractor = await pipeline('feature-extraction', 'all-MiniLM-L6-v2', { quantized: true });
+  const extractor = await pipeline('feature-extraction', 'bge-m3', { quantized: true });
   const updateStmt = db.prepare('UPDATE translations SET embedding = ? WHERE id = ?');
   const BATCH_SIZE = 100;
   let processed = 0;

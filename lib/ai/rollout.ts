@@ -7,7 +7,7 @@
 
 interface InferenceMetrics {
   timestamp: number;
-  method: 'native' | 'transformers.js' | 'fallback';
+  method: 'native' | 'transformers.js' | 'fallback' | 'llama.cpp';
   promptLength: number;
   responseLength: number;
   durationMs: number;
@@ -38,7 +38,7 @@ export function logInferenceStart(method: string, promptLength: number): number 
 
 export function logInferenceEnd(
   startTime: number,
-  method: 'native' | 'transformers.js' | 'fallback',
+  method: 'native' | 'transformers.js' | 'fallback' | 'llama.cpp',
   promptLength: number,
   responseLength: number,
   error?: string,

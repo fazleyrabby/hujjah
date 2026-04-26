@@ -6,17 +6,15 @@
  */
 
 // ─── Embedding Model ───
-// Options:
-//   'all-MiniLM-L6-v2'  → 384-dim, ~23MB, fast, English-centric
-//   'bge-m3'            → 1024-dim, ~550MB, multilingual (Arabic/Bengali/English)
+// Uses BGE-M3 for multilingual embeddings (Arabic/Bengali/English)
 export const EMBEDDING_MODEL = 'bge-m3' as const;
 export const EMBEDDING_DIM = 1024;
 
 // ─── Generation Model ───
 // Options:
-//   'qwen-onnx'           → Qwen2.5-0.5B, ~512MB, fast, basic quality
-//   'qwen2.5-1.5b'        → Qwen2.5-1.5B-Instruct Q4F16, ~1.2GB, much better quality
-export const GENERATION_MODEL = 'qwen2.5-1.5b' as const;
+//   'qwen-0.5b-q4'   → Qwen2.5-0.5B Q4_K_M, ~350MB, mobile-friendly
+//   'qwen-1.5b-q4'   → Qwen2.5-1.5B Q4_K_M, ~1.0GB, desktop quality
+export const GENERATION_MODEL = 'qwen-1.5b-q4' as const;
 
 // ─── Model base path (relative to public/models symlink) ───
 export const MODEL_BASE_PATH = '/models';

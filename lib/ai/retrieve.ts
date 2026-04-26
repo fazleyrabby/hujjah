@@ -44,38 +44,56 @@ export async function retrieveRelevantVerses(
   // Step 1: Generate query embedding
   const queryEmbedding = await embedOne(query);
 
-  // Step 2: Load translations with embeddings for the target language
-  // We load all English translations that have embeddings
-  const sql = `
-    SELECT
-      t.id,
-      v.surah,
-      s.name_en AS surah_name_en,
-      s.name_bn AS surah_name_bn,
-      v.ayah,
-      v.text_ar,
-      t.text,
-      t.translator_slug,
-      t.embedding
-    FROM translations t
-    JOIN verses v ON v.id = t.verse_id
-    JOIN surahs s ON s.id = v.surah
-    WHERE t.lang_code = ? AND t.embedding IS NOT NULL
-  `;
+  let rows: {
+    id: number;
+    surah: number;
+    surah_name_en: string;
+    surah_name_bn: string;
+    ayah: number;
+    text_ar: string;
+    text: string;
+    translator_slug: string;
+    embedding: ArrayBuffer;
+  }[] = [];
 
-  const rows = await db.select<
-    {
-      id: number;
-      surah: number;
-      surah_name_en: string;
-      surah_name_bn: string;
-      ayah: number;
-      text_ar: string;
-      text: string;
-      translator_slug: string;
-      embedding: ArrayBuffer;
-    }[]
-  >(sql, [lang]);
+  if (lang === 'ar') {
+    // Step 2a: Load Arabic verses with embeddings
+    const sql = `
+      SELECT
+        v.id,
+        v.surah,
+        s.name_en AS surah_name_en,
+        s.name_bn AS surah_name_bn,
+        v.ayah,
+        v.text_ar,
+        v.text_ar as text,
+        'arabic' as translator_slug,
+        v.embedding
+      FROM verses v
+      JOIN surahs s ON s.id = v.surah
+      WHERE v.embedding IS NOT NULL
+    `;
+    rows = await db.select(sql);
+  } else {
+    // Step 2b: Load translations with embeddings for the target language
+    const sql = `
+      SELECT
+        t.id,
+        v.surah,
+        s.name_en AS surah_name_en,
+        s.name_bn AS surah_name_bn,
+        v.ayah,
+        v.text_ar,
+        t.text,
+        t.translator_slug,
+        t.embedding
+      FROM translations t
+      JOIN verses v ON v.id = t.verse_id
+      JOIN surahs s ON s.id = v.surah
+      WHERE t.lang_code = ? AND t.embedding IS NOT NULL
+    `;
+    rows = await db.select(sql, [lang]);
+  }
 
   // Step 3: Compute similarity for each candidate
   const scored: RetrievedVerse[] = [];
@@ -111,6 +129,12 @@ export async function retrieveHybrid(
   topN: number = 5
 ): Promise<RetrievedVerse[]> {
   if (!query.trim()) return [];
+
+  // Arabic doesn't have an FTS5 index on verses table yet,
+  // so we fall back to full semantic search (only 6236 rows, quite fast).
+  if (lang === 'ar') {
+    return retrieveRelevantVerses(query, lang, topN);
+  }
 
   const db = await getDB();
   const queryEmbedding = await embedOne(query);

@@ -107,6 +107,8 @@ pub fn run() {
             ai::throttle_guard::check_throttle_status,
             ai::llama::run_llama,
             ai::llama::load_llama_model,
+            ai::llama::get_device_tier,
+            ai::llama::get_hardware_profile,
             ai::model_manager::check_model_cache,
             hydrator::check_tier_status,
             hydrator::hydrate_tier,

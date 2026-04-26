@@ -2,46 +2,158 @@
  * hooks/useChat.ts
  *
  * Chatbot hook for Hujjah AI
- * - Maintains message history
+ * - Thread-based message history (persistent)
  * - Streams AI responses via RAG
- * - Supports follow-up questions with context
+ * - Per-message translation loading state
  */
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { explainQuery, type VerseContext, type HadithContext } from '@/lib/ai/explain';
+import {
+  getAllThreads,
+  getThread,
+  saveThread,
+  deleteThread,
+  generateTitle,
+  type ChatThread,
+} from '@/lib/chat-storage';
 
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   text: string;
-  lang?: string;               // language this response was generated in
-  altText?: string;            // cached translation in the other language
-  altLang?: string;            // which language altText is in
+  lang?: string;
+  altText?: string;
+  altLang?: string;
   verses?: VerseContext[];
   hadith?: HadithContext[];
   timestamp: number;
+  isTranslating?: boolean; // per-message translation loader
 }
 
 interface ChatState {
+  threadId: string | null;
   messages: ChatMessage[];
   loading: boolean;
   error: string | null;
+  threads: ChatThread[];
 }
 
 function makeId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export function useChat() {
-  const [state, setState] = useState<ChatState>({
+function createNewThread(lang: string): ChatThread {
+  const id = makeId();
+  return {
+    id,
+    title: 'New Chat',
     messages: [],
-    loading: false,
-    error: null,
+    lang,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+}
+
+export function useChat(initialThreadId?: string) {
+  const [state, setState] = useState<ChatState>(() => {
+    const threads = getAllThreads();
+    let thread: ChatThread | undefined;
+
+    if (initialThreadId) {
+      thread = getThread(initialThreadId);
+    }
+    if (!thread && threads.length > 0) {
+      thread = threads[0];
+    }
+    if (!thread) {
+      thread = createNewThread('en');
+    }
+
+    return {
+      threadId: thread.id,
+      messages: thread.messages,
+      loading: false,
+      error: null,
+      threads,
+    };
   });
+
   const abortRef = useRef(false);
+
+  // Persist thread whenever messages change
+  useEffect(() => {
+    if (!state.threadId || state.messages.length === 0) return;
+
+    const thread: ChatThread = {
+      id: state.threadId,
+      title: generateTitle(state.messages),
+      messages: state.messages,
+      lang: state.messages.find((m) => m.lang)?.lang || 'en',
+      createdAt: state.threads.find((t) => t.id === state.threadId)?.createdAt || Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    saveThread(thread);
+    setState((prev) => ({
+      ...prev,
+      threads: getAllThreads(),
+    }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.messages, state.threadId]);
+
+  const loadThread = useCallback((threadId: string) => {
+    const thread = getThread(threadId);
+    if (thread) {
+      setState({
+        threadId: thread.id,
+        messages: thread.messages,
+        loading: false,
+        error: null,
+        threads: getAllThreads(),
+      });
+    }
+  }, []);
+
+  const createThread = useCallback((lang: string = 'en') => {
+    const thread = createNewThread(lang);
+    saveThread(thread);
+    setState({
+      threadId: thread.id,
+      messages: [],
+      loading: false,
+      error: null,
+      threads: getAllThreads(),
+    });
+    return thread.id;
+  }, []);
+
+  const removeThread = useCallback((threadId: string) => {
+    deleteThread(threadId);
+    const remaining = getAllThreads();
+    setState((prev) => {
+      if (prev.threadId === threadId) {
+        const next = remaining[0];
+        return {
+          threadId: next?.id || null,
+          messages: next?.messages || [],
+          loading: false,
+          error: null,
+          threads: remaining,
+        };
+      }
+      return { ...prev, threads: remaining };
+    });
+  }, []);
 
   const sendMessage = useCallback(async (text: string, lang: string = 'en') => {
     if (!text.trim()) return;
+
+    // Ensure we have a thread
+    let currentThreadId = state.threadId;
+    if (!currentThreadId) {
+      currentThreadId = createThread(lang);
+    }
 
     abortRef.current = false;
 
@@ -49,11 +161,13 @@ export function useChat() {
       id: makeId(),
       role: 'user',
       text: text.trim(),
+      lang,
       timestamp: Date.now(),
     };
 
     setState((prev) => ({
       ...prev,
+      threadId: currentThreadId,
       messages: [...prev.messages, userMsg],
       loading: true,
       error: null,
@@ -88,48 +202,48 @@ export function useChat() {
         error: message,
       }));
     }
-  }, []);
+  }, [state.threadId, createThread]);
 
   /**
    * Toggle the language of a specific assistant message.
-   * Uses cached altText if available; otherwise calls explainQuery again.
+   * Shows per-message loading spinner while fetching.
    */
   const translateMessage = useCallback(async (msgId: string, targetLang: string) => {
-    setState((prev) => {
-      const msg = prev.messages.find((m) => m.id === msgId);
-      if (!msg || msg.role !== 'assistant') return prev;
+    // Check cache first
+    const msg = state.messages.find((m) => m.id === msgId);
+    if (!msg || msg.role !== 'assistant') return;
 
-      // Already have the cached translation — swap immediately
-      if (msg.altLang === targetLang && msg.altText) {
-        return {
-          ...prev,
-          messages: prev.messages.map((m) =>
-            m.id === msgId
-              ? { ...m, text: msg.altText!, lang: targetLang, altText: m.text, altLang: m.lang }
-              : m
-          ),
-        };
-      }
-      return prev;
-    });
+    if (msg.altLang === targetLang && msg.altText) {
+      // Cached — swap immediately
+      setState((prev) => ({
+        ...prev,
+        messages: prev.messages.map((m) =>
+          m.id === msgId
+            ? { ...m, text: m.altText!, lang: targetLang, altText: m.text, altLang: m.lang }
+            : m
+        ),
+      }));
+      return;
+    }
 
-    // Need to fetch — find the original user message before this assistant message
-    const msgs = state.messages;
-    const idx = msgs.findIndex((m) => m.id === msgId);
+    // Find the user message that prompted this assistant message
+    const idx = state.messages.findIndex((m) => m.id === msgId);
     if (idx < 1) return;
-    const userMsg = msgs[idx - 1];
+    const userMsg = state.messages[idx - 1];
     if (!userMsg || userMsg.role !== 'user') return;
 
-    // Check if already cached after state update
-    const current = msgs[idx];
-    if (current?.altLang === targetLang && current.altText) return;
+    // Set per-message translating state
+    setState((prev) => ({
+      ...prev,
+      messages: prev.messages.map((m) =>
+        m.id === msgId ? { ...m, isTranslating: true } : m
+      ),
+    }));
 
-    setState((prev) => ({ ...prev, loading: true }));
     try {
       const result = await explainQuery(userMsg.text, targetLang);
       setState((prev) => ({
         ...prev,
-        loading: false,
         messages: prev.messages.map((m) =>
           m.id === msgId
             ? {
@@ -140,30 +254,53 @@ export function useChat() {
                 altLang: m.lang,
                 verses: result.verses.length > 0 ? result.verses : m.verses,
                 hadith: result.hadith.length > 0 ? result.hadith : m.hadith,
+                isTranslating: false,
               }
             : m
         ),
       }));
     } catch {
-      setState((prev) => ({ ...prev, loading: false }));
+      setState((prev) => ({
+        ...prev,
+        messages: prev.messages.map((m) =>
+          m.id === msgId ? { ...m, isTranslating: false } : m
+        ),
+      }));
     }
   }, [state.messages]);
 
   const clearChat = useCallback(() => {
     abortRef.current = true;
+    if (state.threadId) {
+      deleteThread(state.threadId);
+    }
+    const threads = getAllThreads();
+    const next = threads[0];
     setState({
-      messages: [],
+      threadId: next?.id || null,
+      messages: next?.messages || [],
       loading: false,
       error: null,
+      threads,
     });
+  }, [state.threadId]);
+
+  const setError = useCallback((error: string | null) => {
+    setState((prev) => ({ ...prev, error }));
   }, []);
 
   return {
+    threadId: state.threadId,
     messages: state.messages,
     loading: state.loading,
     error: state.error,
+    threads: state.threads,
     sendMessage,
     translateMessage,
+    loadThread,
+    createThread,
+    removeThread,
     clearChat,
+    setError,
   };
 }

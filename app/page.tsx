@@ -12,7 +12,7 @@ import {
   type SurahVerse,
   type QuranStats,
 } from '@/lib/db';
-import { processHadithQuery, type HadithResult } from '@/lib/hadith-db';
+import { processHadithQuery, getRandomHadiths, type HadithResult } from '@/lib/hadith-db';
 import { detectLang } from '@/lib/search-utils';
 import { useQuranAudio } from '@/contexts/AudioContext';
 import { useRAG } from '@/hooks/useRAG';
@@ -23,6 +23,7 @@ import { clsx } from 'clsx';
 const SUPPORTED_LANGS = [
   { code: 'en', label: 'English' },
   { code: 'bn', label: 'বাংলা' },
+  { code: 'ar', label: 'العربية' },
 ];
 
 export default function Home() {
@@ -44,6 +45,7 @@ export default function Home() {
   const [darkMode, setDarkMode] = useState(false);
   const [searchDomain, setSearchDomain] = useState<'quran' | 'hadith'>('quran');
   const [hadithResults, setHadithResults] = useState<HadithResult[] | null>(null);
+  const [randomHadiths, setRandomHadiths] = useState<HadithResult[] | null>(null);
   const { play: playAudio, pause: pauseAudio, resume: resumeAudio, stop: stopAudio, isPlaying: isAudioPlaying, current: currentAudio } = useQuranAudio();
   const { askAI, explanation, loading: aiLoading, error: aiError, clearAI } = useRAG();
 
@@ -73,10 +75,11 @@ export default function Home() {
   // ─── Init ───
   useEffect(() => {
     setMounted(true);
+    // Log mock mode status so devs know when testing without Tauri
+    import('@/lib/mocks').then(({ logMockStatus }) => logMockStatus()).catch(() => {});
     getQuranStats().then(setStats).catch(console.error);
     getSurahList().then((list) => {
       setSurahs(list);
-      // Auto-load surah from ?surah= query param
       const params = new URLSearchParams(window.location.search);
       const surahParam = params.get('surah');
       if (surahParam) {
@@ -84,17 +87,15 @@ export default function Home() {
         if (!isNaN(id) && id >= 1 && id <= 114) {
           loadSurah(id, lang);
         }
+      } else {
+        // Default: show Surah Al-Fatiha on first load
+        loadSurah(1, lang);
       }
     }).catch(console.error);
     
-    // Phase 1: Hardware profiler (non-breaking, logs only)
     import('@/lib/hardware').then(({ logHardwareProfile }) => {
       logHardwareProfile();
     }).catch(console.error);
-
-    // Phase 4: DO NOT auto-load model — causes high RAM usage
-    // User must manually load via settings or chat
-    // This keeps app lightweight until AI is actually needed
   }, []);
 
   // ─── Dark Mode Sync ───
@@ -217,8 +218,12 @@ export default function Home() {
       if (selectedSurah) {
         loadSurah(selectedSurah, newLang);
       }
+      // Reload random hadiths with new language
+      if (searchDomain === 'hadith' && !query.trim()) {
+        getRandomHadiths(15, newLang).then(setRandomHadiths).catch(console.error);
+      }
     },
-    [query, selectedSurah, executeSearch, loadSurah]
+    [query, selectedSurah, executeSearch, loadSurah, searchDomain]
   );
 
   const handleSurahClick = useCallback(
@@ -386,7 +391,10 @@ export default function Home() {
               <div className="flex items-center bg-gray-100 dark:bg-zinc-800 rounded-lg p-0.5">
                 <button
                   type="button"
-                  onClick={() => setSearchDomain('quran')}
+                  onClick={() => {
+                    setSearchDomain('quran');
+                    setRandomHadiths(null);
+                  }}
                   className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
                     searchDomain === 'quran'
                       ? 'bg-white dark:bg-zinc-700 text-teal-700 dark:text-teal-400 shadow-sm'
@@ -397,7 +405,16 @@ export default function Home() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setSearchDomain('hadith')}
+                  onClick={() => {
+                    setSearchDomain('hadith');
+                    setResults(null);
+                    setSurahVerses(null);
+                    setSelectedSurah(null);
+                    // Load random hadiths if no search query
+                    if (!query.trim()) {
+                      getRandomHadiths(15, lang).then(setRandomHadiths).catch(console.error);
+                    }
+                  }}
                   className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
                     searchDomain === 'hadith'
                       ? 'bg-white dark:bg-zinc-700 text-teal-700 dark:text-teal-400 shadow-sm'
@@ -823,26 +840,78 @@ export default function Home() {
             </div>
           )}
 
-          {/* Empty state */}
-          {!loading && results === null && hadithResults === null && surahVerses === null && (
+          {/* Empty state — Quran */}
+          {!loading && results === null && hadithResults === null && surahVerses === null && searchDomain === 'quran' && (
             <div className="text-center py-20">
               <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 dark:bg-zinc-800 flex items-center justify-center">
                 <svg className="w-8 h-8 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
               </div>
-               <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                 {searchDomain === 'hadith'
-                   ? (lang === 'bn' ? 'হাদিস অনুসন্ধান' : 'Search Hadith')
-                   : (lang === 'bn' ? 'কুরআন অনুসন্ধান' : 'Search the Quran')}
-               </h3>
-               <p className="text-gray-500 dark:text-gray-400 max-w-md mx-auto text-sm">
-                {searchDomain === 'hadith'
-                  ? (lang === 'bn' ? 'বিষয় বা কীওয়ার্ড দিয়ে হাদিস খুঁজুন' : 'Search by topic, keyword, or use @hadith prefix')
-                  : (lang === 'bn'
-                    ? 'সূরা নাম, আয়াত রেফারেন্স, বা কীওয়ার্ড দিয়ে খুঁজুন'
-                    : 'Type a topic like "mercy", "prayer", or "patience" to find relevant verses.')}
-              </p>            </div>
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                {lang === 'bn' ? 'কুরআন অনুসন্ধান' : 'Search the Quran'}
+              </h3>
+              <p className="text-gray-500 dark:text-gray-400 max-w-md mx-auto text-sm">
+                {lang === 'bn'
+                  ? 'সূরা নাম, আয়াত রেফারেন্স, বা কীওয়ার্ড দিয়ে খুঁজুন'
+                  : 'Type a topic like "mercy", "prayer", or "patience" to find relevant verses.'}
+              </p>
+            </div>
+          )}
+
+          {/* Random Hadiths Vault Listing */}
+          {!loading && searchDomain === 'hadith' && hadithResults === null && randomHadiths !== null && randomHadiths.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                  {lang === 'bn' ? 'বাছাই করা হাদিস' : 'Featured Hadith'}
+                </h3>
+                <button
+                  onClick={() => getRandomHadiths(15, lang).then(setRandomHadiths).catch(console.error)}
+                  className="text-xs text-teal-600 dark:text-teal-400 hover:text-teal-700 font-medium flex items-center gap-1"
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  {lang === 'bn' ? 'আরও দেখুন' : 'Shuffle'}
+                </button>
+              </div>
+              <div className="space-y-4">
+                {randomHadiths.map((h, i) => (
+                  <article
+                    key={`${h.id}-${i}`}
+                    className="bg-white dark:bg-zinc-900 border border-amber-200 dark:border-amber-800/40 rounded-xl p-5 hover:shadow-subtle transition-all"
+                  >
+                    {/* Header */}
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-bold px-2 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-400 rounded-full">
+                          {h.book_name_en ?? h.book_name_ar}
+                        </span>
+                        <span className="text-[11px] text-gray-400 dark:text-gray-500">#{h.num_in_book}</span>
+                      </div>
+                      <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                        {h.sanad_length <= 3 ? 'Sahih' : h.sanad_length <= 6 ? 'Hasan' : 'Daif'}
+                      </span>
+                    </div>
+
+                    {/* Arabic Matn */}
+                    <p className="text-right font-arabic text-lg leading-loose text-gray-900 dark:text-white mb-3" dir="rtl">
+                      {h.matn_ar}
+                    </p>
+
+                    {/* Translation (language-matched) */}
+                    {h.matn_en && (
+                      <div className="border-t border-amber-100 dark:border-amber-800/30 pt-3">
+                        <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                          {h.matn_en}
+                        </p>
+                      </div>
+                    )}
+                  </article>
+                ))}
+              </div>
+            </div>
           )}
 
           {/* No results — Quran */}
@@ -902,15 +971,23 @@ export default function Home() {
 
       <ChatWidget lang={lang} onNavigateToVerse={handleNavigateToVerse} />
 
-      {/* ─── Floating Surahs Toggle ─── */}
+      {/* ─── Floating Surahs Toggle ───
+           When sidebar is open: sticks to right edge of sidebar
+           When sidebar is closed: sticks to left edge of screen
+      ─── */}
       <button
         onClick={() => setSidebarOpen((v) => !v)}
-        className="fixed top-[73px] left-0 z-50 flex items-center gap-1 px-2 py-2 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 border-l-0 rounded-r-full shadow-md text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-all"
+        className={clsx(
+          'fixed top-[73px] z-50 flex items-center gap-1 px-2 py-2 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 shadow-md text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-all',
+          sidebarOpen
+            ? 'left-64 border-l-0 rounded-r-full'
+            : 'left-0 border-l-0 rounded-r-full'
+        )}
       >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
         </svg>
-        <span className="text-xs">Surahs</span>
+        <span className="text-xs">{sidebarOpen ? '' : 'Surahs'}</span>
       </button>
     </div>
   );

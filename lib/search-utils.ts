@@ -44,7 +44,7 @@ export function normalizeQuery(query: string, lang?: 'en' | 'bn' | 'ar'): string
   const detectedLang = lang ?? detectLang(query);
 
   // Arabic: strip diacritics + normalize alif/ya
-  if (/[\u0600-\u06FF]/.test(query)) {
+  if (detectedLang === 'ar' || /[\u0600-\u06FF]/.test(query)) {
     return stripArabicDiacritics(query.trim());
   }
 
@@ -62,13 +62,15 @@ export function normalizeQuery(query: string, lang?: 'en' | 'bn' | 'ar'): string
 }
 
 /**
- * Auto-detect whether a query string is Bengali or English.
+ * Auto-detect the primary language of a query string.
  * Checks for Bengali Unicode block (U+0980–U+09FF).
- * Returns 'bn' if any Bengali character is found, 'en' otherwise.
+ * Checks for Arabic/Arabic Extended (U+0600–U+06FF, U+0750–U+077F).
+ * Returns 'bn' for Bengali, 'ar' for Arabic, 'en' otherwise.
  */
-export function detectLang(query: string): 'en' | 'bn' {
+export function detectLang(query: string): 'en' | 'bn' | 'ar' {
   if (!query || !query.trim()) return 'en';
   if (/[\u0980-\u09FF]/.test(query)) return 'bn';
+  if (/[\u0600-\u06FF\u0750-\u077F]/.test(query)) return 'ar';
   return 'en';
 }
 
