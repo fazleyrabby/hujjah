@@ -37,11 +37,21 @@ export interface HadithChain {
   chain: NarratorNode[];
 }
 
+// ─── Arabic Normalizer ───
+function normalizeArabicQuery(text: string): string {
+  return text
+    .replace(/[\u064B-\u0652\u0670\u0640]/g, '') // harakat + tatweel
+    .replace(/[أإآٱ]/g, 'ا')                       // alif variants → bare alif
+    .replace(/ى/g, 'ي');                           // alif maqsura → ya
+}
+
 // ─── Search Narrators ───
 
 export async function searchNarrators(query: string, limit: number = 20): Promise<NarratorNode[]> {
   const db = await getHadithDB();
   if (!query.trim()) return [];
+
+  const cleanQuery = normalizeArabicQuery(query.trim());
 
   // Try FTS5 first (supports Arabic + transliterated name_en search)
   try {
@@ -52,7 +62,7 @@ export async function searchNarrators(query: string, limit: number = 20): Promis
       WHERE narrator_search_idx MATCH ?
       LIMIT ?
     `;
-    const rows = await db.select<NarratorNode[]>(ftsSql, [query.trim(), limit]);
+    const rows = await db.select<NarratorNode[]>(ftsSql, [cleanQuery, limit]);
     if (rows.length > 0) return rows;
   } catch {
     // FTS5 not available or query syntax error — fall through to LIKE
@@ -66,7 +76,7 @@ export async function searchNarrators(query: string, limit: number = 20): Promis
     ORDER BY length(name_ar)
     LIMIT ?
   `;
-  return db.select<NarratorNode[]>(sql, [`%${query.trim()}%`, limit]);
+  return db.select<NarratorNode[]>(sql, [`%${cleanQuery}%`, limit]);
 }
 
 // ─── Get Narrator Profile ───
