@@ -68,6 +68,9 @@ CLAUDE_HANDOVER.md
 
 # Local docs
 docs/
+AI-CHATBOT-TEST-QUERIES.md
+test_rag.py
+scripts/__pycache__/
 
 *.db-shm
 *.db-wal

@@ -10,6 +10,14 @@ import { getHadithDB } from './hadith-db';
 export interface NarratorNode {
   id: number;
   name_ar: string;
+  name_en?: string | null;
+  name_bn?: string | null;
+  birth_year?: number | null;
+  death_year?: number | null;
+  tabaqah?: number | null;
+  reliability?: string | null;
+  city?: string | null;
+  data_source?: string | null;
 }
 
 export interface NarratorEdge {
@@ -35,8 +43,24 @@ export async function searchNarrators(query: string, limit: number = 20): Promis
   const db = await getHadithDB();
   if (!query.trim()) return [];
 
+  // Try FTS5 first (supports Arabic + transliterated name_en search)
+  try {
+    const ftsSql = `
+      SELECT n.id, n.name_ar, n.name_en, n.name_bn, n.birth_year, n.death_year, n.tabaqah, n.reliability, n.city, n.data_source
+      FROM narrator_search_idx
+      JOIN narrators n ON n.id = narrator_search_idx.rowid
+      WHERE narrator_search_idx MATCH ?
+      LIMIT ?
+    `;
+    const rows = await db.select<NarratorNode[]>(ftsSql, [query.trim(), limit]);
+    if (rows.length > 0) return rows;
+  } catch {
+    // FTS5 not available or query syntax error — fall through to LIKE
+  }
+
+  // Fallback: LIKE search on name_ar
   const sql = `
-    SELECT id, name_ar
+    SELECT id, name_ar, name_en, name_bn, birth_year, death_year, tabaqah, reliability, city, data_source
     FROM narrators
     WHERE name_ar LIKE ?
     ORDER BY length(name_ar)
@@ -50,7 +74,7 @@ export async function searchNarrators(query: string, limit: number = 20): Promis
 export async function getNarratorById(id: number): Promise<NarratorNode | null> {
   const db = await getHadithDB();
   const rows = await db.select<NarratorNode[]>(
-    'SELECT id, name_ar FROM narrators WHERE id = ?',
+    'SELECT id, name_ar, name_en, name_bn, birth_year, death_year, tabaqah, reliability, city, data_source FROM narrators WHERE id = ?',
     [id]
   );
   return rows[0] ?? null;
@@ -139,7 +163,7 @@ export async function getHadithsForEdge(
   const result: HadithChain[] = [];
   for (const r of rows) {
     const chainSql = `
-      SELECT n.id, n.name_ar
+      SELECT n.id, n.name_ar, n.name_en, n.name_bn, n.birth_year, n.death_year, n.tabaqah, n.reliability, n.city, n.data_source
       FROM hadith_narrators hn
       JOIN narrators n ON n.id = hn.narrator_id
       WHERE hn.hadith_id = ?
@@ -193,7 +217,7 @@ export async function getHadithChain(hadithId: number): Promise<{
   >(hadithSql, [hadithId]);
 
   const chainSql = `
-    SELECT n.id, n.name_ar
+    SELECT n.id, n.name_ar, n.name_en, n.name_bn, n.birth_year, n.death_year, n.tabaqah, n.reliability, n.city, n.data_source
     FROM hadith_narrators hn
     JOIN narrators n ON n.id = hn.narrator_id
     WHERE hn.hadith_id = ?
@@ -227,8 +251,8 @@ export async function getNarratorGraph(
 
     // Outgoing edges
     const outSql = `
-      SELECT e.from_narrator_id, n.name_ar as from_name,
-        e.to_narrator_id, nn.name_ar as to_name, e.hadith_count
+      SELECT e.from_narrator_id, n.name_ar as from_name, n.name_en as from_name_en, n.name_bn as from_name_bn, n.tabaqah as from_tabaqah, n.reliability as from_reliability, n.city as from_city, n.data_source as from_data_source,
+        e.to_narrator_id, nn.name_ar as to_name, nn.name_en as to_name_en, nn.name_bn as to_name_bn, nn.tabaqah as to_tabaqah, nn.reliability as to_reliability, nn.city as to_city, nn.data_source as to_data_source, e.hadith_count
       FROM narrator_edges e
       JOIN narrators n ON n.id = e.from_narrator_id
       JOIN narrators nn ON nn.id = e.to_narrator_id
@@ -242,10 +266,28 @@ export async function getNarratorGraph(
       if (!edges.has(key)) {
         edges.set(key, e);
         if (!nodes.has(e.from_narrator_id)) {
-          nodes.set(e.from_narrator_id, { id: e.from_narrator_id, name_ar: e.from_name });
+          nodes.set(e.from_narrator_id, {
+            id: e.from_narrator_id,
+            name_ar: e.from_name,
+            name_en: (e as any).from_name_en,
+            name_bn: (e as any).from_name_bn,
+            tabaqah: (e as any).from_tabaqah,
+            reliability: (e as any).from_reliability,
+            city: (e as any).from_city,
+            data_source: (e as any).from_data_source,
+          });
         }
         if (!nodes.has(e.to_narrator_id)) {
-          nodes.set(e.to_narrator_id, { id: e.to_narrator_id, name_ar: e.to_name });
+          nodes.set(e.to_narrator_id, {
+            id: e.to_narrator_id,
+            name_ar: e.to_name,
+            name_en: (e as any).to_name_en,
+            name_bn: (e as any).to_name_bn,
+            tabaqah: (e as any).to_tabaqah,
+            reliability: (e as any).to_reliability,
+            city: (e as any).to_city,
+            data_source: (e as any).to_data_source,
+          });
           nextIds.push(e.to_narrator_id);
         }
       }
@@ -265,4 +307,25 @@ export async function getNarratorGraph(
     nodes: Array.from(nodes.values()),
     edges: Array.from(edges.values()),
   };
+}
+
+// ─── Common Chain Detection ───
+
+/**
+ * Find narrators shared between two hadith chains.
+ * Useful for detecting common transmission paths.
+ */
+export async function getCommonNarrators(
+  hadithId1: number,
+  hadithId2: number
+): Promise<NarratorNode[]> {
+  const db = await getHadithDB();
+  const sql = `
+    WITH chain1 AS (SELECT narrator_id FROM hadith_narrators WHERE hadith_id = ?),
+         chain2 AS (SELECT narrator_id FROM hadith_narrators WHERE hadith_id = ?)
+    SELECT n.id, n.name_ar, n.name_en, n.name_bn, n.birth_year, n.death_year, n.tabaqah, n.reliability, n.city, n.data_source
+    FROM narrators n
+    WHERE n.id IN (SELECT narrator_id FROM chain1 INTERSECT SELECT narrator_id FROM chain2)
+  `;
+  return db.select<NarratorNode[]>(sql, [hadithId1, hadithId2]);
 }
