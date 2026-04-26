@@ -45,17 +45,40 @@ All external data sources, datasets, APIs, models, and libraries used or referen
 
 ### Used / Seeded
 
-| Source | Type | Narrators covered | Status |
+| Source | License | Narrators covered | Fields populated | Status |
+|---|---|---|---|---|
+| Manual curation + normalization reseed | N/A (internal) | 528 | name_en, name_bn, death_year, reliability, city, tabaqah | **Active** — in DB (`data_source='manual'`) |
+| Chain-position analysis on `hadith_narrators` | N/A (derived from corpus) | 23,072 | tabaqah | **Active** — in DB (`data_source='computed'`) |
+| Bengali narrator-name transliteration | N/A (generated via local Qwen) | 528 | name_bn | **Active** — in DB |
+| **Wikidata** (wikdata.org) | **CC0 (Public Domain)** | 584 | death_year, city | **Active** — in DB (`data_source='wikidata'`). Script: `scripts/enrich-wikidata.py`. name_en pass pending re-fetch. |
+
+**Wikidata SPARQL endpoint:** `https://query.wikidata.org/sparql`
+Query targets: occupation=hadith transmitter (Q6584264), Islamic scholars pre-1500 CE with Arabic language.
+Cache stored at: `src-tauri/resources/.wikidata-cache.json`
+
+### Pending (legal, queued to run)
+
+| Source | License | Expected coverage | Script |
 |---|---|---|---|
-| Manual curation + normalization reseed | Hardcoded seed in `scripts/enrich-narrators.py` + `scripts/normalize-arabic.py` | 528 | **Active** — in DB |
-| Chain-position analysis on `hadith_narrators` table | Computed (data-driven tabaqah) | 23,656 | **Active** — in DB |
-| Bengali narrator-name transliteration | Local MLX pipeline via `scripts/translate-bn.py` | 528 | **Active** — in DB (`name_bn`) |
+| **Wikidata** (name_en re-fetch) | CC0 | ~584 name_en fields | `scripts/enrich-wikidata.py --no-cache --apply` |
+| **Wikipedia API** | CC BY-SA 4.0 | Top 500 narrators, gap-fill death_year/city | `scripts/enrich-wikipedia.py --apply --top 500` |
+| **Bengali names for wikidata batch** | N/A (generated) | ~584 additional name_bn | `scripts/translate-bn.py --apply` |
 
-### Referenced / Planned for Enrichment
+### Evaluated but NOT used
 
-| Source | Description | Authenticity Basis |
+| Source | Reason not used |
+|---|---|
+| **dorar.net** | No bulk download; scraping likely violates ToS. Underlying data is public domain but their digitization is proprietary. |
+| **sunnah.com API** | API access requested — no reply received. |
+| **islamweb.net** | Connection refused during testing. |
+| **hadith.inoor.ir** | Not tested; listed as fallback option. |
+
+### Referenced / Planned for future enrichment
+
+| Source | Description | License |
 |---|---|---|
-| **dorar.net** (الدرر السنية) | Largest free Arabic rijal database. Aggregates from Ibn Hajar, al-Mizzi, al-Dhahabi. ~15,000 narrators with death year, tabaqah, reliability grade, city. | Secondary — compiles from classical primary sources |
+| **OpenITI** (Open Islamicate Texts Initiative) | GitHub: `github.com/OpenITI/RELEASE`. Digitized classical Arabic manuscripts. Includes: *Tahdhib al-Kamal*, *Taqrib al-Tahdhib*, *Mizan al-I'tidal*, *Al-Jarh wa al-Ta'dil*. Raw text — needs NLP parsing. | CC BY 4.0 |
+| **shamela.ws** | Downloadable Arabic Islamic library (.bok format). Full classical rijal books. Needs format converter. | Free for personal/research use |
 | **sunnah.com API** | REST API with narrator data for Kutub al-Sittah narrators. Requires free API key at `sunnah.com/developers`. Rate-limited. | Verified hadith science data |
 | **islamweb.net/ar/narrators** | Arabic narrator search with bio fields. Server-side rendered. | Scholarly Islamic reference |
 | **shamela.ws** | Downloadable Arabic Islamic library (.bok format). Contains full digitized text of all classical rijal books. | Primary classical sources |

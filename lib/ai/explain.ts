@@ -880,20 +880,77 @@ function formatLlamaPrompt(userPrompt: string): string {
 }
 
 /**
- * llama.cpp GGUF inference (Phase 1+).
- * Called ONLY when NEXT_PUBLIC_USE_LLAMA_CPP=true.
+ * llama.cpp GGUF inference with full RAG pipeline.
+ * Retrieves relevant verses + hadith via BGE-M3 embeddings,
+ * builds a grounded prompt, then sends to llama.cpp for generation.
  */
 async function llamaExplainQuery(
   query: string,
-  _lang: string = 'en'
+  lang: string = 'en'
 ): Promise<{ explanation: string; verses: VerseContext[]; hadith: HadithContext[] }> {
   const start = logInferenceStart('llama.cpp', query.length);
   try {
     const { invoke } = await import('@tauri-apps/api/core');
-    const formattedPrompt = formatLlamaPrompt(query);
+
+    // Classify intent to tailor prompt style
+    const intent = classifyIntent(query);
+
+    // Try specific surah/verse reference detection first (fastest path)
+    const specificVerses = await detectSpecificVerses(query, lang);
+
+    let verses: VerseContext[] = [];
+    let hadith: HadithContext[] = [];
+
+    if (specificVerses && specificVerses.length > 0) {
+      verses = specificVerses;
+    } else {
+      // Semantic retrieval: embed query → cosine similarity vs stored BGE-M3 embeddings
+      const db = await getDB();
+      const queryEmbedding = await embedOne(query);
+
+      let rows: any[] = [];
+      if (lang === 'ar') {
+        const sql = `
+          SELECT v.surah, v.ayah, v.text_ar, v.text_ar as text, 'arabic' as translator_slug, v.embedding
+          FROM verses v
+          WHERE v.embedding IS NOT NULL
+        `;
+        rows = await db.select(sql);
+      } else {
+        const sql = `
+          SELECT v.surah, v.ayah, v.text_ar, t.text, t.translator_slug, t.embedding
+          FROM translations t
+          JOIN verses v ON v.id = t.verse_id
+          WHERE t.lang_code = ? AND t.embedding IS NOT NULL
+          LIMIT 5000
+        `;
+        rows = await db.select(sql, [lang]);
+      }
+
+      verses = rows
+        .filter((r: any) => r.embedding)
+        .map((r: any) => ({
+          surah: r.surah,
+          ayah: r.ayah,
+          text_ar: r.text_ar,
+          text: r.text,
+          translator_slug: r.translator_slug,
+          similarity: cosineSimilarity(queryEmbedding, new Float32Array(r.embedding)),
+        }))
+        .sort((a: any, b: any) => b.similarity - a.similarity)
+        .slice(0, 5);
+
+      // Hadith retrieval via FTS5
+      hadith = await retrieveHadithContext(query, 2);
+    }
+
+    // Build grounded prompt with retrieved context
+    const groundedPrompt = buildHadithPrompt(query, verses, hadith, lang, intent);
+    const formattedPrompt = formatLlamaPrompt(groundedPrompt);
+
     const response = await invoke<string>('run_llama', { prompt: formattedPrompt });
     logInferenceEnd(start, 'llama.cpp', query.length, response.length);
-    return { explanation: response, verses: [], hadith: [] };
+    return { explanation: response, verses, hadith };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logInferenceEnd(start, 'llama.cpp', query.length, 0, message);
