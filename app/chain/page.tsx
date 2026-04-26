@@ -190,6 +190,7 @@ export default function ChainPage() {
   const [graphMode, setGraphMode] = useState(false);
   const [graphData, setGraphData] = useState<{ nodes: NarratorNode[]; edges: NarratorEdge[] } | null>(null);
   const [hadithChainData, setHadithChainData] = useState<{ hadith: any; chain: NarratorNode[] } | null>(null);
+  const [selectedFullHadith, setSelectedFullHadith] = useState<any | null>(null);
 
   const t = CHAIN_I18N[lang];
   const isRtl = lang === 'ar';
@@ -211,6 +212,14 @@ export default function ChainPage() {
         .catch(console.error)
         .finally(() => setLoading(false));
     }
+  }, []);
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSelectedFullHadith(null);
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
   }, []);
 
   useEffect(() => {
@@ -363,11 +372,19 @@ export default function ChainPage() {
                   <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed font-arabic text-right mb-2" dir="rtl">
                     {hadithChainData.hadith.matn_ar}
                   </p>
-                  {(lang === 'en' ? hadithChainData.hadith.matn_en : hadithChainData.hadith.matn_bn) && (
-                    <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed border-t border-teal-100/50 dark:border-teal-800/20 pt-2">
-                      {lang === 'en' ? hadithChainData.hadith.matn_en : (hadithChainData.hadith.matn_bn || hadithChainData.hadith.matn_en)}
-                    </p>
-                  )}
+                  <div className="flex items-center justify-between gap-4 mt-2 pt-2 border-t border-teal-100/50 dark:border-teal-800/20">
+                    {(lang === 'en' ? hadithChainData.hadith.matn_en : hadithChainData.hadith.matn_bn) ? (
+                      <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed flex-1">
+                        {lang === 'en' ? hadithChainData.hadith.matn_en : (hadithChainData.hadith.matn_bn || hadithChainData.hadith.matn_en)}
+                      </p>
+                    ) : <div className="flex-1" />}
+                    <button
+                      onClick={() => setSelectedFullHadith(hadithChainData.hadith)}
+                      className="flex-shrink-0 text-[10px] font-bold text-teal-600 dark:text-teal-400 hover:underline uppercase tracking-wider"
+                    >
+                      {lang === 'bn' ? 'সম্পূর্ণ হাদিস' : 'Full Hadith'}
+                    </button>
+                  </div>
                 </div>
 
                 {/* Vertical Sanad */}
@@ -650,9 +667,15 @@ export default function ChainPage() {
                           </span>
                         ))}
                       </div>
-                      <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed" dir="rtl">
+                      <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed mb-2" dir="rtl">
                         {h.matn_ar}
                       </p>
+                      <button
+                        onClick={() => setSelectedFullHadith(h)}
+                        className="text-[10px] font-bold text-teal-600 dark:text-teal-400 hover:underline uppercase tracking-wider"
+                      >
+                        {lang === 'bn' ? 'সম্পূর্ণ হাদিস পড়ুন' : 'Read Full Hadith'}
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -661,6 +684,64 @@ export default function ChainPage() {
           </div>
         )}
       </div>
+
+      {/* Hadith Modal */}
+      {selectedFullHadith && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 md:p-8 animate-in fade-in duration-200">
+          <div 
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setSelectedFullHadith(null)}
+          />
+          <div className="relative bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-zinc-800 bg-gray-50/50 dark:bg-zinc-800/50">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-white bg-teal-600 px-2 py-0.5 rounded">
+                  {selectedFullHadith.book_name_en || selectedFullHadith.book_name_ar}
+                </span>
+                <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">#{selectedFullHadith.num_in_book}</span>
+              </div>
+              <button 
+                onClick={() => setSelectedFullHadith(null)}
+                className="p-1 hover:bg-gray-200 dark:hover:bg-zinc-800 rounded-full transition-colors text-gray-400"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              <div className="space-y-4">
+                <p className="font-arabic text-xl leading-loose text-gray-900 dark:text-white text-right" dir="rtl">
+                  {selectedFullHadith.hadith_ar || selectedFullHadith.matn_ar}
+                </p>
+                <div className="h-px bg-gray-100 dark:bg-zinc-800" />
+                
+                {/* Translations */}
+                <div className="space-y-4">
+                  {(selectedFullHadith.matn_en || selectedFullHadith.matn_bn) && (
+                    <div className="bg-teal-50/30 dark:bg-teal-900/5 p-4 rounded-xl border border-teal-100/50 dark:border-teal-900/10">
+                      <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed">
+                        {lang === 'bn' ? (selectedFullHadith.matn_bn || selectedFullHadith.matn_en) : (selectedFullHadith.matn_en || selectedFullHadith.matn_bn)}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-3 border-t border-gray-100 dark:border-zinc-800 flex justify-end bg-gray-50/50 dark:bg-zinc-800/50">
+              <button
+                onClick={() => setSelectedFullHadith(null)}
+                className="px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-black text-xs font-bold rounded-lg hover:opacity-90 transition-opacity"
+              >
+                {lang === 'bn' ? 'বন্ধ করুন' : 'Close'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

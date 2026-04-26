@@ -144,6 +144,7 @@ export async function getHadithsForEdge(
       b.name_en as book_name_en,
       h.num_in_book,
       h.matn_ar,
+      h.hadith_ar,
       ht_en.matn_text as matn_en,
       ht_bn.matn_text as matn_bn
     FROM hadiths h
@@ -176,6 +177,7 @@ export async function getHadithsForEdge(
       book_name_en: r.book_name_en,
       num_in_book: r.num_in_book,
       matn_ar: r.matn_ar,
+      hadith_ar: r.hadith_ar,
       matn_en: r.matn_en || r.matn_bn, // Fallback
       chain,
     } as any);
