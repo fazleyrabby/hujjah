@@ -38,6 +38,14 @@ const CHAIN_I18N = {
     died: 'Died',
     born: 'Born',
     ah: 'AH',
+    howToTitle: 'How to explore',
+    howToSteps: [
+      'Type a narrator name in Arabic or English above',
+      'Select from the dropdown to see their profile',
+      'Click any teacher or student to see shared hadith',
+      'Hit "Show Graph" for a visual 2-hop network',
+    ],
+    tryTitle: 'Try these narrators',
   },
   bn: {
     pageTitle: 'সনদ এক্সপ্লোরার',
@@ -56,6 +64,14 @@ const CHAIN_I18N = {
     died: 'মৃত্যু',
     born: 'জন্ম',
     ah: 'হি.',
+    howToTitle: 'কীভাবে ব্যবহার করবেন',
+    howToSteps: [
+      'উপরের বক্সে আরবি বা ইংরেজিতে রাবীর নাম লিখুন',
+      'ড্রপডাউন থেকে রাবী বেছে নিন — প্রোফাইল দেখাবে',
+      'শায়খ বা ছাত্রের নামে ক্লিক করলে সনদসহ হাদিস দেখাবে',
+      '"গ্রাফ দেখুন" বাটনে চাপলে ২-স্তর নেটওয়ার্ক ভিজুয়াল আসবে',
+    ],
+    tryTitle: 'এই রাবীদের দিয়ে শুরু করুন',
   },
   ar: {
     pageTitle: 'مستكشف الإسناد',
@@ -74,6 +90,14 @@ const CHAIN_I18N = {
     died: 'وفاة',
     born: 'ولادة',
     ah: 'هـ',
+    howToTitle: 'كيفية الاستخدام',
+    howToSteps: [
+      'اكتب اسم الراوي بالعربية في الأعلى',
+      'اختر من القائمة لعرض ترجمته',
+      'انقر على شيخ أو تلميذ لعرض الأحاديث المشتركة',
+      'انقر "عرض الشبكة" لرؤية شبكة درجتين',
+    ],
+    tryTitle: 'جرّب هؤلاء الرواة',
   },
 };
 
@@ -110,6 +134,19 @@ const CITY_LABELS: Record<string, { en: string; bn: string; ar: string }> = {
   'Yamama': { en: 'Yamama', bn: 'ইয়ামামা', ar: 'يمامة' },
   'Khorasan': { en: 'Khorasan', bn: 'খোরাসান', ar: 'خراسان' },
 };
+
+// ─── Example narrators for quick-start chips ─────────────────────────────────
+
+const EXAMPLE_NARRATORS = [
+  { ar: 'أبو هريرة',      en: 'Abu Hurairah',    bn: 'আবু হুরাইরা',    note: '5374 hadith' },
+  { ar: 'عَائِشَةُ',      en: 'Aisha',           bn: 'আয়িশা',         note: 'Prophet\'s wife' },
+  { ar: 'ابن عمر',        en: 'Ibn Umar',        bn: 'ইবনে উমর',       note: 'Sahabi' },
+  { ar: 'أَنَسُ بْنُ مَالِكٍ', en: 'Anas ibn Malik', bn: 'আনাস ইবন মালিক', note: 'Khادim of Prophet' },
+  { ar: 'ابن عباس',       en: 'Ibn Abbas',       bn: 'ইবনে আব্বাস',    note: 'Tarjuman al-Quran' },
+  { ar: 'البخاري',        en: 'Al-Bukhari',      bn: 'আল-বুখারী',      note: 'Sahih compiler' },
+  { ar: 'مسلم',           en: 'Muslim',          bn: 'মুসলিম',         note: 'Sahih compiler' },
+  { ar: 'الزهري',         en: 'Al-Zuhri',        bn: 'আল-যুহরী',       note: "Key Tabi'i" },
+];
 
 function getCityLabel(city: string | null | undefined, lang: Lang): string {
   if (!city) return '';
@@ -223,7 +260,7 @@ export default function ChainPage() {
         <AppNav
           lang={lang}
           onLangChange={(l) => handleLangChange(l as Lang)}
-          langs={[{ code: 'en', label: 'EN' }, { code: 'bn', label: 'বাং' }, { code: 'ar', label: 'عر' }]}
+          langs={[{ code: 'en', label: 'EN' }, { code: 'bn', label: 'বাং' }]}
           darkMode={darkMode}
           onDarkModeToggle={() => setDarkMode((d) => !d)}
         />
@@ -273,6 +310,49 @@ export default function ChainPage() {
                   )}
                 </button>
               ))}
+            </div>
+          )}
+
+          {/* Guide — shown only before any narrator is selected */}
+          {!selectedNarrator && results.length === 0 && !query && (
+            <div className="mt-6 space-y-5">
+              {/* How-to steps */}
+              <div className="bg-teal-50 dark:bg-teal-900/10 border border-teal-100 dark:border-teal-800/40 rounded-xl p-4">
+                <p className="text-xs font-semibold text-teal-700 dark:text-teal-400 uppercase tracking-wide mb-3">
+                  {t.howToTitle}
+                </p>
+                <ol className="space-y-2">
+                  {t.howToSteps.map((step, i) => (
+                    <li key={i} className="flex items-start gap-2.5 text-sm text-gray-700 dark:text-gray-300">
+                      <span className="flex-shrink-0 w-5 h-5 rounded-full bg-teal-600 text-white text-[10px] font-bold flex items-center justify-center mt-0.5">
+                        {i + 1}
+                      </span>
+                      {step}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+
+              {/* Example narrator chips */}
+              <div>
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2.5">
+                  {t.tryTitle}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {EXAMPLE_NARRATORS.map((n) => (
+                    <button
+                      key={n.ar}
+                      onClick={() => handleSearch(n.ar)}
+                      className="group flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-lg hover:border-teal-400 dark:hover:border-teal-600 hover:bg-teal-50 dark:hover:bg-teal-900/10 transition-colors text-left"
+                    >
+                      <span className="text-sm font-medium text-gray-900 dark:text-white" dir="rtl">{n.ar}</span>
+                      <span className="text-xs text-gray-400 dark:text-gray-500 group-hover:text-teal-600 dark:group-hover:text-teal-400">
+                        {lang === 'bn' ? n.bn : n.en}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
         </div>

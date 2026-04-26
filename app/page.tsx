@@ -24,7 +24,6 @@ import { clsx } from 'clsx';
 const SUPPORTED_LANGS = [
   { code: 'en', label: 'English' },
   { code: 'bn', label: 'বাংলা' },
-  { code: 'ar', label: 'العربية' },
 ];
 
 export default function Home() {
@@ -312,7 +311,7 @@ export default function Home() {
             <AppNav
               lang={lang}
               onLangChange={handleLangChange}
-              langs={[{ code: 'en', label: 'EN' }, { code: 'bn', label: 'বাং' }, { code: 'ar', label: 'عر' }]}
+              langs={[{ code: 'en', label: 'EN' }, { code: 'bn', label: 'বাং' }]}
               darkMode={darkMode}
               onDarkModeToggle={() => setDarkMode((d) => !d)}
             />

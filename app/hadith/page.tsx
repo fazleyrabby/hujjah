@@ -243,7 +243,7 @@ export default function HadithPage() {
                           <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
                             {book.name_en ?? book.name_ar}
                           </p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400" dir="rtl">
+                          <p className="text-xs text-gray-500 dark:text-gray-300" dir="rtl">
                             {book.name_ar}
                           </p>
                         </div>
@@ -270,7 +270,7 @@ export default function HadithPage() {
                         <h2 className="text-base font-semibold text-gray-900 dark:text-white">
                           {book.name_en ?? book.name_ar}
                         </h2>
-                        <p className="text-xs text-gray-500 dark:text-gray-400" dir="rtl">{book.name_ar}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-300" dir="rtl">{book.name_ar}</p>
                       </div>
                       <div className="text-right">
                         <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -377,7 +377,7 @@ function HadithCard({ hadith, lang, translator }: { hadith: HadithResult; lang: 
       </div>
 
       <p
-        className="text-right font-arabic text-base leading-loose text-gray-800 dark:text-gray-200 mb-3"
+        className="text-right font-arabic text-base leading-loose text-gray-900 dark:text-gray-50 mb-3"
         dir="rtl"
       >
         {hadith.matn_ar}

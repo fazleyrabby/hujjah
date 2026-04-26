@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useChat } from '@/hooks/useChat';
 import LinkedVerseText from '@/components/LinkedVerseText';
 import { clsx } from 'clsx';
@@ -11,11 +11,16 @@ export default function ChatPage() {
   const [input, setInput] = useState('');
   const [modelLoaded, setModelLoaded] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarWidth, setSidebarWidth] = useState(288); // 288px = w-72
+  const isDragging = useRef(false);
+  const dragStartX = useRef(0);
+  const dragStartWidth = useRef(288);
 
   const {
     threadId,
     messages,
     loading,
+    loadingMessage,
     error,
     threads,
     sendMessage,
@@ -93,6 +98,35 @@ export default function ChatPage() {
     removeThread(id);
   };
 
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    isDragging.current = true;
+    dragStartX.current = e.clientX;
+    dragStartWidth.current = sidebarWidth;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, [sidebarWidth]);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging.current) return;
+      const delta = e.clientX - dragStartX.current;
+      const newWidth = Math.min(480, Math.max(200, dragStartWidth.current + delta));
+      setSidebarWidth(newWidth);
+    };
+    const handleMouseUp = () => {
+      if (!isDragging.current) return;
+      isDragging.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
+
   const isBn = activeLang === 'bn';
   const isAr = activeLang === 'ar';
 
@@ -122,11 +156,12 @@ export default function ChatPage() {
       {/* Sidebar — Thread List */}
       <aside
         className={clsx(
-          'fixed inset-y-0 left-0 z-40 flex w-72 max-w-[85vw] flex-col overflow-hidden border-r border-gray-200 bg-gray-50 dark:border-zinc-800 dark:bg-zinc-950 transition-transform duration-300 md:static md:z-0 md:max-w-none md:transition-[width]',
+          'fixed inset-y-0 left-0 z-40 flex flex-col overflow-hidden border-r border-gray-200 bg-gray-50 dark:border-zinc-800 dark:bg-zinc-950 transition-transform duration-300 md:static md:z-0 md:transition-none',
           sidebarOpen
-            ? 'translate-x-0 md:w-72'
-            : '-translate-x-full md:w-0 md:translate-x-0 md:border-r-0'
+            ? 'translate-x-0'
+            : '-translate-x-full md:translate-x-0 md:border-r-0'
         )}
+        style={{ width: sidebarOpen ? sidebarWidth : 0, maxWidth: '85vw', minWidth: sidebarOpen ? 200 : 0 }}
       >
         {/* Sidebar Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-zinc-800">
@@ -164,10 +199,12 @@ export default function ChatPage() {
                 className="flex-1 min-w-0 text-left"
               >
                 <p className={clsx(
-                  'text-sm font-medium truncate block',
+                  'text-sm font-medium truncate block w-full',
                   thread.id === threadId ? 'text-teal-700 dark:text-teal-400' : 'text-gray-800 dark:text-gray-200'
-                )}>
-                  {thread.title}
+                )}
+                  title={thread.title}
+                >
+                  {thread.title.length > 40 ? thread.title.slice(0, 40) + '…' : thread.title}
                 </p>
                 <p className="text-[10px] text-gray-400 mt-0.5">
                   {new Date(thread.updatedAt).toLocaleDateString()} · {thread.messages.length} messages
@@ -184,6 +221,15 @@ export default function ChatPage() {
             </div>
           ))}
         </div>
+
+        {/* Drag handle — right edge of sidebar */}
+        {sidebarOpen && (
+          <div
+            onMouseDown={handleDragStart}
+            className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-teal-400/40 dark:hover:bg-teal-600/40 transition-colors z-50"
+            title="Drag to resize"
+          />
+        )}
       </aside>
 
       {/* Main Chat Area */}
@@ -213,7 +259,6 @@ export default function ChatPage() {
               {[
                 { code: 'en', label: 'EN' },
                 { code: 'bn', label: 'বাং' },
-                { code: 'ar', label: 'عرب' }
               ].map((l) => (
                 <button
                   key={l.code}
@@ -313,7 +358,6 @@ export default function ChatPage() {
                     {[
                       { code: 'en', label: 'EN' },
                       { code: 'bn', label: 'বাং' },
-                      { code: 'ar', label: 'عرب' }
                     ].map((l) => (
                       <button
                         key={l.code}
@@ -337,12 +381,23 @@ export default function ChatPage() {
 
           {loading && (
             <div className="flex justify-start">
-              <div className="bg-gray-100 dark:bg-zinc-800 rounded-2xl rounded-bl-md px-5 py-3">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <div className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <div className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                </div>
+              <div className="bg-gray-100 dark:bg-zinc-800 rounded-2xl rounded-bl-md px-5 py-3 max-w-[75%]">
+                {loadingMessage ? (
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex gap-1">
+                      <div className="w-1.5 h-1.5 bg-teal-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <div className="w-1.5 h-1.5 bg-teal-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <div className="w-1.5 h-1.5 bg-teal-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
+                    <span className="text-sm text-teal-600 dark:text-teal-400 font-medium">{loadingMessage}</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <div className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <div className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </div>
+                )}
               </div>
             </div>
           )}

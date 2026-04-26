@@ -20,6 +20,7 @@ export default function ChatWidget({ lang, onNavigateToVerse }: ChatWidgetProps)
   const {
     messages,
     loading,
+    loadingMessage,
     error,
     threads,
     sendMessage,
@@ -333,7 +334,6 @@ export default function ChatWidget({ lang, onNavigateToVerse }: ChatWidgetProps)
                       {[
                         { code: 'en', label: 'EN' },
                         { code: 'bn', label: 'বাং' },
-                        { code: 'ar', label: 'عرب' }
                       ].map((l) => (
                         <button
                           key={l.code}
@@ -357,12 +357,23 @@ export default function ChatWidget({ lang, onNavigateToVerse }: ChatWidgetProps)
 
             {loading && (
               <div className="flex justify-start">
-                <div className="bg-gray-100 dark:bg-zinc-800 rounded-2xl rounded-bl-md px-4 py-3">
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <div className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <div className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                  </div>
+                <div className="bg-gray-100 dark:bg-zinc-800 rounded-2xl rounded-bl-md px-4 py-3 max-w-[85%]">
+                  {loadingMessage ? (
+                    <div className="flex items-center gap-2">
+                      <div className="flex gap-1">
+                        <div className="w-1.5 h-1.5 bg-teal-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <div className="w-1.5 h-1.5 bg-teal-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <div className="w-1.5 h-1.5 bg-teal-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                      </div>
+                      <span className="text-xs text-teal-600 dark:text-teal-400 font-medium">{loadingMessage}</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <div className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <div className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
+                  )}
                 </div>
               </div>
             )}

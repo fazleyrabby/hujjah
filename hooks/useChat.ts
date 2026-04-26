@@ -41,6 +41,7 @@ interface ChatState {
   threadId: string | null;
   messages: ChatMessage[];
   loading: boolean;
+  loadingMessage: string;
   error: string | null;
   threads: ChatThread[];
 }
@@ -80,6 +81,7 @@ export function useChat(initialThreadId?: string) {
       threadId: thread.id,
       messages: thread.messages,
       loading: false,
+      loadingMessage: '',
       error: null,
       threads,
     };
@@ -115,6 +117,7 @@ export function useChat(initialThreadId?: string) {
         threadId: thread.id,
         messages: thread.messages,
         loading: false,
+        loadingMessage: '',
         error: null,
         threads: getAllThreads(),
       });
@@ -128,6 +131,7 @@ export function useChat(initialThreadId?: string) {
       threadId: thread.id,
       messages: [],
       loading: false,
+      loadingMessage: '',
       error: null,
       threads: getAllThreads(),
     });
@@ -179,11 +183,18 @@ export function useChat(initialThreadId?: string) {
       threadId: currentThreadId,
       messages: [...prev.messages, userMsg],
       loading: true,
+      loadingMessage: detectedLang === 'bn' ? 'আয়াত ও হাদিস খুঁজছি...' : '',
       error: null,
     }));
 
     try {
-      const result = await explainQuery(text.trim(), detectedLang);
+      const result = await explainQuery(
+        text.trim(),
+        detectedLang,
+        detectedLang === 'bn'
+          ? (msg) => setState((prev) => ({ ...prev, loadingMessage: msg }))
+          : undefined
+      );
 
       if (abortRef.current) return;
 
@@ -201,6 +212,7 @@ export function useChat(initialThreadId?: string) {
         ...prev,
         messages: [...prev.messages, assistantMsg],
         loading: false,
+        loadingMessage: '',
       }));
     } catch (err: unknown) {
       if (abortRef.current) return;
@@ -208,6 +220,7 @@ export function useChat(initialThreadId?: string) {
       setState((prev) => ({
         ...prev,
         loading: false,
+        loadingMessage: '',
         error: message,
       }));
     }
@@ -304,6 +317,7 @@ export function useChat(initialThreadId?: string) {
     threadId: state.threadId,
     messages: state.messages,
     loading: state.loading,
+    loadingMessage: state.loadingMessage,
     error: state.error,
     threads: state.threads,
     sendMessage,

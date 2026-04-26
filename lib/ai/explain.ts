@@ -720,10 +720,13 @@ async function jsExplainQuery(
  * Default: Transformers.js (native disabled).
  * If native fails, falls back to Transformers.js automatically.
  * Phase 8: Logs all inference attempts for rollout monitoring.
+ *
+ * @param onProgress Optional callback for progress messages (used for Bengali two-pass pipeline)
  */
 export async function explainQuery(
   query: string,
-  lang: string = 'en'
+  lang: string = 'en',
+  onProgress?: (msg: string) => void
 ): Promise<{ explanation: string; verses: VerseContext[]; hadith: HadithContext[] }> {
   // Mock mode: bypass all LLM infrastructure entirely
   if (IS_MOCK_MODE) {
@@ -747,7 +750,7 @@ export async function explainQuery(
     if (USE_LLAMA_CPP) {
       // Route to llama.cpp Rust backend
       result = await withLlamaFallback(
-        () => llamaExplainQuery(query, lang),
+        () => llamaExplainQuery(query, lang, onProgress),
         () => jsExplainQuery(query, lang),
         'explainQuery'
       );
@@ -800,15 +803,16 @@ function formatLlamaPrompt(userPrompt: string): string {
  */
 async function llamaExplainQuery(
   query: string,
-  lang: string = 'en'
+  lang: string = 'en',
+  onProgress?: (msg: string) => void
 ): Promise<{ explanation: string; verses: VerseContext[]; hadith: HadithContext[] }> {
   const start = logInferenceStart('llama.cpp', query.length);
   try {
     const { invoke } = await import('@tauri-apps/api/core');
 
-    // Bengali pipeline: translate query to English, run RAG in English, translate answer back
+    // Bengali pipeline: retrieve BN verses → generate EN answer → translate to BN
     if (lang === 'bn') {
-      return llamaExplainBengali(query, start, invoke);
+      return llamaExplainBengali(query, start, invoke, onProgress);
     }
 
     // English / Arabic: standard RAG
@@ -845,68 +849,86 @@ async function llamaExplainQuery(
 }
 
 /**
- * Bengali query pipeline:
- * 1. Retrieve Bengali verses using the Bengali query (BGE-M3 is multilingual)
- * 2. Format verses as a readable Bengali response (no LLM generation — avoids garbled output)
- * 3. If user needs more, they can toggle to English for a full AI answer
+ * Bengali query pipeline — two-pass EN→BN:
+ * 1. Retrieve Bengali verses (BGE-M3 is multilingual — works for Bengali queries)
+ * 2. Generate an English answer (Qwen-1.5B is fluent in English)
+ * 3. Translate the English answer to Bengali (translation is simpler than generation)
+ *
+ * Why two-pass: Qwen-1.5B generates garbled Bengali from scratch but translates
+ * English→Bengali accurately when given a focused translation prompt.
  */
 async function llamaExplainBengali(
   query: string,
   start: ReturnType<typeof logInferenceStart>,
-  _invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown>
+  invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown>,
+  onProgress?: (msg: string) => void
 ): Promise<{ explanation: string; verses: VerseContext[]; hadith: HadithContext[] }> {
   try {
     const intent = classifyIntent(query);
 
-    // Step 1: Retrieve Bengali verses using the Bengali query
-    const hybridResults = await retrieveHybrid(query, 'bn', 5);
-    const verses = hybridResults.map((r) => ({
-      surah: r.surah,
-      ayah: r.ayah,
-      text_ar: r.text_ar,
-      text: r.text,
-      translator_slug: r.translator_slug,
-    }));
+    // Step 1: Retrieve relevant verses and hadith
+    onProgress?.('আয়াত ও হাদিস খুঁজছি...');
 
-    // Step 2: Retrieve hadith using the Bengali query
-    const hadith = await retrieveHadithContext(query, 2);
+    // Detect query script — Bengali users often type in English.
+    // Retrieval must match the query language, not the output language.
+    const hasBengaliQuery = /[\u0980-\u09FF]/.test(query);
+    const retrievalLang = hasBengaliQuery ? 'bn' : 'en';
 
-    // Step 3: Format as Bengali response (extractive — no LLM generation)
-    let explanation: string;
-    if (verses.length === 0 && hadith.length === 0) {
-      explanation = 'এই বিষয়ে কোনো আয়াত বা হাদিস পাওয়া যায়নি।';
-    } else if (intent === 'summarize' && verses.length >= 3) {
-      // For surah summary requests, show the verses directly
-      const surahName = verses[0]?.surah ? `সূরা ${verses[0].surah}` : '';
-      explanation = `${surahName} থেকে প্রাসঙ্গিক আয়াতসমূহ:\n\n` +
-        verses.slice(0, 5).map((v) => `[${v.surah}:${v.ayah}] ${v.text}`).join('\n\n');
+    const specificVerses = await detectSpecificVerses(query, retrievalLang);
+    let verses: VerseContext[] = [];
+    let hadith: HadithContext[] = [];
+
+    if (specificVerses && specificVerses.length > 0) {
+      verses = specificVerses;
     } else {
-      // General query — format with Bengali intro
-      explanation = formatVersesFallback(verses, query, 'bn');
+      const hybridResults = await retrieveHybrid(query, retrievalLang, 5);
+      verses = hybridResults.map((r) => ({
+        surah: r.surah,
+        ayah: r.ayah,
+        text_ar: r.text_ar,
+        text: r.text,
+        translator_slug: r.translator_slug,
+      }));
     }
+
+    hadith = await retrieveHadithContext(query, 2);
+
+    if (verses.length === 0 && hadith.length === 0) {
+      const explanation = 'এই বিষয়ে কোনো আয়াত বা হাদিস পাওয়া যায়নি।';
+      logInferenceEnd(start, 'llama.cpp', query.length, explanation.length);
+      return { explanation, verses, hadith };
+    }
+
+    // Step 2: Generate English answer (Qwen-1.5B is fluent in English)
+    onProgress?.('উত্তর তৈরি হচ্ছে...');
+
+    const enGroundedPrompt = buildHadithPrompt(query, verses, hadith, 'en', intent);
+    const enFormattedPrompt = formatLlamaPrompt(enGroundedPrompt);
+    const enResponse = await invoke('run_llama', { prompt: enFormattedPrompt }) as string;
+
+    if (!enResponse || enResponse.trim().length < 20) {
+      const explanation = formatVersesFallback(verses, query, 'bn');
+      logInferenceEnd(start, 'llama.cpp', query.length, explanation.length);
+      return { explanation, verses, hadith };
+    }
+
+    // Step 3: Translate English → Bengali
+    onProgress?.('বাংলায় অনুবাদ হচ্ছে...');
+
+    const translatePrompt = formatLlamaPrompt(
+      `Translate to Bengali (বাংলা). Keep Quran refs like (2:255) as-is. Output ONLY the Bengali translation.\n\nText:\n${enResponse.trim()}`
+    );
+    let bnResponse = await invoke('run_llama', { prompt: translatePrompt }) as string;
+    bnResponse = bnResponse?.trim() ?? '';
+
+    // Validate: Bengali script must be present, otherwise fall back to English
+    const hasBengaliScript = /[\u0980-\u09FF]/.test(bnResponse);
+    const explanation = hasBengaliScript && bnResponse.length > 20
+      ? bnResponse
+      : enResponse.trim();
 
     logInferenceEnd(start, 'llama.cpp', query.length, explanation.length);
     return { explanation, verses, hadith };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    logInferenceEnd(start, 'llama.cpp', query.length, 0, message);
-    throw err;
-  }
-}
-
-    // Step 3: Retrieve hadith using English query
-    const hadith = await retrieveHadithContext(englishQuery, 2);
-
-    // Step 4: Generate English answer
-    const groundedPrompt = buildHadithPrompt(query, verses, hadith, 'en', intent);
-    const formattedPrompt = formatLlamaPrompt(groundedPrompt);
-    const englishAnswer = await invoke<string>('run_llama', { prompt: formattedPrompt });
-
-    // Step 5: Show English answer with Bengali note
-    // NLLB is too heavy for browser (~3GB RAM). Will be added when desktop Rust backend is ready.
-    const fallbackNote = 'বাংলা উত্তর শীঘ্রই আসছে। ইংরেজি উত্তর দেখানো হলো:\n\n';
-    logInferenceEnd(start, 'llama.cpp', query.length, englishAnswer.length);
-    return { explanation: fallbackNote + englishAnswer, verses, hadith };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logInferenceEnd(start, 'llama.cpp', query.length, 0, message);

@@ -25,7 +25,6 @@ const NAV_LINKS = [
 const DEFAULT_LANGS: LangOption[] = [
   { code: 'en', label: 'EN' },
   { code: 'bn', label: 'বাং' },
-  { code: 'ar', label: 'عر' },
 ];
 
 export default function AppNav({
