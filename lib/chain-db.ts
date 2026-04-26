@@ -51,7 +51,8 @@ export async function searchNarrators(query: string, limit: number = 20): Promis
   const db = await getHadithDB();
   if (!query.trim()) return [];
 
-  const cleanQuery = normalizeArabicQuery(query.trim());
+  const isArabic = /[\u0600-\u06FF]/.test(query);
+  const cleanQuery = isArabic ? normalizeArabicQuery(query.trim()) : query.trim();
 
   // Try FTS5 first (supports Arabic + transliterated name_en search)
   try {
@@ -71,15 +72,22 @@ export async function searchNarrators(query: string, limit: number = 20): Promis
     console.warn('[ChainDB] FTS5 search failed, falling back to LIKE:', err);
   }
 
-  // Fallback: LIKE search on name_ar
+  // Fallback: LIKE search on Arabic, English, and Bengali names
   const sql = `
     SELECT id, name_ar, name_en, name_bn, birth_year, death_year, tabaqah, reliability, city, data_source
     FROM narrators
-    WHERE name_ar LIKE ?
-    ORDER BY length(name_ar)
+    WHERE name_ar LIKE ? OR name_en LIKE ? OR name_bn LIKE ?
+    ORDER BY 
+      CASE 
+        WHEN name_ar LIKE ? THEN 1
+        WHEN name_en LIKE ? THEN 2
+        ELSE 3
+      END,
+      length(name_ar)
     LIMIT ?
   `;
-  return db.select<NarratorNode[]>(sql, [`%${cleanQuery}%`, limit]);
+  const lQuery = `%${cleanQuery}%`;
+  return db.select<NarratorNode[]>(sql, [lQuery, lQuery, lQuery, lQuery, lQuery, limit]);
 }
 
 // ─── Get Narrator Profile ───
