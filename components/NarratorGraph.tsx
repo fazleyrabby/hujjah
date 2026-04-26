@@ -17,6 +17,7 @@ interface Props {
   edges: NarratorEdge[];
   centerId: number;
   darkMode: boolean;
+  lang: 'en' | 'bn' | 'ar';
   onNodeClick: (node: NarratorNode) => void;
   width?: number; // Base width of the container
   height?: number;
@@ -39,6 +40,7 @@ export default function NarratorGraph({
   edges,
   centerId,
   darkMode,
+  lang,
   onNodeClick,
   width: containerWidth = 672,
   height = 480,
@@ -46,6 +48,12 @@ export default function NarratorGraph({
   const containerRef = useRef<HTMLDivElement>(null);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [mounted, setMounted] = useState(false);
+
+  // Helper for consistent name display
+  const getDisplayName = (node: NarratorNode) => {
+    if (lang === 'bn') return node.name_bn ?? node.name_en ?? '';
+    return node.name_en ?? '';
+  };
 
   useEffect(() => {
     setMounted(true);
@@ -256,9 +264,9 @@ export default function NarratorGraph({
                   )}>
                     {node.name_ar}
                   </div>
-                  {node.name_en && (
+                  {getDisplayName(node) && (
                     <div className="text-[9px] text-gray-400 dark:text-gray-500 mt-0.5 truncate max-w-[100px]">
-                      {node.name_en}
+                      {getDisplayName(node)}
                     </div>
                   )}
                 </div>

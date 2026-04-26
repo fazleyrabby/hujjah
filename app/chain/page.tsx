@@ -546,6 +546,7 @@ export default function ChainPage() {
                   edges={graphData.edges}
                   centerId={selectedNarrator.id}
                   darkMode={darkMode}
+                  lang={lang}
                   onNodeClick={handleSelectNarrator}
                   width={672}
                   height={420}
