@@ -55,6 +55,9 @@ export async function searchNarrators(query: string, limit: number = 20): Promis
 
   // Try FTS5 first (supports Arabic + transliterated name_en search)
   try {
+    // Add prefix * to each word for broader matching
+    const ftsQuery = cleanQuery.split(/\s+/).filter(Boolean).map(w => `${w}*`).join(' ');
+    
     const ftsSql = `
       SELECT n.id, n.name_ar, n.name_en, n.name_bn, n.birth_year, n.death_year, n.tabaqah, n.reliability, n.city, n.data_source
       FROM narrator_search_idx
@@ -62,10 +65,10 @@ export async function searchNarrators(query: string, limit: number = 20): Promis
       WHERE narrator_search_idx MATCH ?
       LIMIT ?
     `;
-    const rows = await db.select<NarratorNode[]>(ftsSql, [cleanQuery, limit]);
+    const rows = await db.select<NarratorNode[]>(ftsSql, [ftsQuery, limit]);
     if (rows.length > 0) return rows;
-  } catch {
-    // FTS5 not available or query syntax error — fall through to LIKE
+  } catch (err) {
+    console.warn('[ChainDB] FTS5 search failed, falling back to LIKE:', err);
   }
 
   // Fallback: LIKE search on name_ar
