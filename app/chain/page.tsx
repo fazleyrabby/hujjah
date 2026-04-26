@@ -199,6 +199,8 @@ export default function ChainPage() {
   const [graphData, setGraphData] = useState<{ nodes: NarratorNode[]; edges: NarratorEdge[] } | null>(null);
   const [hadithChainData, setHadithChainData] = useState<{ hadith: any; chain: NarratorNode[] } | null>(null);
   const [selectedFullHadith, setSelectedFullHadith] = useState<any | null>(null);
+  const [showAllTeachers, setShowAllTeachers] = useState(false);
+  const [showAllStudents, setShowAllStudents] = useState(false);
 
   const t = CHAIN_I18N[lang];
   const isRtl = lang === 'ar';
@@ -262,6 +264,8 @@ export default function ChainPage() {
     setEdgeHadith([]);
     setGraphData(null);
     setGraphMode(false);
+    setShowAllTeachers(false);
+    setShowAllStudents(false);
     try {
       const e = await getNarratorEdges(n.id);
       setEdges(e);
@@ -582,11 +586,21 @@ export default function ChainPage() {
             {/* Teachers */}
             {edges.teachers.length > 0 && (
               <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl p-6">
-                <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-4" dir={isRtl ? 'rtl' : 'ltr'}>
-                  {t.teachers}
-                </h4>
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className="text-sm font-semibold text-gray-900 dark:text-white" dir={isRtl ? 'rtl' : 'ltr'}>
+                    {t.teachers}
+                  </h4>
+                  {edges.teachers.length > 8 && (
+                    <button
+                      onClick={() => setShowAllTeachers(!showAllTeachers)}
+                      className="text-[11px] font-bold text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 transition-colors uppercase tracking-wider"
+                    >
+                      {showAllTeachers ? (lang === 'bn' ? 'সংক্ষেপ করুন' : 'Show Less') : (lang === 'bn' ? `সব দেখুন (${edges.teachers.length})` : `Show All (${edges.teachers.length})`)}
+                    </button>
+                  )}
+                </div>
                 <div className="space-y-2">
-                  {edges.teachers.map((e, i) => (
+                  {(showAllTeachers ? edges.teachers : edges.teachers.slice(0, 8)).map((e, i) => (
                     <button
                       key={`t-${e.from_narrator_id}-${i}`}
                       onClick={() => handleSelectEdge(e)}
@@ -616,11 +630,21 @@ export default function ChainPage() {
             {/* Students */}
             {edges.students.length > 0 && (
               <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl p-6">
-                <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-4" dir={isRtl ? 'rtl' : 'ltr'}>
-                  {t.students}
-                </h4>
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className="text-sm font-semibold text-gray-900 dark:text-white" dir={isRtl ? 'rtl' : 'ltr'}>
+                    {t.students}
+                  </h4>
+                  {edges.students.length > 8 && (
+                    <button
+                      onClick={() => setShowAllStudents(!showAllStudents)}
+                      className="text-[11px] font-bold text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 transition-colors uppercase tracking-wider"
+                    >
+                      {showAllStudents ? (lang === 'bn' ? 'সংক্ষেপ করুন' : 'Show Less') : (lang === 'bn' ? `সব দেখুন (${edges.students.length})` : `Show All (${edges.students.length})`)}
+                    </button>
+                  )}
+                </div>
                 <div className="space-y-2">
-                  {edges.students.map((e, i) => (
+                  {(showAllStudents ? edges.students : edges.students.slice(0, 8)).map((e, i) => (
                     <button
                       key={`s-${e.to_narrator_id}-${i}`}
                       onClick={() => handleSelectEdge(e)}
