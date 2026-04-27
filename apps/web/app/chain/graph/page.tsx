@@ -121,6 +121,12 @@ function GraphPage() {
           >
             {t.back}
           </button>
+          <button
+            onClick={() => router.push('/about')}
+            className="text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+          >
+            About
+          </button>
           {displayName && (
             <h1 className="text-sm font-semibold text-gray-900 dark:text-white truncate" dir="auto">
               {t.networkTitle(displayName)}

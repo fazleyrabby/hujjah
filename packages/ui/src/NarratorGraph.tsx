@@ -1,18 +1,95 @@
 'use client';
 
-/**
- * NarratorGraph.tsx
- *
- * Horizontal sanad tree — grandteachers (left) → center → grandstudents (right).
- * Level assignment: edge-based first, tabaqah-based fallback.
- * Uses Number() coercion on all ID comparisons to avoid type-mismatch bugs.
- */
-
-import { useMemo, useEffect, useState, useRef, useCallback } from 'react';
-import { createPortal } from 'react-dom';
-import { TransformWrapper, TransformComponent, type ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
+import React, { useMemo, useState, useEffect } from 'react';
 import type { NarratorNode, NarratorEdge } from './types';
 import { clsx } from 'clsx';
+
+function normalizeArabic(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/[\u064B-\u0652\u0670]/g, '')
+    .replace(/[إأآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .replace(/ـ/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+function mergeDuplicateNarrators(nodes: NarratorNode[]) {
+  const groups = new Map<string, NarratorNode[]>();
+  for (const n of nodes) {
+    const key = normalizeArabic(n.name_ar);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(n);
+  }
+  const merged: NarratorNode[] = [];
+  const idMap = new Map<number, number>();
+  for (const [, group] of groups) {
+    group.sort((a, b) => Number(a.id) - Number(b.id));
+    const canonical = group.reduce((best, n) => {
+      if (!best) return n;
+      if (n.name_en && !best.name_en) return n;
+      if (n.name_bn && !best.name_bn) return n;
+      if (n.reliability && !best.reliability) return n;
+      return best;
+    }, null as NarratorNode | null);
+    if (canonical) {
+      merged.push(canonical);
+      for (let i = 1; i < group.length; i++) {
+        idMap.set(Number(group[i].id), Number(canonical.id));
+      }
+    }
+  }
+  return { mergedNodes: merged, idMap };
+}
+
+function rebuildEdges(edges: NarratorEdge[], idMap: Map<number, number>) {
+  const seen = new Set<string>();
+  const cleaned: NarratorEdge[] = [];
+  for (const e of edges) {
+    let from = Number(e.from_narrator_id);
+    let to = Number(e.to_narrator_id);
+    while (idMap.has(from)) from = idMap.get(from)!;
+    while (idMap.has(to)) to = idMap.get(to)!;
+    if (from === to) continue;
+    const key = `${from}->${to}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    cleaned.push({ ...e, from_narrator_id: from, to_narrator_id: to });
+  }
+  return cleaned;
+}
+
+const INVALID_NAMES = new Set(['ابيه', 'امه', 'رجل', 'امراه']);
+
+function isValidNarrator(node: NarratorNode): boolean {
+  const norm = normalizeArabic(node.name_ar);
+  if (norm.length < 3) return false;
+  if (INVALID_NAMES.has(norm)) return false;
+  return true;
+}
+
+function convertToTree(edges: NarratorEdge[], nodes: NarratorNode[]) {
+  const incoming = new Map<number, NarratorEdge[]>();
+  for (const e of edges) {
+    const to = Number(e.to_narrator_id);
+    if (!incoming.has(to)) incoming.set(to, []);
+    incoming.get(to)!.push(e);
+  }
+  const nodeSet = new Set(nodes.map(n => Number(n.id)));
+  const treeEdges: NarratorEdge[] = [];
+  const keptParents = new Set<number>();
+  for (const e of edges) {
+    const to = Number(e.to_narrator_id);
+    const from = Number(e.from_narrator_id);
+    if (!nodeSet.has(from) || !nodeSet.has(to)) continue;
+    if (keptParents.has(to)) continue;
+    treeEdges.push(e);
+    keptParents.add(to);
+  }
+  return treeEdges;
+}
 
 interface Props {
   nodes: NarratorNode[];
@@ -21,56 +98,20 @@ interface Props {
   darkMode: boolean;
   lang: 'en' | 'bn' | 'ar';
   onNodeClick: (node: NarratorNode) => void;
-  width?: number;
-  height?: number;
 }
 
-// ─── Layout ───────────────────────────────────────────────────────────────────
-const NODE_W   = 190;
-const NODE_H   = 76;
-const CENTER_W = 220;
-const CENTER_H = 84;
-const H_STEP     = 320;  // horizontal distance between column centres
-const SPREAD_GAP = 120;  // vertical distance between node centres within a column
-const PAD_X      = 60;
-const PAD_Y      = 52;
-const MAX_COL    = 999;  // no column cap — show all nodes
+const NODE_W = 180;
+const NODE_H = 70;
+const ROW_GAP = 100;
+const COL_GAP = 20;
 
-// ─── Colors ───────────────────────────────────────────────────────────────────
 const REL_BORDER: Record<string, string> = {
-  thiqah: '#34d399', // emerald-400
-  saduq:  '#60a5fa', // blue-400
-  daif:   '#fb923c', // orange-400
-  mawdu:  '#f43f5e', // rose-500
-};
-const REL_GLOW: Record<string, string> = {
-  thiqah: 'rgba(52,211,153,0.35)',
-  saduq:  'rgba(96,165,250,0.35)',
-  daif:   'rgba(251,146,60,0.35)',
-  mawdu:  'rgba(244,63,94,0.35)',
-};
-const REL_LABEL: Record<string, { en: string; bn: string }> = {
-  thiqah: { en: 'Trustworthy', bn: 'নির্ভরযোগ্য' },
-  saduq:  { en: 'Truthful',    bn: 'সত্যবাদী' },
-  daif:   { en: 'Weak',        bn: 'দুর্বল' },
-  mawdu:  { en: 'Fabricated',  bn: 'জাল' },
+  thiqah: '#34d399',
+  saduq:  '#60a5fa',
+  daif:   '#fb923c',
+  mawdu:  '#f43f5e',
 };
 
-// ─── Transliteration ──────────────────────────────────────────────────────────
-const WORD_MAP: Record<string, string> = {
-  'محمد':'Muhammad','أحمد':'Ahmad','علي':'Ali','عمر':'Umar','عثمان':'Uthman',
-  'أبو':'Abu','أبي':'Abi','ابن':'Ibn','بن':'ibn','بنت':'bint','عبد':'Abd',
-  'الله':'Allah','عبدالله':'Abdullah','الرحمن':'al-Rahman','يحيى':'Yahya',
-  'موسى':'Musa','سفيان':'Sufyan','مالك':'Malik','أنس':'Anas','سعيد':"Sa'id",
-  'حماد':'Hammad','إبراهيم':'Ibrahim','إسحاق':'Ishaq','يوسف':'Yusuf',
-  'داود':'Dawud','سليمان':'Sulayman','جعفر':"Ja'far",'خالد':'Khalid',
-  'زيد':'Zayd','عائشة':"A'isha",'فاطمة':'Fatima','هريرة':'Hurairah',
-  'بكر':'Bakr','عمرو':'Amr','قتيبة':'Qutayba','شعبة':"Shu'ba",
-  'وكيع':"Waki'",'يزيد':'Yazid','حسن':'Hasan','حسين':'Husayn',
-  'نافع':"Nafi'",'الزهري':'al-Zuhri','البخاري':'al-Bukhari','مسلم':'Muslim',
-  'الترمذي':'al-Tirmidhi','النسائي':"al-Nasa'i",'حنبل':'Hanbal',
-  'الشافعي':"al-Shafi'i",'ماجه':'Majah',
-};
 const CHAR_MAP: Record<string, string> = {
   'ا':'a','أ':'a','إ':'i','آ':'a','ء':"'",'ب':'b','ت':'t','ث':'th',
   'ج':'j','ح':'h','خ':'kh','د':'d','ذ':'dh','ر':'r','ز':'z','س':'s',
@@ -81,596 +122,230 @@ const CHAR_MAP: Record<string, string> = {
 
 function transliterate(text: string): string {
   const clean = text.replace(/[\u064B-\u0652\u0670\u0640]/g, '').trim();
-  return clean.split(/\s+/).map(w => {
-    if (WORD_MAP[w]) return WORD_MAP[w];
-    if (w.startsWith('ال') && w.length > 2) return 'al-' + [...w.slice(2)].map(c => CHAR_MAP[c] ?? c).join('');
-    return [...w].map(c => CHAR_MAP[c] ?? c).join('');
-  }).join(' ');
+  return [...clean].map(c => CHAR_MAP[c] ?? c).join('');
 }
 
-function getLabel(node: NarratorNode, lang: 'en' | 'bn' | 'ar') {
-  if (lang === 'ar') return { primary: node.name_ar, secondary: null };
-  const local = lang === 'bn' ? (node.name_bn ?? node.name_en) : node.name_en;
-  if (local) return { primary: local, secondary: node.name_ar };
-  return { primary: transliterate(node.name_ar), secondary: node.name_ar };
+interface TreeNode {
+  id: number;
+  node: NarratorNode;
+  children: Map<number, TreeNode>;
 }
 
-// ─── Level assignment ─────────────────────────────────────────────────────────
-/**
- * Build adjacency maps for BFS traversal.
- * incoming[student] = all teachers of this student
- * outgoing[teacher] = all students of this teacher
- */
-function buildAdjacency(edges: NarratorEdge[]) {
-  const incoming = new Map<number, number[]>();
+function buildTree(chains: NarratorNode[][]): { root: TreeNode | null; allNodes: Map<number, TreeNode> } {
+  if (chains.length === 0) return { root: null, allNodes: new Map() };
+  const nodeMap = new Map<number, NarratorNode>();
+  for (const chain of chains) {
+    for (const n of chain) nodeMap.set(Number(n.id), n);
+  }
+  const rootNode = chains[0][0];
+  const rootId = Number(rootNode.id);
+  const root: TreeNode = { id: rootId, node: rootNode, children: new Map() };
+  const allNodes = new Map<number, TreeNode>();
+  allNodes.set(rootId, root);
+
+  for (const chain of chains) {
+    let parent = root;
+    for (let i = 1; i < chain.length; i++) {
+      const n = chain[i];
+      const nid = Number(n.id);
+      if (!parent.children.has(nid)) {
+        const treeNode: TreeNode = { id: nid, node: n, children: new Map() };
+        parent.children.set(nid, treeNode);
+        allNodes.set(nid, treeNode);
+      }
+      parent = allNodes.get(nid)!;
+    }
+  }
+  return { root, allNodes };
+}
+
+function flattenTree(
+  node: TreeNode,
+  expanded: Set<number>,
+  result: { node: TreeNode; depth: number }[]
+): void {
+  result.push({ node, depth: result.length });
+  if (expanded.has(node.id)) {
+    for (const child of node.children.values()) {
+      flattenTree(child, expanded, result);
+    }
+  }
+}
+
+function extractChains(
+  nodes: NarratorNode[],
+  edges: NarratorEdge[],
+  centerId: number,
+  maxChains: number = 15
+): NarratorNode[][] | null {
+  const nodeMap = new Map(nodes.map(n => [Number(n.id), n]));
   const outgoing = new Map<number, number[]>();
-
   for (const e of edges) {
     const from = Number(e.from_narrator_id);
     const to = Number(e.to_narrator_id);
-    if (from === to) continue;
-
-    if (!incoming.has(to)) incoming.set(to, []);
     if (!outgoing.has(from)) outgoing.set(from, []);
-
-    incoming.get(to)!.push(from);
     outgoing.get(from)!.push(to);
   }
+  const chains: NarratorNode[][] = [];
+  const visitedInPath = new Set<number>();
 
-  return { incoming, outgoing };
-}
-
-/**
- * BFS from center to assign levels.
- * Teachers (incoming edges) go ABOVE (negative levels)
- * Students (outgoing edges) go BELOW (positive levels)
- */
-function buildLevelMap(
-  nodes: NarratorNode[],
-  edges: NarratorEdge[],
-  centerId: number
-): Map<number, number> {
-  const cId = Number(centerId);
-  const { incoming, outgoing } = buildAdjacency(edges);
-
-  const levels = new Map<number, number>();
-  levels.set(cId, 0);
-
-  const queue: number[] = [cId];
-
-  while (queue.length) {
-    const curr = queue.shift()!;
-    const currLevel = levels.get(curr)!;
-
-    for (const teacher of incoming.get(curr) || []) {
-      if (!levels.has(teacher)) {
-        levels.set(teacher, currLevel - 1);
-        queue.push(teacher);
+  function dfs(currentId: number, path: NarratorNode[]): void {
+    if (visitedInPath.has(currentId)) return;
+    const current = nodeMap.get(currentId);
+    if (!current) return;
+    visitedInPath.add(currentId);
+    const newPath = [...path, current];
+    const children = outgoing.get(currentId) || [];
+    if (children.length === 0) {
+      chains.push(newPath);
+    } else {
+      for (const childId of children) {
+        if (chains.length >= maxChains) return;
+        dfs(childId, newPath);
       }
     }
-
-    for (const student of outgoing.get(curr) || []) {
-      if (!levels.has(student)) {
-        levels.set(student, currLevel + 1);
-        queue.push(student);
-      }
-    }
+    visitedInPath.delete(currentId);
   }
 
-  for (const n of nodes) {
-    const id = Number(n.id);
-    if (!levels.has(id)) levels.set(id, 0);
-  }
-
-  return levels;
+  dfs(Number(centerId), []);
+  return chains.length > 0 ? chains : null;
 }
 
-// ─── Level metadata ───────────────────────────────────────────────────────────
-const LEVEL_META: Record<number, { en: string; bn: string; color: string; darkColor: string }> = {
-  '-2': { en: 'Grandteachers', bn: 'উস্তাদের উস্তাদ', color: 'text-teal-700 bg-teal-50 border-teal-200', darkColor: 'dark:text-teal-400 dark:bg-teal-900/20 dark:border-teal-800' },
-  '-1': { en: 'Teachers',      bn: 'শায়খগণ',          color: 'text-teal-600 bg-teal-50 border-teal-100', darkColor: 'dark:text-teal-400 dark:bg-teal-900/10 dark:border-teal-900' },
-   '0': { en: 'Selected',      bn: 'নির্বাচিত',        color: 'text-gray-700 bg-gray-50 border-gray-200',  darkColor: 'dark:text-gray-300 dark:bg-zinc-800 dark:border-zinc-700' },
-   '1': { en: 'Students',      bn: 'ছাত্রগণ',          color: 'text-purple-600 bg-purple-50 border-purple-100', darkColor: 'dark:text-purple-400 dark:bg-purple-900/10 dark:border-purple-900' },
-   '2': { en: 'Grandstudents', bn: 'ছাত্রের ছাত্র',    color: 'text-purple-700 bg-purple-50 border-purple-200', darkColor: 'dark:text-purple-400 dark:bg-purple-900/20 dark:border-purple-800' },
-};
-
-// ─── Controls ─────────────────────────────────────────────────────────────────
-function GraphControls({
-  zoomIn, zoomOut, resetTransform, isFullScreen, setIsFullScreen,
-}: {
-  zoomIn: () => void; zoomOut: () => void; resetTransform: () => void;
-  isFullScreen: boolean; setIsFullScreen: (v: boolean) => void;
-}) {
-  return (
-    <div className="fixed top-3 right-3 flex flex-col gap-2 z-[9999]">
-      <button
-        onClick={() => setIsFullScreen(!isFullScreen)}
-        className="flex items-center justify-center w-10 h-10 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-xl shadow-lg text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors"
-        title={isFullScreen ? 'Exit fullscreen' : 'Fullscreen'}
-      >
-        {isFullScreen
-          ? <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
-          : <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
-        }
-      </button>
-      <div className="flex flex-col bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-xl shadow-lg overflow-hidden">
-        <button onClick={zoomIn} className="p-2.5 hover:bg-gray-50 dark:hover:bg-zinc-800 text-gray-600 dark:text-gray-400 border-b border-gray-100 dark:border-zinc-800 transition-colors" title="Zoom in">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
-        </button>
-        <button onClick={zoomOut} className="p-2.5 hover:bg-gray-50 dark:hover:bg-zinc-800 text-gray-600 dark:text-gray-400 border-b border-gray-100 dark:border-zinc-800 transition-colors" title="Zoom out">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M20 12H4"/></svg>
-        </button>
-        <button onClick={resetTransform} className="p-2.5 hover:bg-gray-50 dark:hover:bg-zinc-800 text-gray-600 dark:text-gray-400 transition-colors" title="Reset view">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ─── Main component ───────────────────────────────────────────────────────────
 export default function NarratorGraph({
-  nodes, edges, centerId, darkMode, lang, onNodeClick,
-  width: _containerWidth = 800,
-  height: _containerHeight = 600,
+  nodes: rawNodes, edges: rawEdges, centerId, darkMode, lang, onNodeClick,
 }: Props) {
-  const [isFullScreen, setIsFullScreen] = useState(false);
-  const [mounted, setMounted] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const transformRef = useRef<ReactZoomPanPinchRef>(null);
+  const [processed, setProcessed] = useState<{ nodes: NarratorNode[]; edges: NarratorEdge[] } | null>(null);
 
-  useEffect(() => { setMounted(true); }, []);
   useEffect(() => {
-    document.body.style.overflow = isFullScreen ? 'hidden' : '';
-    return () => { document.body.style.overflow = ''; };
-  }, [isFullScreen]);
-  useEffect(() => {
-    const fn = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setIsFullScreen(false); setSelectedId(null); }
-    };
-    window.addEventListener('keydown', fn);
-    return () => window.removeEventListener('keydown', fn);
-  }, []);
-  useEffect(() => { if (isFullScreen) setIsFullScreen(false); }, [centerId]);
+    let nodes = rawNodes.filter(isValidNarrator);
+    const { mergedNodes, idMap } = mergeDuplicateNarrators(nodes);
+    nodes = mergedNodes;
+    const edges = rebuildEdges(rawEdges, idMap);
+    const treeEdges = convertToTree(edges, nodes);
+    setProcessed({ nodes, edges: treeEdges });
+  }, [rawNodes, rawEdges]);
 
-  const zoomIn  = useCallback(() => transformRef.current?.zoomIn(0.25), []);
-  const zoomOut = useCallback(() => transformRef.current?.zoomOut(0.25), []);
-  const resetFn = useCallback(() => transformRef.current?.resetTransform(0.3), []);
+  const nodes = processed?.nodes ?? rawNodes;
+  const edges = processed?.edges ?? rawEdges;
 
-  // ── Level assignment ──
-  const levelMap = useMemo(() => buildLevelMap(nodes, edges, centerId), [nodes, edges, centerId]);
+const chains = useMemo(
+    () => extractChains(nodes, edges, centerId, 15),
+    [nodes, edges, centerId]
+  );
 
-  const uniqueLevels = useMemo(() => {
-    const levels = new Set(levelMap.values());
-    return Array.from(levels).sort((a, b) => a - b);
-  }, [levelMap]);
+  const expandState = React.useRef(new Set<number>());
 
-  // ── Group nodes by level ──
-  const levelGroups = useMemo(() => {
-    const g = new Map<number, NarratorNode[]>();
-    for (const n of nodes) {
-      const l = levelMap.get(Number(n.id)) ?? 0;
-      if (!g.has(l)) g.set(l, []);
-      g.get(l)!.push(n);
-    }
-    return g;
-  }, [nodes, levelMap]);
+  const { root: treeRoot, allNodes } = useMemo(() => chains ? buildTree(chains) : { root: null, allNodes: new Map() }, [chains]);
 
-  const activeLevels = uniqueLevels.filter(l => (levelGroups.get(l)?.length ?? 0) > 0);
-
-  // ── Node positions (LTR columns) ──
-  const { positions, canvasW, canvasH } = useMemo(() => {
-    const pos = new Map<number, { x: number; y: number; isCenter: boolean }>();
-
-    // Canvas height driven by tallest column, using spread formula
-    const maxColCount = Math.max(...activeLevels.map(l => levelGroups.get(l)!.length), 1);
-    const cH = Math.max((maxColCount - 1) * SPREAD_GAP + NODE_H + PAD_Y * 2, CENTER_H + PAD_Y * 2);
-    const cW = activeLevels.length * H_STEP + PAD_X * 2;
-    const midY = cH / 2;
-
-    activeLevels.forEach((lvl, colIdx) => {
-      const colNodes = levelGroups.get(lvl)!;
-      const isLvlCenter = lvl === 0;
-      const nW = isLvlCenter ? CENTER_W : NODE_W;
-
-      // Column X: centre of node in this column
-      const x = PAD_X + colIdx * H_STEP + nW / 2;
-
-      // Spread nodes symmetrically around column midpoint
-      colNodes.forEach((n, i) => {
-        const offset = (i - (colNodes.length - 1) / 2) * SPREAD_GAP;
-        pos.set(Number(n.id), {
-          x,
-          y: midY + offset,
-          isCenter: Number(n.id) === Number(centerId),
-        });
-      });
-    });
-
-    return { positions: pos, canvasW: cW, canvasH: cH };
-  }, [levelGroups, activeLevels, centerId]);
-
-  // ── Highlighted node connections ──
-  const connectedIds = useMemo(() => {
-    if (selectedId === null) return new Set<number>();
+  const defaultExpanded = React.useMemo(() => {
+    if (!treeRoot) return new Set<number>();
     const ids = new Set<number>();
-    for (const e of edges) {
-      const from = Number(e.from_narrator_id), to = Number(e.to_narrator_id);
-      if (from === selectedId || to === selectedId) { ids.add(from); ids.add(to); }
-    }
+    for (const child of treeRoot.children.values()) ids.add(child.id);
     return ids;
-  }, [selectedId, edges]);
+  }, [treeRoot]);
 
-  // ── Edge rendering ──
-  const edgePaths = useMemo(() => {
-    return edges.map((edge, i) => {
-      const from = Number(edge.from_narrator_id), to = Number(edge.to_narrator_id);
-      const s = positions.get(from), e = positions.get(to);
-      if (!s || !e) return null;
+  const [expanded, setExpanded] = useState<Set<number>>(() => defaultExpanded);
 
-      const cId = Number(centerId);
-      // from=TEACHER, to=STUDENT
-      const isStudentEdge = from === cId;  // center is teacher → to is student (right)
-      const isTeacherEdge = to === cId;    // center is student → from is teacher (left)
-      const isDirect = isTeacherEdge || isStudentEdge;
-
-      // Skip self-loops
-      if (from === to) return null;
-
-      // Determine highlight state
-      const isHighlighted = selectedId !== null && (from === selectedId || to === selectedId);
-      const isDimmed = selectedId !== null && !isHighlighted;
-
-      // Horizontal S-curve: from exits right edge, to enters left edge
-      // from=teacher (left column), to=student (right column) → curve goes left-to-right
-      const sHalfW = (s.isCenter ? CENTER_W : NODE_W) / 2;
-      const eHalfW = (e.isCenter ? CENTER_W : NODE_W) / 2;
-      const startX = s.x + sHalfW;  // right edge of teacher (source)
-      const endX   = e.x - eHalfW;  // left edge of student (target)
-      const midX   = (startX + endX) / 2;
-      // Same-column guard: bow the curve so nodes in same column don't get straight lines
-      const dy = Math.abs(e.y - s.y);
-      const bow = dy < 8 ? 60 : 0;
-      const path = `M ${startX} ${s.y} C ${midX + bow} ${s.y}, ${midX - bow} ${e.y}, ${endX} ${e.y}`;
-
-      let stroke: string;
-      let strokeWidth: number;
-      let opacity: number;
-
-      if (isDimmed) {
-        stroke = darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
-        strokeWidth = 1;
-        opacity = 1;
-      } else if (isHighlighted) {
-        stroke = 'rgba(251,191,36,1)'; // amber highlight
-        strokeWidth = 3;
-        opacity = 1;
-      } else if (isTeacherEdge) {
-        stroke = 'rgba(20,184,166,0.85)';
-        strokeWidth = isDirect ? 3 : 1.5;
-        opacity = 1;
-      } else if (isStudentEdge) {
-        stroke = 'rgba(168,85,247,0.85)';
-        strokeWidth = isDirect ? 3 : 1.5;
-        opacity = 1;
-      } else {
-        stroke = darkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.10)';
-        strokeWidth = 1.5;
-        opacity = 1;
+  const flatNodes = useMemo(() => {
+    if (!treeRoot) return [];
+    const result: { node: TreeNode; depth: number }[] = [];
+    function recurse(n: TreeNode, depth: number) {
+      result.push({ node: n, depth });
+      if (expanded.has(n.id)) {
+        for (const child of n.children.values()) recurse(child, depth + 1);
       }
+    }
+    recurse(treeRoot, 0);
+    return result;
+  }, [treeRoot, expanded]);
 
-      const markerId = isHighlighted ? 'arr-hl'
-        : isTeacherEdge ? 'arr-teacher'
-        : isStudentEdge ? 'arr-student'
-        : isDimmed ? 'arr-dim'
-        : 'arr-other';
+const toggleExpand = (id: number) => {
+    const next = new Set(expanded);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setExpanded(next);
+  };
 
-      return (
-        <path
-          key={`e-${i}`}
-          d={path}
-          fill="none"
-          stroke={stroke}
-          strokeWidth={strokeWidth}
-          strokeOpacity={opacity}
-          markerEnd={`url(#${markerId})`}
-          className="transition-all duration-200"
-        />
-      );
-    });
-  }, [edges, positions, centerId, selectedId, darkMode]);
+  const renderNode = (item: { node: TreeNode; depth: number }) => {
+    const treeNode = item.node;
+    const n = treeNode.node;
+    const depth = item.depth;
+    const hasChildren = treeNode.children.size > 0;
+    const isExpanded = expanded.has(treeNode.id);
+    const isRoot = depth === 0;
 
-  // ── Level band backgrounds (vertical columns) ──
-  const levelBands = useMemo(() => {
-    return activeLevels.map((lvl, colIdx) => {
-      const nW = lvl === 0 ? CENTER_W : NODE_W;
-      const x = PAD_X + colIdx * H_STEP;
-      const isTeacher = lvl < 0;
-      const isStudent = lvl > 0;
-      return { lvl, x, nW, isTeacher, isStudent };
-    });
-  }, [activeLevels]);
-
-  if (!mounted) return null;
-
-  const graphContent = (
-    <div className="relative w-full h-full select-none" onClick={() => setSelectedId(null)}>
-
-      {/* Legend — bottom-left */}
-      <div className="absolute bottom-3 left-3 z-[999] flex flex-col gap-1.5 bg-white/95 dark:bg-zinc-900/95 px-3 py-2.5 rounded-xl border border-gray-200 dark:border-zinc-700 shadow-md pointer-events-none">
-        <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Legend</p>
-        <div className="flex items-center gap-2">
-          <span className="w-3 h-3 rounded-full bg-teal-500 flex-shrink-0"/>
-          <span className="text-[10px] text-gray-600 dark:text-gray-400">Selected narrator</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="w-3 h-3 rounded-full border-2 flex-shrink-0" style={{ borderColor: REL_BORDER.thiqah }}/>
-          <span className="text-[10px] text-gray-600 dark:text-gray-400">Trustworthy (thiqah)</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="w-3 h-3 rounded-full border-2 flex-shrink-0" style={{ borderColor: REL_BORDER.saduq }}/>
-          <span className="text-[10px] text-gray-600 dark:text-gray-400">Truthful (saduq)</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="w-3 h-3 rounded-full border-2 flex-shrink-0" style={{ borderColor: REL_BORDER.daif }}/>
-          <span className="text-[10px] text-gray-600 dark:text-gray-400">Weak (daif)</span>
-        </div>
-        <div className="h-px bg-gray-100 dark:bg-zinc-700 my-0.5"/>
-        <div className="flex items-center gap-2">
-          <svg width="22" height="8" className="flex-shrink-0">
-            <line x1="0" y1="4" x2="16" y2="4" stroke="rgba(20,184,166,0.9)" strokeWidth="2"/>
-            <polygon points="14,1.5 22,4 14,6.5" fill="rgba(20,184,166,0.9)"/>
-          </svg>
-          <span className="text-[10px] text-gray-600 dark:text-gray-400">Teacher → center</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <svg width="22" height="8" className="flex-shrink-0">
-            <line x1="0" y1="4" x2="16" y2="4" stroke="rgba(168,85,247,0.9)" strokeWidth="2"/>
-            <polygon points="14,1.5 22,4 14,6.5" fill="rgba(168,85,247,0.9)"/>
-          </svg>
-          <span className="text-[10px] text-gray-600 dark:text-gray-400">Center → student</span>
-        </div>
-        <p className="text-[9px] text-gray-400 dark:text-gray-600 mt-0.5">Tap to highlight · Tap again to open</p>
-        <p className="text-[9px] text-gray-400 dark:text-gray-600 mt-1">Ctrl + scroll to zoom</p>
-      </div>
-
-<div className="overflow-auto h-full" style={{ touchAction: 'pan-y' }}>
-        <TransformWrapper
-          ref={transformRef}
-          initialScale={0.85}
-          centerOnInit
-          minScale={0.2}
-          maxScale={3}
-          wheel={{ activationKeys: ['Control', 'Meta'] }}
-          panning={{ disabled: false }}
-        >
-        <TransformComponent wrapperStyle={{ width: '100%', height: '100%' }}>
-          <div style={{ width: canvasW, height: canvasH, position: 'relative' }}>
-
-            {/* Level band backgrounds (vertical columns) */}
-            {levelBands.map(({ lvl, x, nW, isTeacher, isStudent }) => (
-              <div
-                key={`band-${lvl}`}
-                className="absolute top-0 bottom-0 pointer-events-none"
-                style={{
-                  left: x - 12,
-                  width: nW + 24,
-                  background: isTeacher
-                    ? 'rgba(20,184,166,0.04)'
-                    : isStudent
-                    ? 'rgba(168,85,247,0.04)'
-                    : 'transparent',
-                  borderLeft:  isTeacher ? '1px solid rgba(20,184,166,0.12)' : isStudent ? '1px solid rgba(168,85,247,0.12)' : 'none',
-                  borderRight: isTeacher ? '1px solid rgba(20,184,166,0.12)' : isStudent ? '1px solid rgba(168,85,247,0.12)' : 'none',
-                }}
-              />
-            ))}
-
-            {/* Level labels — top of each column */}
-            {activeLevels.map((lvl, colIdx) => {
-              const nW = lvl === 0 ? CENTER_W : NODE_W;
-              const cx = PAD_X + colIdx * H_STEP + nW / 2;
-              const meta = LEVEL_META[lvl];
-              const label = lang === 'bn' ? meta.bn : meta.en;
-              const count = levelGroups.get(lvl)!.length;
-              const truncated = false; // MAX_COL removed — all nodes shown
-              return (
-                <div
-                  key={`lbl-${lvl}`}
-                  className="absolute pointer-events-none flex flex-col items-center gap-0.5"
-                  style={{ left: cx - 56, top: 8, width: 112 }}
-                >
-                  <span className={clsx(
-                    'text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-md border w-full text-center',
-                    meta.color, meta.darkColor
-                  )}>
-                    {label}
-                  </span>
-                  {truncated && (
-                    <span className="text-[8px] text-gray-400 dark:text-gray-600">
-                      +{count - MAX_COL} more
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-
-            {/* Edges SVG */}
-            <svg
-              width={canvasW}
-              height={canvasH}
-              className="absolute inset-0 pointer-events-none"
-              style={{ overflow: 'visible' }}
+    return (
+      <div key={`${depth}-${n.id}`}>
+        <div className="flex items-center gap-1">
+          {depth > 0 && <span className="w-4 text-center text-gray-400 dark:text-gray-500 text-sm">├──</span>}
+          <button
+            onClick={() => hasChildren && toggleExpand(treeNode.id)}
+            className={clsx(
+              'relative px-3 py-2 rounded-lg border-2 transition-all text-xs flex flex-col items-center min-w-[100px] shadow-sm',
+              isRoot ? 'bg-teal-500 text-white font-semibold cursor-default' : 
+                darkMode ? 'bg-zinc-800 text-gray-100' : 'bg-white text-gray-900',
+              hasChildren ? 'cursor-pointer' : 'cursor-default'
+            )}
+            style={{ borderColor: n.reliability ? REL_BORDER[n.reliability] : (darkMode ? '#3f3f46' : '#e5e7eb') }}
+          >
+            <span dir="rtl" className={isRoot ? 'font-bold' : ''}>{n.name_ar}</span>
+            <span className={clsx('text-[9px] mt-0.5 opacity-75', isRoot ? 'text-white' : darkMode ? 'text-gray-400' : 'text-gray-500')}>
+              {lang === 'bn' ? (n.name_bn ?? n.name_en) : (n.name_en ?? n.name_bn)}
+            </span>
+            {hasChildren && (
+              <span className="absolute -right-3 -top-1 w-4 h-4 flex items-center justify-center rounded-full bg-gray-200 dark:bg-gray-700 text-[8px] text-gray-600 dark:text-gray-300">
+                {treeNode.children.size}
+              </span>
+            )}
+          </button>
+          {!hasChildren && (
+            <button
+              onClick={() => onNodeClick(n)}
+              className="ml-1 w-6 h-6 rounded-full bg-teal-500 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-teal-600 hover:scale-110"
+              title="View narrator"
             >
-              <defs>
-                <marker id="arr-teacher" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                  <path d="M0 2 L10 6 L0 10z" fill="rgba(20,184,166,0.9)"/>
-                </marker>
-                <marker id="arr-student" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                  <path d="M0 2 L10 6 L0 10z" fill="rgba(168,85,247,0.9)"/>
-                </marker>
-                <marker id="arr-hl" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-                  <path d="M0 2 L10 6 L0 10z" fill="rgba(251,191,36,1)"/>
-                </marker>
-                <marker id="arr-other" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-                  <path d="M0 2 L10 6 L0 10z" fill={darkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.18)'}/>
-                </marker>
-                <marker id="arr-dim" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
-                  <path d="M0 2 L10 6 L0 10z" fill={darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}/>
-                </marker>
-              </defs>
-              {edgePaths}
-            </svg>
-
-            {/* Nodes */}
-            {nodes.map(node => {
-              const nId = Number(node.id);
-              const pos = positions.get(nId);
-              if (!pos) return null;
-
-              const isCenter = nId === Number(centerId);
-              const isSelected = nId === selectedId;
-              const isConnected = selectedId !== null && connectedIds.has(nId);
-              const isDimmed = selectedId !== null && !isSelected && !isConnected;
-              const rel = node.reliability ?? (node.tabaqah === 1 ? 'thiqah' : null);
-              const { primary, secondary } = getLabel(node, lang);
-              const primaryIsArabic = /[\u0600-\u06FF]/.test(primary);
-
-              const nW = isCenter ? CENTER_W : NODE_W;
-              const nH = isCenter ? CENTER_H : NODE_H;
-
-              const borderColor = isSelected
-                ? '#fbbf24' // amber
-                : isConnected
-                ? '#fbbf24'
-                : isCenter
-                ? '#5eead4' // teal-300
-                : rel
-                ? REL_BORDER[rel]
-                : (darkMode ? '#3f3f46' : '#e5e7eb');
-
-              const glowColor = isSelected || isConnected
-                ? 'rgba(251,191,36,0.35)'
-                : isCenter
-                ? 'rgba(20,184,166,0.4)'
-                : rel
-                ? REL_GLOW[rel]
-                : 'transparent';
-
-              return (
-                <button
-                  key={nId}
-                  onClick={(ev) => {
-                    ev.stopPropagation();
-                    if (isSelected) {
-                      onNodeClick(node);
-                    } else {
-                      setSelectedId(nId);
-                    }
-                  }}
-                  className={clsx(
-                    'absolute flex flex-col items-center justify-center rounded-2xl border-2',
-                    'transition-all duration-200 focus:outline-none',
-                    isCenter
-                      ? 'bg-teal-500 text-white z-[80]'
-                      : darkMode
-                      ? 'bg-zinc-900 text-gray-100 z-[20]'
-                      : 'bg-white text-gray-900 z-[20]',
-                    isDimmed ? 'opacity-25' : 'opacity-100',
-                    !isDimmed && 'hover:scale-105 active:scale-95',
-                  )}
-                  style={{
-                    left: pos.x - nW / 2,
-                    top:  pos.y - nH / 2,
-                    width: nW,
-                    height: nH,
-                    borderColor,
-                    boxShadow: isDimmed
-                      ? 'none'
-                      : `0 0 0 ${isSelected || isConnected ? 3 : 0}px ${glowColor}, 0 4px 16px ${glowColor}, 0 1px 4px rgba(0,0,0,0.08)`,
-                    padding: '6px 10px',
-                  }}
-                >
-                  {/* Arabic name */}
-                  <span
-                    className={clsx(
-                      'font-arabic text-center w-full leading-tight',
-                      isCenter ? 'text-[14px] text-white font-semibold' : 'text-[12px]',
-                      !isCenter && (darkMode ? 'text-gray-100' : 'text-gray-900')
-                    )}
-                    dir="rtl"
-                    style={{ maxWidth: nW - 20, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                  >
-                    {node.name_ar}
-                  </span>
-
-                  {/* Transliterated / local name */}
-                  {primary && !primaryIsArabic && (
-                    <span
-                      className={clsx(
-                        'text-center w-full leading-tight mt-0.5',
-                        isCenter ? 'text-[10px] text-teal-100' : 'text-[9px]',
-                        !isCenter && (darkMode ? 'text-gray-400' : 'text-gray-500')
-                      )}
-                      style={{ maxWidth: nW - 20, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                    >
-                      {primary}
-                    </span>
-                  )}
-
-                  {/* Death year */}
-                  {node.death_year && (
-                    <span className={clsx(
-                      'text-[8px] mt-0.5',
-                      isCenter ? 'text-teal-200' : (darkMode ? 'text-gray-500' : 'text-gray-400')
-                    )}>
-                      d. {node.death_year} AH
-                    </span>
-                  )}
-
-                  {/* Reliability dot — top-right */}
-                  {rel && !isCenter && (
-                    <span
-                      className="absolute -top-1.5 -right-1.5 w-3 h-3 rounded-full border-2 border-white dark:border-zinc-900"
-                      style={{ background: REL_BORDER[rel] }}
-                    />
-                  )}
-
-                  {/* Duplicate indicator — top-left */}
-                  {(node as any)._hasDuplicates && !isCenter && (
-                    <span className="absolute -top-1.5 -left-1.5 w-3 h-3 rounded-full bg-amber-400 border-2 border-white dark:border-zinc-900" title="Multiple entries"/>
-                  )}
-
-                </button>
-              );
-            })}
-          </div>
-        </TransformComponent>
-        </TransformWrapper>
+              ↗
+            </button>
+          )}
+          {hasChildren && (
+            <button
+              onClick={() => toggleExpand(treeNode.id)}
+              className={clsx(
+                'ml-1 w-6 h-6 rounded-full text-xs flex items-center justify-center transition-all',
+                isExpanded ? 'bg-amber-400 text-zinc-900' : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 group-hover:opacity-100 opacity-0'
+              )}
+              title={isExpanded ? 'Collapse' : 'Expand'}
+            >
+              {isExpanded ? '▼' : '▶'}
+            </button>
+          )}
         </div>
-    </div>
-  );
-
-  const containerCls = clsx(
-    'bg-gray-50 dark:bg-zinc-950 transition-all overflow-hidden',
-    isFullScreen ? 'fixed inset-0 z-[100] w-screen h-screen' : 'relative rounded-2xl border border-gray-200 dark:border-zinc-800 w-full'
-  );
-
-  const containerEl = (
-    <div className={containerCls}>
-      {graphContent}
-    </div>
-  );
+        {hasChildren && isExpanded && (
+          <div className="ml-6 pl-4 relative border-l-2 border-gray-200 dark:border-gray-700">
+            {Array.from(treeNode.children.values()).map((child, idx) => 
+              renderNode({ node: child, depth: depth + 1 })
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
-    <>
-      {mounted && (
-        <GraphControls
-          zoomIn={zoomIn} zoomOut={zoomOut} resetTransform={resetFn}
-          isFullScreen={isFullScreen} setIsFullScreen={setIsFullScreen}
-        />
+    <div className={clsx(
+      'bg-gray-50 dark:bg-zinc-950 overflow-auto rounded-2xl border border-gray-200 dark:border-zinc-800',
+      'w-full p-4'
+    )}>
+      {treeRoot ? (
+        <div className="flex flex-col gap-0.5">
+          {renderNode({ node: treeRoot, depth: 0 })}
+        </div>
+      ) : (
+        <div className="text-center text-gray-500 dark:text-gray-400 py-8">
+          No chains found
+        </div>
       )}
-      {isFullScreen ? createPortal(containerEl, document.body) : containerEl}
-    </>
+    </div>
   );
 }
