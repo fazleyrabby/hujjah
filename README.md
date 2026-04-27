@@ -216,18 +216,45 @@ Hadith authenticity is graded by sanad chain length (shorter = stronger):
 ## Docker Deploy (Web)
 
 ```bash
-# Build image
-docker build -f apps/web/Dockerfile -t hujjah-web:latest .
+# Build image (linux/amd64 for VPS)
+docker buildx build --platform linux/amd64 --load -f apps/web/Dockerfile -t hujjah-web:latest .
+
+# Transfer to VPS and deploy
+docker save hujjah-web:latest | ssh signalstack "docker load"
+ssh signalstack "cd ~/hujjah-web && docker compose up -d --force-recreate"
 
 # Or use deploy script (requires SSH access to host)
 ./scripts/deploy-web.sh [HOST]
 ```
 
-The web Docker image:
+### Prerequisites on Host
+
+The **DB files must exist on the host** before starting the container:
+
+```bash
+# On VPS
+sudo mkdir -p /data/hujjah
+sudo cp hujjah-quran.db hujjah-hadith-core.db /data/hujjah/
+sudo chown -R 1001:1001 /data/hujjah
+```
+
+### Docker Image Details
+
 - Multi-stage `node:22-slim` build
-- Runs on port `3001`
-- Mounts DB files read-only from host volume `/data/hujjah`
+- Container port: `3000` (map to host port, e.g. `3002`)
+- Mounts DB files from host volume `/data/hujjah` (**must be writable** for SQLite WAL)
+- Includes native `better-sqlite3` binary copied from builder stage
 - Health check at `/api/health`
+
+### Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Blank white page | `_next/static/chunks/*.js` returns 404 | Ensure static files are copied to correct path in Dockerfile |
+| `unable to open database file` | Volume mounted `:ro` or DB files missing | Remove `:ro` from volume, copy `.db` files to host |
+| `Could not locate bindings file` | `better_sqlite3.node` not in runner | Add `COPY` for native binary in Dockerfile |
+| 500 on API routes | DB directory permissions | `chmod 666 /data/hujjah/*.db` or adjust ownership |
+| DNS not resolving | Cloudflare tunnel cache | `sudo killall -HUP mDNSResponder` (macOS) or wait 5 min |
 
 ## Data Sources
 
