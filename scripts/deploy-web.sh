@@ -12,24 +12,10 @@ CONTAINER_PORT="${CONTAINER_PORT:-3000}"
 CLOUDFLARE_TUNNEL_NAME="hujjah-web"
 DOMAIN="hujjah.fazleyrabbi.xyz"
 
-echo "=== Building Docker image for amd64 ==="
-# Create multi-arch builder
-docker buildx create --name multi --driver docker-container 2>/dev/null || true
-docker buildx use multi
-docker buildx build --platform linux/amd64 --push -t "${IMAGE_NAME}:amd64" -f apps/web/Dockerfile .
+docker buildx build --platform linux/amd64 --load -t "${IMAGE_NAME}:latest" -f apps/web/Dockerfile .
 
-echo "=== Pulling amd64 image locally ==="
-docker pull "${IMAGE_NAME}:amd64"
-docker tag "${IMAGE_NAME}:amd64" "${IMAGE_NAME}:latest"
-
-echo "=== Saving image ==="
-docker save "${IMAGE_NAME}:latest" | gzip > /tmp/hujjah-web.tar.gz
-
-echo "=== Copying image to ${HOST} ==="
-scp /tmp/hujjah-web.tar.gz "${HOST}:/tmp/"
-
-echo "=== Loading image on ${HOST} ==="
-ssh "${HOST}" "docker load < /tmp/hujjah-web.tar.gz"
+echo "=== Stopping old container ==="
+ssh "${HOST}" "docker stop hujjah-web 2>/dev/null || true"
 
 echo "=== Deploying with Docker Compose ==="
 ssh "${HOST}" "mkdir -p ~/hujjah-web"

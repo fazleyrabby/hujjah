@@ -140,15 +140,23 @@ function buildLevelMap(
     if (studentIds.has(to) && !level.has(from)) level.set(from, 2);
   }
 
-  // Propagate remaining via edges (2 passes)
-  for (let pass = 0; pass < 2; pass++) {
+  // BFS: propagate levels outward from center, capping at [-2, 2]
+  const queue: number[] = [...teacherIds, ...studentIds];
+  while (queue.length) {
+    const curr = queue.shift()!;
+    const currLevel = level.get(curr)!;
     for (const e of edges) {
       const from = Number(e.from_narrator_id), to = Number(e.to_narrator_id);
-      const fl = level.get(from), tl = level.get(to);
-      // from=student has level → to=teacher is one level above
-      if (fl !== undefined && tl === undefined) level.set(to, fl - 1);
-      // to=teacher has level → from=student is one level below
-      if (tl !== undefined && fl === undefined) level.set(from, tl + 1);
+      // curr is student (from) → to is teacher (one level higher/left)
+      if (from === curr && !level.has(to) && currLevel - 1 >= -2) {
+        level.set(to, currLevel - 1);
+        queue.push(to);
+      }
+      // curr is teacher (to) → from is student (one level lower/right)
+      if (to === curr && !level.has(from) && currLevel + 1 <= 2) {
+        level.set(from, currLevel + 1);
+        queue.push(from);
+      }
     }
   }
 
