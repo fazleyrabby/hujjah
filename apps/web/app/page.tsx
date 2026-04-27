@@ -176,7 +176,7 @@ export default function Home() {
             </div>
             <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
               {surahs.map(s => (
-                <button key={s.id} onClick={() => loadSurah(s.id, lang)}
+                <button key={s.id} onClick={() => { loadSurah(s.id, lang); setSidebarOpen(false); }}
                   className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
                     selectedSurah === s.id
                       ? 'bg-teal-50 dark:bg-teal-900/20 text-teal-900 dark:text-teal-400'
