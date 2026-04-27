@@ -14,12 +14,14 @@ interface AppNavProps {
   darkMode: boolean;
   onDarkModeToggle: () => void;
   extra?: React.ReactNode;
+  containerClass?: string;
 }
 
 const NAV_LINKS = [
   { href: '/', label: 'Quran' },
   { href: '/hadith', label: 'Hadith' },
   { href: '/chain', label: 'Chain' },
+  { href: '/chat', label: 'Chat' },
 ];
 
 const DEFAULT_LANGS: LangOption[] = [
@@ -34,6 +36,7 @@ export default function AppNav({
   darkMode,
   onDarkModeToggle,
   extra,
+  containerClass = 'max-w-5xl',
 }: AppNavProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -41,7 +44,7 @@ export default function AppNav({
   const isHome = pathname === '/';
 
   return (
-    <div className="max-w-3xl mx-auto px-4 h-11 flex items-center justify-between gap-3">
+    <div className={`${containerClass} mx-auto px-4 h-11 flex items-center justify-between gap-3`}>
       {/* Left: back button (if not home) + nav links */}
       <div className="flex items-center gap-0.5">
         {!isHome && (
@@ -100,6 +103,18 @@ export default function AppNav({
             </button>
           ))}
         </div>
+
+        {/* Settings */}
+        <a
+          href="/settings"
+          className="w-7 h-7 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
+          title="Settings"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+        </a>
 
         {/* Dark mode */}
         <button

@@ -32,6 +32,7 @@ export interface HadithContext {
   book_name_en: string | null;
   num_in_book: number;
   matn_ar: string;
+  matn_en: string | null;  // English translation — used in prompts instead of Arabic
   sanad_length: number;
 }
 
@@ -49,11 +50,52 @@ async function retrieveHadithContext(query: string, limit = 3): Promise<HadithCo
       book_name_en: r.book_name_en,
       num_in_book: r.num_in_book,
       matn_ar: r.matn_ar,
+      matn_en: r.matn_en ?? r.translations?.github ?? null,
       sanad_length: r.sanad_length,
     }));
   } catch {
     return [];
   }
+}
+
+/**
+ * Map of Bengali Islamic terms → English equivalents for hadith FTS.
+ * Bengali query text cannot FTS-match English hadith translations directly.
+ */
+const BN_HADITH_KEYWORDS: Record<string, string> = {
+  'তাওবা': 'repentance tawbah',       'তওবা': 'repentance tawbah',
+  'সালাত': 'prayer salah',             'নামাজ': 'prayer salah',
+  'রোজা': 'fasting sawm',             'সিয়াম': 'fasting sawm',
+  'কিয়ামত': 'judgment day resurrection signs',
+  'আলামত': 'signs judgment day',
+  'সবর': 'patience sabr',             'শোকর': 'gratitude shukr',
+  'তাওয়াক্কুল': 'tawakkul reliance trust',
+  'রিজক': 'rizq provision sustenance',
+  'জ্ঞান': 'knowledge ilm seeking',
+  'হজ': 'hajj pilgrimage',            'যাকাত': 'zakat charity',
+  'সদকা': 'sadaqah charity',          'দুআ': 'dua supplication prayer',
+  'আয়াতুল কুরসি': 'throne verse ayatul kursi',
+  'সূরা কাহফ': 'surah kahf cave friday',
+  'সূরা মুলক': 'surah mulk dominion',
+  'সূরা ফাতিহা': 'surah fatiha opening',
+  'মা-বাবা': 'parents rights',         'মা বাবা': 'parents rights',
+  'খুশু': 'khushu concentration prayer focus',
+  'জান্নাত': 'paradise jannah',        'জাহান্নাম': 'hellfire jahannam',
+  'ঈমান': 'faith iman belief',         'তাকওয়া': 'taqwa piety',
+  'গুনাহ': 'sin forgiveness',          'মাফ': 'forgiveness',
+  'নফস': 'soul nafs self',
+};
+
+/**
+ * Extract English search terms from a Bengali query for hadith FTS.
+ * Returns empty string if no known terms found.
+ */
+function extractHadithKeywordsFromBengali(query: string): string {
+  const hits = new Set<string>();
+  for (const [bn, en] of Object.entries(BN_HADITH_KEYWORDS)) {
+    if (query.includes(bn)) hits.add(en);
+  }
+  return [...hits].join(' ');
 }
 
 let worker: Worker | null = null;
@@ -275,7 +317,7 @@ function buildStructuredContext(
     })),
     hadith: hadith.slice(0, 2).map((h) => ({
       ref: `${h.book_name_en || h.book_name_ar} #${h.num_in_book}`,
-      arabic: h.matn_ar.slice(0, 300),
+      arabic: (h.matn_en ?? h.matn_ar).slice(0, 300),
     })),
   };
 }
@@ -781,20 +823,20 @@ export async function explainQuery(
  */
 async function translateWithLlama(text: string, targetLang: string): Promise<string> {
   const langName = targetLang === 'bn' ? 'Bengali' : targetLang === 'ar' ? 'Arabic' : 'English';
-  const prompt = `Translate the following text to ${langName}. Keep all Quran references like (2:255) intact. Output only the translation.
-
-Text: ${text}`;
+  const userPrompt = `Translate the following text to ${langName}. Keep all Quran references like (2:255) intact. Output only the translation.\n\nText: ${text}`;
+  const prompt = formatLlamaPrompt(userPrompt);
   const { invoke } = await import('@tauri-apps/api/core');
   const response = await invoke<string>('run_llama', { prompt });
   return response.trim();
 }
 
 /**
- * Format prompt for Qwen2.5-Instruct chat template.
+ * Format prompt for Qwen2.5-Instruct ChatML template.
  * Required so the GGUF model understands the conversation structure.
+ * Qwen2.5 uses <|im_start|>/<|im_end|> tokens — NOT Mistral </s><|user|> format.
  */
 function formatLlamaPrompt(userPrompt: string): string {
-  return `</s><|user|>\n${userPrompt}</s><|assistant|>\n`;
+  return `<|im_start|>system\nYou are Hujjah AI, a knowledgeable Islamic research assistant. Answer using ONLY the provided Quran verses and hadith. Be specific and direct.<|im_end|>\n<|im_start|>user\n${userPrompt}<|im_end|>\n<|im_start|>assistant\n`;
 }
 
 /**
@@ -889,9 +931,25 @@ async function llamaExplainBengali(
         text: r.text,
         translator_slug: r.translator_slug,
       }));
+
+      // Fallback: Bengali FTS/embeddings may be absent in the DB.
+      // Retrieve English verses instead — the generation step is in English anyway.
+      if (verses.length === 0 && retrievalLang === 'bn') {
+        const enResults = await retrieveHybrid(query, 'en', 5);
+        verses = enResults.map((r) => ({
+          surah: r.surah,
+          ayah: r.ayah,
+          text_ar: r.text_ar,
+          text: r.text,
+          translator_slug: r.translator_slug,
+        }));
+      }
     }
 
-    hadith = await retrieveHadithContext(query, 2);
+    // Hadith: extract English keywords from Bengali query — Bengali text won't FTS-match
+    // English hadith translations. Fall back to original query if no keywords found.
+    const hadithEnKeywords = extractHadithKeywordsFromBengali(query);
+    hadith = await retrieveHadithContext(hadithEnKeywords || query, 2);
 
     if (verses.length === 0 && hadith.length === 0) {
       const explanation = 'এই বিষয়ে কোনো আয়াত বা হাদিস পাওয়া যায়নি।';
@@ -902,7 +960,12 @@ async function llamaExplainBengali(
     // Step 2: Generate English answer (Qwen-1.5B is fluent in English)
     onProgress?.('উত্তর তৈরি হচ্ছে...');
 
-    const enGroundedPrompt = buildHadithPrompt(query, verses, hadith, 'en', intent);
+    // Use extracted English keywords as the generation question so Qwen sees English input.
+    // e.g. Bengali "কিয়ামতের আলামত কী?" → "What does Islam say about: judgment day resurrection signs"
+    const enQuestion = hadithEnKeywords
+      ? `What does Islam say about: ${hadithEnKeywords}`
+      : query;
+    const enGroundedPrompt = buildHadithPrompt(enQuestion, verses, hadith, 'en', intent);
     const enFormattedPrompt = formatLlamaPrompt(enGroundedPrompt);
     const enResponse = await invoke('run_llama', { prompt: enFormattedPrompt }) as string;
 
@@ -916,14 +979,17 @@ async function llamaExplainBengali(
     onProgress?.('বাংলায় অনুবাদ হচ্ছে...');
 
     const translatePrompt = formatLlamaPrompt(
-      `Translate to Bengali (বাংলা). Keep Quran refs like (2:255) as-is. Output ONLY the Bengali translation.\n\nText:\n${enResponse.trim()}`
+      `You are a Bengali (বাংলা) translator for Islamic content. Translate the text below to natural, fluent Bengali.\n\nRules:\n- Output ONLY the Bengali translation. No English. No explanations.\n- Keep Quran verse references like (2:255) or [2:255] unchanged.\n- Keep proper nouns: Allah, Quran, Hadith, Salah, Zakat, Hajj, Jannah, Jahannam — unchanged.\n- Do NOT add greetings or commentary.\n\nText to translate:\n${enResponse.trim()}\n\nBengali translation:`
     );
     let bnResponse = await invoke('run_llama', { prompt: translatePrompt }) as string;
     bnResponse = bnResponse?.trim() ?? '';
 
-    // Validate: Bengali script must be present, otherwise fall back to English
-    const hasBengaliScript = /[\u0980-\u09FF]/.test(bnResponse);
-    const explanation = hasBengaliScript && bnResponse.length > 20
+    // Validate: require ≥30% Bengali characters in non-whitespace output
+    const bengaliCharCount = (bnResponse.match(/[\u0980-\u09FF]/g) ?? []).length;
+    const nonSpaceCount = bnResponse.replace(/\s/g, '').length;
+    const bengaliRatio = nonSpaceCount > 0 ? bengaliCharCount / nonSpaceCount : 0;
+    const hasBengaliScript = bengaliRatio >= 0.3 && bnResponse.length > 20;
+    const explanation = hasBengaliScript
       ? bnResponse
       : enResponse.trim();
 

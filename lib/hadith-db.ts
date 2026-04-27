@@ -228,7 +228,15 @@ async function _searchHadith(
     rows = await db.select<any[]>(sql, [lang, cleanQuery, cap]);
   }
 
-  return (rows ?? []).map((r) => ({
+  // Deduplicate by hadith ID — same hadith can match multiple translator rows
+  const seen = new Set<number>();
+  const deduped = (rows ?? []).filter((r) => {
+    if (seen.has(r.id)) return false;
+    seen.add(r.id);
+    return true;
+  });
+
+  return deduped.map((r) => ({
     id: r.id,
     book_id: r.book_id,
     book_name_ar: r.book_name_ar,

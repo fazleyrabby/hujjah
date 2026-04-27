@@ -111,6 +111,8 @@ export function useChat(initialThreadId?: string) {
   }, [state.messages, state.threadId]);
 
   const loadThread = useCallback((threadId: string) => {
+    // Cancel any in-flight generation so its response doesn't land in this thread
+    abortRef.current = true;
     const thread = getThread(threadId);
     if (thread) {
       setState({
@@ -125,6 +127,8 @@ export function useChat(initialThreadId?: string) {
   }, []);
 
   const createThread = useCallback((lang: string = 'en') => {
+    // Cancel any in-flight generation so its response doesn't land in the new thread
+    abortRef.current = true;
     const thread = createNewThread(lang);
     saveThread(thread);
     setState({
@@ -208,21 +212,28 @@ export function useChat(initialThreadId?: string) {
         timestamp: Date.now(),
       };
 
-      setState((prev) => ({
-        ...prev,
-        messages: [...prev.messages, assistantMsg],
-        loading: false,
-        loadingMessage: '',
-      }));
+      setState((prev) => {
+        // If the active thread changed while we were generating, discard this response
+        if (prev.threadId !== currentThreadId) return prev;
+        return {
+          ...prev,
+          messages: [...prev.messages, assistantMsg],
+          loading: false,
+          loadingMessage: '',
+        };
+      });
     } catch (err: unknown) {
       if (abortRef.current) return;
       const message = err instanceof Error ? err.message : String(err);
-      setState((prev) => ({
-        ...prev,
-        loading: false,
-        loadingMessage: '',
-        error: message,
-      }));
+      setState((prev) => {
+        if (prev.threadId !== currentThreadId) return prev;
+        return {
+          ...prev,
+          loading: false,
+          loadingMessage: '',
+          error: message,
+        };
+      });
     }
   }, [state.threadId, createThread]);
 

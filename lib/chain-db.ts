@@ -47,6 +47,26 @@ function normalizeArabicQuery(text: string): string {
 
 // ─── Search Narrators ───
 
+/**
+ * Deduplicate narrator results. The DB stores the same narrator multiple times
+ * with different Arabic spelling/diacritics. Group by (name_en, death_year);
+ * if both are absent fall back to normalized Arabic name.
+ */
+function deduplicateNarrators(rows: NarratorNode[]): NarratorNode[] {
+  const seen = new Set<string>();
+  const out: NarratorNode[] = [];
+  for (const r of rows) {
+    const enKey = r.name_en?.trim().toLowerCase();
+    const key = enKey
+      ? `en:${enKey}:${r.death_year ?? '?'}`
+      : `ar:${normalizeArabicQuery(r.name_ar)}:${r.death_year ?? '?'}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(r);
+  }
+  return out;
+}
+
 export async function searchNarrators(query: string, limit: number = 20): Promise<NarratorNode[]> {
   const db = await getHadithDB();
   if (!query.trim()) return [];
@@ -55,10 +75,10 @@ export async function searchNarrators(query: string, limit: number = 20): Promis
   const cleanQuery = isArabic ? normalizeArabicQuery(query.trim()) : query.trim();
 
   // Try FTS5 first (supports Arabic + transliterated name_en search)
+  // Fetch more than limit so deduplication still yields enough results.
   try {
-    // Add prefix * to each word for broader matching
     const ftsQuery = cleanQuery.split(/\s+/).filter(Boolean).map(w => `${w}*`).join(' ');
-    
+
     const ftsSql = `
       SELECT n.id, n.name_ar, n.name_en, n.name_bn, n.birth_year, n.death_year, n.tabaqah, n.reliability, n.city, n.data_source
       FROM narrator_search_idx
@@ -66,8 +86,8 @@ export async function searchNarrators(query: string, limit: number = 20): Promis
       WHERE narrator_search_idx MATCH ?
       LIMIT ?
     `;
-    const rows = await db.select<NarratorNode[]>(ftsSql, [ftsQuery, limit]);
-    if (rows.length > 0) return rows;
+    const rows = await db.select<NarratorNode[]>(ftsSql, [ftsQuery, limit * 5]);
+    if (rows.length > 0) return deduplicateNarrators(rows).slice(0, limit);
   } catch (err) {
     console.warn('[ChainDB] FTS5 search failed, falling back to LIKE:', err);
   }
@@ -77,8 +97,8 @@ export async function searchNarrators(query: string, limit: number = 20): Promis
     SELECT id, name_ar, name_en, name_bn, birth_year, death_year, tabaqah, reliability, city, data_source
     FROM narrators
     WHERE name_ar LIKE ? OR name_en LIKE ? OR name_bn LIKE ?
-    ORDER BY 
-      CASE 
+    ORDER BY
+      CASE
         WHEN name_ar LIKE ? THEN 1
         WHEN name_en LIKE ? THEN 2
         ELSE 3
@@ -87,7 +107,8 @@ export async function searchNarrators(query: string, limit: number = 20): Promis
     LIMIT ?
   `;
   const lQuery = `%${cleanQuery}%`;
-  return db.select<NarratorNode[]>(sql, [lQuery, lQuery, lQuery, lQuery, lQuery, limit]);
+  const rows = await db.select<NarratorNode[]>(sql, [lQuery, lQuery, lQuery, lQuery, lQuery, limit * 5]);
+  return deduplicateNarrators(rows).slice(0, limit);
 }
 
 // ─── Get Narrator Profile ───
@@ -109,23 +130,11 @@ export async function getNarratorEdges(narratorId: number): Promise<{
 }> {
   const db = await getHadithDB();
 
+  // Edge semantics: from_narrator_id = student (lower position, closer to collector)
+  //                 to_narrator_id   = teacher (higher position, closer to Prophet)
+  //
+  // Teachers of selected = edges where selected is the student (from) and to is the teacher
   const teachersSql = `
-    SELECT
-      e.from_narrator_id,
-      n.name_ar as from_name,
-      n.name_en as from_name_en,
-      n.name_bn as from_name_bn,
-      e.to_narrator_id,
-      nn.name_ar as to_name,
-      e.hadith_count
-    FROM narrator_edges e
-    JOIN narrators n ON n.id = e.from_narrator_id
-    JOIN narrators nn ON nn.id = e.to_narrator_id
-    WHERE e.to_narrator_id = ?
-    ORDER BY e.hadith_count DESC
-  `;
-
-  const studentsSql = `
     SELECT
       e.from_narrator_id,
       n.name_ar as from_name,
@@ -138,6 +147,23 @@ export async function getNarratorEdges(narratorId: number): Promise<{
     JOIN narrators n ON n.id = e.from_narrator_id
     JOIN narrators nn ON nn.id = e.to_narrator_id
     WHERE e.from_narrator_id = ?
+    ORDER BY e.hadith_count DESC
+  `;
+
+  // Students of selected = edges where selected is the teacher (to) and from is the student
+  const studentsSql = `
+    SELECT
+      e.from_narrator_id,
+      n.name_ar as from_name,
+      n.name_en as from_name_en,
+      n.name_bn as from_name_bn,
+      e.to_narrator_id,
+      nn.name_ar as to_name,
+      e.hadith_count
+    FROM narrator_edges e
+    JOIN narrators n ON n.id = e.from_narrator_id
+    JOIN narrators nn ON nn.id = e.to_narrator_id
+    WHERE e.to_narrator_id = ?
     ORDER BY e.hadith_count DESC
   `;
 

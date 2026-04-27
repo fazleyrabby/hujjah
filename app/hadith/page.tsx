@@ -79,10 +79,13 @@ export default function HadithPage() {
   const [searchResults, setSearchResults] = useState<HadithResult[] | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const [selectedFullHadith, setSelectedFullHadith] = useState<HadithResult | null>(null);
+  const [containerClass, setContainerClass] = useState('max-w-5xl');
 
   useEffect(() => {
     setMounted(true);
     getHadithBooks().then(setBooks).catch(console.error);
+    const layout = localStorage.getItem('hujjah-layout');
+    if (layout === 'compact') setContainerClass('max-w-3xl');
   }, []);
 
   useEffect(() => {
@@ -170,6 +173,7 @@ export default function HadithPage() {
           langs={[{ code: 'en', label: 'EN' }, { code: 'bn', label: 'বাং' }]}
           darkMode={darkMode}
           onDarkModeToggle={() => setDarkMode((d) => !d)}
+          containerClass={containerClass}
           extra={
             <div className="flex items-center bg-gray-100 dark:bg-zinc-800 rounded-md p-0.5">
               {TRANSLATORS.map((t) => (
@@ -191,7 +195,7 @@ export default function HadithPage() {
         />
       </header>
 
-      <div className="max-w-3xl mx-auto px-6 py-6">
+      <div className={`${containerClass} mx-auto px-6 py-6`}>
         {/* ─── Search ─── */}
         <div className="mb-6">
           <div className="relative">
