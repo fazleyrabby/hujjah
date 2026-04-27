@@ -1,0 +1,17 @@
+services:
+  hujjah-web:
+    image: hujjah-web:latest
+    container_name: hujjah-web
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-3002}:${CONTAINER_PORT:-3000}"
+    environment:
+      - DB_DATA_DIR=${DB_DATA_DIR:-/data/hujjah}
+    volumes:
+      - ${DB_DATA_DIR:-/data/hujjah}:${DB_DATA_DIR:-/data/hujjah}:ro
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

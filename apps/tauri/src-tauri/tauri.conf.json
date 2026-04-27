@@ -1,0 +1,52 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Hujjah",
+  "version": "0.1.0",
+  "identifier": "com.hujjah.app",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build",
+    "devUrl": "http://localhost:3000",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "Hujjah",
+        "width": 1200,
+        "height": 800,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true,
+        "devtools": true,
+        "transparent": false,
+        "decorations": true,
+        "visible": true,
+        "userAgent": "Hujjah/0.1.0"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "resources/hujjah-quran.db": "resources/hujjah-quran.db",
+      "resources/hujjah-hadith-core.db": "resources/hujjah-hadith-core.db",
+      "resources/hujjah-hadith-research.db": "resources/hujjah-hadith-research.db",
+      "resources/models/bge-m3": "resources/models/bge-m3",
+      "resources/models/qwen-0.5b-q4": "resources/models/qwen-0.5b-q4",
+      "resources/models/qwen-1.5b-q4": "resources/models/qwen-1.5b-q4"
+    }
+  }
+}

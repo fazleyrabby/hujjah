@@ -1,0 +1,111 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* Custom colors used across the app */
+  --color-base: #FDFDFB;
+  --color-base-secondary: #F5F5F4;
+  
+  --color-content: #1A1A1A;
+  --color-content-secondary: #52525B;
+  --color-content-tertiary: #A1A1AA;
+  
+  --color-accent: #0D9488;
+  --color-accent-light: #14B8A6;
+  --color-accent-dark: #0F766E;
+  
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-error: #EF4444;
+  
+  /* Custom fonts */
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-arabic: 'Amiri', 'Noto Naskh Arabic', 'Scheherazade New', serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  
+  /* Custom shadows */
+  --shadow-subtle: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-soft: 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+  --shadow-elevated: 0 4px 12px 0 rgba(0, 0, 0, 0.08);
+  --shadow-floating: 0 8px 24px 0 rgba(0, 0, 0, 0.10);
+  
+  /* Custom border radius */
+  --radius-sm: 6px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --radius-2xl: 24px;
+  
+  /* Custom line heights */
+  --leading-tight: 1.25;
+  --leading-snug: 1.375;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.625;
+  --leading-loose: 1.75;
+  --leading-arabic: 2.0;
+}
+
+.dark {
+  --color-base: #0F0F0F;
+  --color-base-secondary: #1A1A1A;
+  
+  --color-content: #FDFDFB;
+  --color-content-secondary: #A1A1AA;
+  --color-content-tertiary: #52525B;
+  
+  --color-accent: #14B8A6;
+  --color-accent-light: #2DD4BF;
+  --color-accent-dark: #0D9488;
+}
+
+/* Base styles */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--color-base);
+  color: var(--color-content);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Arabic text optimization */
+.arabic {
+  font-family: var(--font-arabic);
+  line-height: var(--leading-arabic);
+  direction: rtl;
+}
+
+/* Smooth fade-in animation */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* Loading shimmer */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, #F5F5F4 0%, #E5E7EB 50%, #F5F5F4 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* Slide-up for audio player */
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(100%); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-slide-up {
+  animation: slideUp 0.3s ease-out;
+}

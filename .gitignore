@@ -59,9 +59,16 @@ CLAUDE_HANDOVER.md
 /src-tauri/target/
 /src-tauri/gen/
 /src-tauri/Cargo.lock
+apps/tauri/src-tauri/target/
+apps/tauri/src-tauri/gen/
+apps/tauri/src-tauri/Cargo.lock
 
 # Model files (large binaries)
 /src-tauri/resources/models/
+apps/tauri/src-tauri/resources/models/
+
+# Web dev DB symlinks
+apps/web/data/
 
 # macOS
 .DS_Store
@@ -75,3 +82,5 @@ scripts/__pycache__/
 
 *.db-shm
 *.db-wal
+apps/tauri/.next/
+apps/web/.next/
