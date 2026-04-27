@@ -12,6 +12,7 @@ export interface NarratorNode {
   reliability?: string | null;
   city?: string | null;
   data_source?: string | null;
+  _hasDuplicates?: boolean; // indicates same name exists with different ID
 }
 
 export interface NarratorEdge {

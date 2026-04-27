@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { AppNav, LinkedVerseText } from '@hujjah/ui';
+import { useQuranAudio } from '@/contexts/AudioContext';
 import { clsx } from 'clsx';
 
 interface Surah { id: number; name_ar: string; name_en: string; name_bn: string; }
@@ -35,6 +36,7 @@ export default function Home() {
   const [darkMode, setDarkMode] = useState(false);
   const [searchDomain, setSearchDomain] = useState<'quran' | 'hadith'>('quran');
   const [latency, setLatency] = useState<number | null>(null);
+  const { play: playAudio, pause: pauseAudio, resume: resumeAudio, stop: stopAudio, isPlaying: isAudioPlaying, current: currentAudio } = useQuranAudio();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -49,6 +51,10 @@ export default function Home() {
     fetch('/api/quran?action=surahs')
       .then(r => r.json()).then(setSurahs).catch(console.error);
     loadSurah(1, savedLang || 'en');
+
+    const onPageshow = (e: PageTransitionEvent) => { if (e.persisted) setMounted(true); };
+    window.addEventListener('pageshow', onPageshow);
+    return () => window.removeEventListener('pageshow', onPageshow);
   }, []);
 
   useEffect(() => {
@@ -107,6 +113,7 @@ export default function Home() {
 
   const handleLangChange = useCallback((newLang: string) => {
     setLang(newLang);
+    localStorage.setItem('hujjah-lang', newLang);
     setSelectedTranslator('');
     if (query.trim()) {
       if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -146,30 +153,52 @@ export default function Home() {
 
   return (
     <div className={clsx('min-h-screen bg-white dark:bg-zinc-950 flex transition-colors duration-300', darkMode && 'dark')}>
-      {/* Sidebar */}
+      {/* Sidebar - desktop: sticky, mobile: fixed overlay */}
       {sidebarOpen && (
-        <aside className="w-64 bg-white dark:bg-zinc-900 border-r border-gray-200 dark:border-zinc-800 flex-shrink-0 flex flex-col h-screen sticky top-0">
-          <div className="p-4 border-b border-gray-100 dark:border-zinc-800">
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wider">Surahs</h2>
-            <p className="text-xs text-gray-400 mt-1">{surahs.length} chapters</p>
-          </div>
-          <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
-            {surahs.map(s => (
-              <button key={s.id} onClick={() => loadSurah(s.id, lang)}
-                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
-                  selectedSurah === s.id
-                    ? 'bg-teal-50 dark:bg-teal-900/20 text-teal-900 dark:text-teal-400'
-                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-800'
-                }`}>
-                <span className="text-xs font-mono text-gray-400 w-6">{s.id}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{lang === 'bn' ? s.name_bn : s.name_en}</p>
-                  <p className="text-xs text-gray-400 truncate" dir="rtl">{s.name_ar}</p>
-                </div>
+        <>
+          {/* Mobile overlay backdrop */}
+          <div 
+            className="fixed inset-0 bg-black/50 z-40 md:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+          <aside className={clsx(
+            'bg-white dark:bg-zinc-900 border-r border-gray-200 dark:border-zinc-800 flex flex-col z-50',
+            'fixed md:sticky md:top-0 md:h-screen md:w-64',
+            'left-0 top-0 h-full w-72 md:w-64 transform transition-transform duration-300',
+            sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+          )}>
+            <div className="p-4 border-b border-gray-100 dark:border-zinc-800 flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wider">Surahs</h2>
+                <p className="text-xs text-gray-400 mt-1">{surahs.length} chapters</p>
+              </div>
+              <button 
+                onClick={() => setSidebarOpen(false)}
+                className="md:hidden p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
-            ))}
-          </nav>
-        </aside>
+            </div>
+            <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
+              {surahs.map(s => (
+                <button key={s.id} onClick={() => loadSurah(s.id, lang)}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
+                    selectedSurah === s.id
+                      ? 'bg-teal-50 dark:bg-teal-900/20 text-teal-900 dark:text-teal-400'
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-800'
+                  }`}>
+                  <span className="text-xs font-mono text-gray-400 w-6">{s.id}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{lang === 'bn' ? s.name_bn : s.name_en}</p>
+                    <p className="text-xs text-gray-400 truncate" dir="rtl">{s.name_ar}</p>
+                  </div>
+                </button>
+              ))}
+            </nav>
+          </aside>
+        </>
       )}
 
       {/* Main */}
@@ -178,7 +207,7 @@ export default function Home() {
           <header className="border-b border-gray-100 dark:border-zinc-800">
             <AppNav
               lang={lang}
-              onLangChange={(l) => setLang(l)}
+              onLangChange={handleLangChange}
               langs={[{ code: 'en', label: 'EN' }, { code: 'bn', label: 'বাং' }]}
               darkMode={darkMode} onDarkModeToggle={() => setDarkMode(d => !d)}
               hiddenRoutes={['/chat']}
@@ -188,6 +217,13 @@ export default function Home() {
           <div className="bg-white dark:bg-zinc-900 border-t border-gray-100 dark:border-zinc-800/60">
             <div className="max-w-3xl mx-auto px-6 py-3">
               <div className="flex items-center gap-2 mb-2">
+                <button onClick={() => setSidebarOpen(v => !v)}
+                  className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+                  title="Toggle surah list">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                  </svg>
+                </button>
                 <div className="flex items-center bg-gray-100 dark:bg-zinc-800 rounded-lg p-0.5">
                   {(['quran', 'hadith'] as const).map(d => (
                     <button key={d} type="button"
@@ -248,13 +284,22 @@ export default function Home() {
               </div>
               <div className="space-y-4">
                 {results.map((r, i) => (
-                  <article key={`${r.surah}-${r.ayah}-${i}`}
+<article key={`${r.surah}-${r.ayah}-${i}`}
                     className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl p-5 hover:border-teal-200 dark:hover:border-teal-800 transition-all cursor-pointer"
                     onClick={() => loadSurah(r.surah, lang)}>
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="text-xs font-bold text-white bg-gray-900 dark:bg-teal-700 px-2 py-0.5 rounded">{r.label}</span>
-                      <span className="text-xs font-semibold text-teal-700 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/20 px-2 py-0.5 rounded-full">{r.surah}:{r.ayah}</span>
-                      <span className="text-xs font-medium text-gray-600 dark:text-gray-400">{r.surah_name}</span>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-white bg-gray-900 dark:bg-teal-700 px-2 py-0.5 rounded">{r.label}</span>
+                        <span className="text-xs font-semibold text-teal-700 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/20 px-2 py-0.5 rounded-full">{r.surah}:{r.ayah}</span>
+                        <span className="text-xs font-medium text-gray-600 dark:text-gray-400">{r.surah_name}</span>
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); playAudio({ surah: r.surah, ayah: r.ayah, autoPlay: false }); }}
+                        className="p-1.5 rounded-full bg-gray-100 dark:bg-zinc-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-zinc-700 hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
+                        title="Play audio"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                      </button>
                     </div>
                     {r.text_ar && <p className="text-lg font-arabic text-gray-900 dark:text-white leading-relaxed mb-3" dir="rtl">{r.text_ar}</p>}
                     {r.snippet ? (
@@ -280,7 +325,48 @@ export default function Home() {
                   </h2>
                   <p className="text-sm text-gray-500 dark:text-gray-400" dir="rtl">{surahs.find(s => s.id === selectedSurah)?.name_ar}</p>
                 </div>
-                <span className="text-xs text-gray-400">{surahVerses.length} verses</span>
+                <div className="flex items-center gap-1.5">
+                  {(!isAudioPlaying || currentAudio?.surah !== selectedSurah) && (
+                    <button
+                      onClick={() => playAudio({ surah: selectedSurah, ayah: 1, autoPlay: true })}
+                      className="flex items-center gap-2 px-4 py-2 bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-400 text-sm font-medium rounded-lg border border-teal-100 dark:border-teal-800 hover:bg-teal-100 dark:hover:bg-teal-900/30 transition-colors"
+                      title={lang === 'bn' ? 'সূরা প্লে করুন' : 'Play surah'}
+                    >
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                      {lang === 'bn' ? 'সূরা শুনুন' : 'Play Surah'}
+                    </button>
+                  )}
+                  {isAudioPlaying && currentAudio?.surah === selectedSurah && (
+                    <button
+                      onClick={pauseAudio}
+                      className="flex items-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 text-sm font-medium rounded-lg border border-amber-100 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors"
+                      title="Pause"
+                    >
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" /></svg>
+                      {lang === 'bn' ? 'বিরতি' : 'Pause'}
+                    </button>
+                  )}
+                  {!isAudioPlaying && currentAudio?.surah === selectedSurah && currentAudio && (
+                    <button
+                      onClick={resumeAudio}
+                      className="flex items-center gap-2 px-4 py-2 bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-400 text-sm font-medium rounded-lg border border-teal-100 dark:border-teal-800 hover:bg-teal-100 dark:hover:bg-teal-900/30 transition-colors"
+                      title="Resume"
+                    >
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                      {lang === 'bn' ? 'আবার শুনুন' : 'Resume'}
+                    </button>
+                  )}
+                  {currentAudio?.surah === selectedSurah && (
+                    <button
+                      onClick={stopAudio}
+                      className="flex items-center gap-2 px-3 py-2 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 text-sm font-medium rounded-lg border border-red-100 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+                      title={lang === 'bn' ? 'থামুন' : 'Stop'}
+                    >
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h12v12H6z" /></svg>
+                    </button>
+                  )}
+                  <span className="text-xs text-gray-400">{surahVerses.length} verses</span>
+                </div>
               </div>
               {availableTranslators.length > 1 && (
                 <div className="flex items-center gap-2 mb-4">
@@ -299,6 +385,21 @@ export default function Home() {
                     <div className="flex items-center gap-2 mb-3">
                       <span className="text-xs font-semibold text-teal-700 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/20 px-2 py-0.5 rounded-full">{v.surah}:{v.ayah}</span>
                       <span className="text-xs text-gray-400 capitalize">{v.translator_slug}</span>
+                      <button
+                        onClick={() => playAudio({ surah: v.surah, ayah: v.ayah, autoPlay: false })}
+                        className={`p-1 rounded-full transition-colors ${
+                          isAudioPlaying && currentAudio?.surah === v.surah && currentAudio?.ayah === v.ayah
+                            ? 'bg-teal-100 dark:bg-teal-900 text-teal-700 dark:text-teal-400'
+                            : 'bg-gray-100 dark:bg-zinc-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-zinc-700'
+                        }`}
+                        title="Play audio"
+                      >
+                        {isAudioPlaying && currentAudio?.surah === v.surah && currentAudio?.ayah === v.ayah ? (
+                          <svg className="w-3.5 h-3.5 animate-pulse" fill="currentColor" viewBox="0 0 24 24"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" /></svg>
+                        ) : (
+                          <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                        )}
+                      </button>
                     </div>
                     <p className="text-lg font-arabic text-gray-900 dark:text-white leading-relaxed mb-3" dir="rtl">{v.text_ar}</p>
                     <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{v.text}</p>
@@ -376,15 +477,6 @@ export default function Home() {
         </div>
       </main>
 
-      {/* Sidebar toggle */}
-      <button onClick={() => setSidebarOpen(v => !v)}
-        className={clsx('fixed top-[54px] z-50 flex items-center gap-1 px-2 py-2 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 shadow-md text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-all',
-          sidebarOpen ? 'left-64 border-l-0 rounded-r-full' : 'left-0 border-l-0 rounded-r-full')}>
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-        </svg>
-        {!sidebarOpen && <span className="text-xs">Surahs</span>}
-      </button>
     </div>
   );
 }

@@ -188,6 +188,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json([]);
     }
 
+    if (action === 'verseCount') {
+      const surah = Number(searchParams.get('surah'));
+      if (!surah) return NextResponse.json({ error: 'surah required' }, { status: 400 });
+      const rows = await db.select<any[]>('SELECT COUNT(*) as count FROM verses WHERE surah = ?', [surah]);
+      return NextResponse.json({ count: rows[0]?.count ?? 0 });
+    }
+
     if (action === 'stats') {
       const rows = await db.select<any[]>(
         `SELECT (SELECT count(*) FROM verses) AS verses,

@@ -328,7 +328,7 @@ export async function getNarratorGraph(
 
     const placeholders = currentIds.map(() => '?').join(',');
 
-    // Outgoing edges
+    // Outgoing edges: current → student
     const outSql = `
       SELECT e.from_narrator_id, n.name_ar as from_name, n.name_en as from_name_en, n.name_bn as from_name_bn, n.tabaqah as from_tabaqah, n.reliability as from_reliability, n.city as from_city, n.data_source as from_data_source,
         e.to_narrator_id, nn.name_ar as to_name, nn.name_en as to_name_en, nn.name_bn as to_name_bn, nn.tabaqah as to_tabaqah, nn.reliability as to_reliability, nn.city as to_city, nn.data_source as to_data_source, e.hadith_count
@@ -341,8 +341,21 @@ export async function getNarratorGraph(
     `;
     const outEdges = await db.select<NarratorEdge[]>(outSql, currentIds);
 
+    // Incoming edges: teacher → current
+    const inSql = `
+      SELECT e.from_narrator_id, n.name_ar as from_name, n.name_en as from_name_en, n.name_bn as from_name_bn, n.tabaqah as from_tabaqah, n.reliability as from_reliability, n.city as from_city, n.data_source as from_data_source,
+        e.to_narrator_id, nn.name_ar as to_name, nn.name_en as to_name_en, nn.name_bn as to_name_bn, nn.tabaqah as to_tabaqah, nn.reliability as to_reliability, nn.city as to_city, nn.data_source as to_data_source, e.hadith_count
+      FROM narrator_edges e
+      JOIN narrators n ON n.id = e.from_narrator_id
+      JOIN narrators nn ON nn.id = e.to_narrator_id
+      WHERE e.to_narrator_id IN (${placeholders})
+      ORDER BY e.hadith_count DESC
+      LIMIT 100
+    `;
+    const inEdges = await db.select<NarratorEdge[]>(inSql, currentIds);
+
     const nextIds: number[] = [];
-    for (const e of outEdges) {
+    for (const e of [...outEdges, ...inEdges]) {
       const key = `${e.from_narrator_id}-${e.to_narrator_id}`;
       if (!edges.has(key)) {
         edges.set(key, e);
@@ -357,6 +370,7 @@ export async function getNarratorGraph(
             city: (e as any).from_city,
             data_source: (e as any).from_data_source,
           });
+          nextIds.push(e.from_narrator_id);
         }
         if (!nodes.has(e.to_narrator_id)) {
           nodes.set(e.to_narrator_id, {

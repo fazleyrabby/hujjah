@@ -25,6 +25,10 @@ export default function SettingsPage() {
     if (savedLayout) setLayoutWidth(savedLayout as 'compact' | 'full');
     const savedLang = localStorage.getItem('hujjah-lang');
     if (savedLang && ['en', 'bn'].includes(savedLang)) setLang(savedLang);
+
+    const onPageshow = (e: PageTransitionEvent) => { if (e.persisted) setMounted(true); };
+    window.addEventListener('pageshow', onPageshow);
+    return () => window.removeEventListener('pageshow', onPageshow);
   }, []);
 
   useEffect(() => {

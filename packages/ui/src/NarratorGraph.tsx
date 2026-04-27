@@ -1,16 +1,16 @@
 'use client';
 
 /**
- * components/NarratorGraph.tsx
+ * NarratorGraph.tsx
  *
- * Vertical sanad tree: grandteachers → teachers → selected → students → grandstudents.
- * Knowledge flows top-to-bottom, mirroring how hadith was transmitted.
- * Missing EN/BN names are auto-transliterated from Arabic.
+ * Horizontal sanad tree — grandteachers (left) → center → grandstudents (right).
+ * Level assignment: edge-based first, tabaqah-based fallback.
+ * Uses Number() coercion on all ID comparisons to avoid type-mismatch bugs.
  */
 
-import { useMemo, useEffect, useState } from 'react';
+import { useMemo, useEffect, useState, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { TransformWrapper, TransformComponent, useControls } from 'react-zoom-pan-pinch';
+import { TransformWrapper, TransformComponent, type ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
 import type { NarratorNode, NarratorEdge } from './types';
 import { clsx } from 'clsx';
 
@@ -25,343 +25,349 @@ interface Props {
   height?: number;
 }
 
-// ─── Layout constants ──────────────────────────────────────────────────────────
+// ─── Layout ───────────────────────────────────────────────────────────────────
+const NODE_W   = 190;
+const NODE_H   = 76;
+const CENTER_W = 220;
+const CENTER_H = 84;
+const H_STEP   = 270;  // horizontal distance between column centres
+const V_STEP   = 16;   // vertical gap between nodes in the same column
+const PAD_X    = 60;
+const PAD_Y    = 52;
+const MAX_COL  = 10;   // max nodes shown per column
 
-const NODE_W    = 148;  // px — wide enough for English names
-const NODE_H    = 56;   // px — two text lines
-const H_GAP     = 18;   // horizontal gap between sibling nodes
-const V_GAP     = 170;  // vertical gap between levels
-const PAD_X     = 80;   // canvas horizontal padding
-const PAD_Y     = 60;   // canvas vertical padding
-const MAX_ROW   = 12;   // max nodes shown per level before truncation
-
-// ─── Reliability colours ──────────────────────────────────────────────────────
-
-const RELIABILITY_RING: Record<string, string> = {
-  thiqah: 'border-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.45)]',
-  saduq:  'border-blue-400   shadow-[0_0_10px_rgba(96,165,250,0.45)]',
-  daif:   'border-orange-400 shadow-[0_0_10px_rgba(251,146,60,0.45)]',
-  mawdu:  'border-rose-500   shadow-[0_0_10px_rgba(244,63,94,0.45)]',
+// ─── Colors ───────────────────────────────────────────────────────────────────
+const REL_BORDER: Record<string, string> = {
+  thiqah: '#34d399', // emerald-400
+  saduq:  '#60a5fa', // blue-400
+  daif:   '#fb923c', // orange-400
+  mawdu:  '#f43f5e', // rose-500
+};
+const REL_GLOW: Record<string, string> = {
+  thiqah: 'rgba(52,211,153,0.35)',
+  saduq:  'rgba(96,165,250,0.35)',
+  daif:   'rgba(251,146,60,0.35)',
+  mawdu:  'rgba(244,63,94,0.35)',
+};
+const REL_LABEL: Record<string, { en: string; bn: string }> = {
+  thiqah: { en: 'Trustworthy', bn: 'নির্ভরযোগ্য' },
+  saduq:  { en: 'Truthful',    bn: 'সত্যবাদী' },
+  daif:   { en: 'Weak',        bn: 'দুর্বল' },
+  mawdu:  { en: 'Fabricated',  bn: 'জাল' },
 };
 
-const RELIABILITY_DOT: Record<string, string> = {
-  thiqah: 'bg-emerald-400',
-  saduq:  'bg-blue-400',
-  daif:   'bg-orange-400',
-  mawdu:  'bg-rose-500',
-};
-
-// ─── Arabic → Latin transliteration ──────────────────────────────────────────
-
-/** Well-known Islamic name words mapped directly to their standard romanisation. */
+// ─── Transliteration ──────────────────────────────────────────────────────────
 const WORD_MAP: Record<string, string> = {
-  'محمد':'Muhammad','أحمد':'Ahmad','حمد':'Hamad','علي':'Ali','عليّ':'Ali',
-  'عمر':'Umar','عثمان':'Uthman','أبو':'Abu','أبي':'Abi','أم':'Umm',
-  'ابن':'Ibn','بن':'ibn','بنت':'bint','عبد':'Abd','الله':'Allah',
-  'عبدالله':'Abdullah','عبد الله':'Abd Allah','الرحمن':'al-Rahman',
-  'يحيى':'Yahya','موسى':'Musa','عيسى':'Isa','سفيان':'Sufyan',
-  'مالك':'Malik','أنس':'Anas','سعيد':'Sa\'id','حماد':'Hammad',
-  'إبراهيم':'Ibrahim','إسحاق':'Ishaq','يوسف':'Yusuf','داود':'Dawud',
-  'سليمان':'Sulayman','جعفر':'Ja\'far','خالد':'Khalid','زيد':'Zayd',
-  'عائشة':'A\'isha','فاطمة':'Fatima','حفصة':'Hafsa','خديجة':'Khadija',
-  'هريرة':'Hurairah','بكر':'Bakr','عمرو':'Amr',
-  'معاذ':'Mu\'adh','بلال':'Bilal','صهيب':'Suhayb','عبيد':'Ubayd',
-  'قتيبة':'Qutayba','شعبة':'Shu\'ba','وكيع':'Waki\'','يزيد':'Yazid',
-  'حسن':'Hasan','حسين':'Husayn','عطاء':'Ata\'','طاوس':'Tawus',
-  'مجاهد':'Mujahid','نافع':'Nafi\'','زهري':'Zuhri','زهرة':'Zahra',
-  'الزهري':'al-Zuhri','البخاري':'al-Bukhari','مسلم':'Muslim',
-  'الترمذي':'al-Tirmidhi','النسائي':'al-Nasa\'i','ماجه':'Majah',
-  'حنبل':'Hanbal','الشافعي':'al-Shafi\'i',
+  'محمد':'Muhammad','أحمد':'Ahmad','علي':'Ali','عمر':'Umar','عثمان':'Uthman',
+  'أبو':'Abu','أبي':'Abi','ابن':'Ibn','بن':'ibn','بنت':'bint','عبد':'Abd',
+  'الله':'Allah','عبدالله':'Abdullah','الرحمن':'al-Rahman','يحيى':'Yahya',
+  'موسى':'Musa','سفيان':'Sufyan','مالك':'Malik','أنس':'Anas','سعيد':"Sa'id",
+  'حماد':'Hammad','إبراهيم':'Ibrahim','إسحاق':'Ishaq','يوسف':'Yusuf',
+  'داود':'Dawud','سليمان':'Sulayman','جعفر':"Ja'far",'خالد':'Khalid',
+  'زيد':'Zayd','عائشة':"A'isha",'فاطمة':'Fatima','هريرة':'Hurairah',
+  'بكر':'Bakr','عمرو':'Amr','قتيبة':'Qutayba','شعبة':"Shu'ba",
+  'وكيع':"Waki'",'يزيد':'Yazid','حسن':'Hasan','حسين':'Husayn',
+  'نافع':"Nafi'",'الزهري':'al-Zuhri','البخاري':'al-Bukhari','مسلم':'Muslim',
+  'الترمذي':'al-Tirmidhi','النسائي':"al-Nasa'i",'حنبل':'Hanbal',
+  'الشافعي':"al-Shafi'i",'ماجه':'Majah',
 };
-
-/** Character-level fallback map (strips diacritics first). */
 const CHAR_MAP: Record<string, string> = {
-  'ا':'a','أ':'a','إ':'i','آ':'a','ٱ':'a','ء':"'",'ئ':'i','ؤ':'w',
-  'ب':'b','ت':'t','ث':'th','ج':'j','ح':'h','خ':'kh',
-  'د':'d','ذ':'dh','ر':'r','ز':'z','س':'s','ش':'sh',
-  'ص':'s','ض':'d','ط':'t','ظ':'z','ع':"'",'غ':'gh',
-  'ف':'f','ق':'q','ك':'k','ل':'l','م':'m','ن':'n',
-  'ه':'h','و':'w','ي':'y','ى':'a','ة':'a',
+  'ا':'a','أ':'a','إ':'i','آ':'a','ء':"'",'ب':'b','ت':'t','ث':'th',
+  'ج':'j','ح':'h','خ':'kh','د':'d','ذ':'dh','ر':'r','ز':'z','س':'s',
+  'ش':'sh','ص':'s','ض':'d','ط':'t','ظ':'z','ع':"'",'غ':'gh','ف':'f',
+  'ق':'q','ك':'k','ل':'l','م':'m','ن':'n','ه':'h','و':'w','ي':'y',
+  'ى':'a','ة':'a',
 };
 
-function charTranslit(word: string): string {
-  let out = '';
-  for (const ch of word) out += CHAR_MAP[ch] ?? ch;
-  return out ? out[0].toUpperCase() + out.slice(1) : out;
-}
-
-export function transliterateArabic(text: string): string {
-  if (!text) return '';
-  // Strip diacritics
+function transliterate(text: string): string {
   const clean = text.replace(/[\u064B-\u0652\u0670\u0640]/g, '').trim();
-
-  return clean.split(/\s+/).map(word => {
-    if (WORD_MAP[word]) return WORD_MAP[word];
-
-    // Handle ال prefix (definite article)
-    if (word.startsWith('ال') && word.length > 2) {
-      const rest = word.slice(2);
-      // Sun letters assimilate: ت ث د ذ ر ز س ش ص ض ط ظ ل ن
-      const sunLetters = new Set(['ت','ث','د','ذ','ر','ز','س','ش','ص','ض','ط','ظ','ل','ن']);
-      const first = rest[0] ?? '';
-      const prefix = sunLetters.has(first) ? 'al-' : 'al-';
-      return prefix + charTranslit(rest);
-    }
-
-    return charTranslit(word);
+  return clean.split(/\s+/).map(w => {
+    if (WORD_MAP[w]) return WORD_MAP[w];
+    if (w.startsWith('ال') && w.length > 2) return 'al-' + [...w.slice(2)].map(c => CHAR_MAP[c] ?? c).join('');
+    return [...w].map(c => CHAR_MAP[c] ?? c).join('');
   }).join(' ');
 }
 
-// ─── Label helper ─────────────────────────────────────────────────────────────
-
-function getNodeLabels(
-  node: NarratorNode,
-  lang: 'en' | 'bn' | 'ar'
-): { primary: string; secondary: string | null; transliterated: boolean } {
-  if (lang === 'ar') return { primary: node.name_ar, secondary: null, transliterated: false };
-
+function getLabel(node: NarratorNode, lang: 'en' | 'bn' | 'ar') {
+  if (lang === 'ar') return { primary: node.name_ar, secondary: null };
   const local = lang === 'bn' ? (node.name_bn ?? node.name_en) : node.name_en;
-  if (local) return { primary: local, secondary: node.name_ar, transliterated: false };
-
-  // Transliterate Arabic → readable Latin
-  const translit = transliterateArabic(node.name_ar);
-  return { primary: translit, secondary: node.name_ar, transliterated: true };
+  if (local) return { primary: local, secondary: node.name_ar };
+  return { primary: transliterate(node.name_ar), secondary: node.name_ar };
 }
 
 // ─── Level assignment ─────────────────────────────────────────────────────────
-
 /**
- * Assign each node a vertical level relative to center:
- *  -2 grandteacher, -1 teacher, 0 center, +1 student, +2 grandstudent
+ * Edge semantics: from_narrator_id = student, to_narrator_id = teacher.
+ * (Confirmed by chain-db.ts: "Teachers of selected = edges where selected is from and to is teacher")
+ *
+ * Uses Number() coercion on all comparisons to handle string/number type mismatches
+ * that can occur between JSON-parsed API responses and component props.
  */
 function buildLevelMap(
   nodes: NarratorNode[],
   edges: NarratorEdge[],
   centerId: number
 ): Map<number, number> {
+  const cId = Number(centerId);
+  const centerNode = nodes.find(n => Number(n.id) === cId);
+  const centerTabaqah = centerNode?.tabaqah ?? null;
+
   const level = new Map<number, number>();
-  level.set(centerId, 0);
+  level.set(cId, 0);
 
-  // Direct teachers: X → center
-  edges.forEach(e => {
-    if (e.to_narrator_id === centerId && !level.has(e.from_narrator_id))
-      level.set(e.from_narrator_id, -1);
-  });
-  // Direct students: center → X
-  edges.forEach(e => {
-    if (e.from_narrator_id === centerId && !level.has(e.to_narrator_id))
-      level.set(e.to_narrator_id, 1);
-  });
+  // Direct teachers: center is student (from) → to is teacher
+  for (const e of edges) {
+    if (Number(e.from_narrator_id) === cId && !level.has(Number(e.to_narrator_id)))
+      level.set(Number(e.to_narrator_id), -1);
+  }
+  // Direct students: center is teacher (to) → from is student
+  for (const e of edges) {
+    if (Number(e.to_narrator_id) === cId && !level.has(Number(e.from_narrator_id)))
+      level.set(Number(e.from_narrator_id), 1);
+  }
 
-  const teacherIds  = new Set([...level.entries()].filter(([,l]) => l === -1).map(([id]) => id));
-  const studentIds  = new Set([...level.entries()].filter(([,l]) => l ===  1).map(([id]) => id));
+  const teacherIds = new Set([...level.entries()].filter(([,l]) => l === -1).map(([id]) => id));
+  const studentIds = new Set([...level.entries()].filter(([,l]) => l ===  1).map(([id]) => id));
 
-  // Grandteachers: X → teacher
-  edges.forEach(e => {
-    if (teacherIds.has(e.to_narrator_id) && !level.has(e.from_narrator_id))
-      level.set(e.from_narrator_id, -2);
-  });
-  // Grandstudents: student → X
-  edges.forEach(e => {
-    if (studentIds.has(e.from_narrator_id) && !level.has(e.to_narrator_id))
-      level.set(e.to_narrator_id, 2);
-  });
+  // Grandteachers
+  for (const e of edges) {
+    const from = Number(e.from_narrator_id), to = Number(e.to_narrator_id);
+    if (teacherIds.has(from) && !level.has(to)) level.set(to, -2);
+  }
+  // Grandstudents
+  for (const e of edges) {
+    const from = Number(e.from_narrator_id), to = Number(e.to_narrator_id);
+    if (studentIds.has(to) && !level.has(from)) level.set(from, 2);
+  }
 
-  // Any remaining node: assign by tabaqah proximity
-  nodes.forEach(n => {
-    if (!level.has(n.id)) level.set(n.id, 0);
-  });
+  // Propagate remaining via edges (2 passes)
+  for (let pass = 0; pass < 2; pass++) {
+    for (const e of edges) {
+      const from = Number(e.from_narrator_id), to = Number(e.to_narrator_id);
+      const fl = level.get(from), tl = level.get(to);
+      // from=student has level → to=teacher is one level above
+      if (fl !== undefined && tl === undefined) level.set(to, fl - 1);
+      // to=teacher has level → from=student is one level below
+      if (tl !== undefined && fl === undefined) level.set(from, tl + 1);
+    }
+  }
+
+  // Tabaqah-based fallback for nodes still unassigned
+  // Higher tabaqah = later generation = student side (+)
+  if (centerTabaqah) {
+    for (const n of nodes) {
+      if (level.has(Number(n.id)) || !n.tabaqah) continue;
+      const diff = n.tabaqah - centerTabaqah;
+      level.set(Number(n.id), Math.max(-2, Math.min(2, diff)));
+    }
+  }
+
+  // Final fallback
+  for (const n of nodes) {
+    if (!level.has(Number(n.id))) level.set(Number(n.id), 0);
+  }
 
   return level;
 }
 
-// ─── Controls Component (uses useControls hook) ────────────────────────────
+// ─── Level metadata ───────────────────────────────────────────────────────────
+const LEVEL_META: Record<number, { en: string; bn: string; color: string; darkColor: string }> = {
+  '-2': { en: 'Grandteachers', bn: 'উস্তাদের উস্তাদ', color: 'text-teal-700 bg-teal-50 border-teal-200', darkColor: 'dark:text-teal-400 dark:bg-teal-900/20 dark:border-teal-800' },
+  '-1': { en: 'Teachers',      bn: 'শায়খগণ',          color: 'text-teal-600 bg-teal-50 border-teal-100', darkColor: 'dark:text-teal-400 dark:bg-teal-900/10 dark:border-teal-900' },
+   '0': { en: 'Selected',      bn: 'নির্বাচিত',        color: 'text-gray-700 bg-gray-50 border-gray-200',  darkColor: 'dark:text-gray-300 dark:bg-zinc-800 dark:border-zinc-700' },
+   '1': { en: 'Students',      bn: 'ছাত্রগণ',          color: 'text-purple-600 bg-purple-50 border-purple-100', darkColor: 'dark:text-purple-400 dark:bg-purple-900/10 dark:border-purple-900' },
+   '2': { en: 'Grandstudents', bn: 'ছাত্রের ছাত্র',    color: 'text-purple-700 bg-purple-50 border-purple-200', darkColor: 'dark:text-purple-400 dark:bg-purple-900/20 dark:border-purple-800' },
+};
 
-function GraphControls({ isFullScreen, setIsFullScreen, darkMode, lang }: {
-  isFullScreen: boolean;
-  setIsFullScreen: React.Dispatch<React.SetStateAction<boolean>>;
-  darkMode: boolean;
-  lang: 'en' | 'bn' | 'ar';
+// ─── Controls ─────────────────────────────────────────────────────────────────
+function GraphControls({
+  zoomIn, zoomOut, resetTransform, isFullScreen, setIsFullScreen,
+}: {
+  zoomIn: () => void; zoomOut: () => void; resetTransform: () => void;
+  isFullScreen: boolean; setIsFullScreen: (v: boolean) => void;
 }) {
-  const { zoomIn, zoomOut, resetTransform } = useControls();
-
   return (
-    <>
-      {/* Controls top-right */}
-      <div className="absolute top-3 right-3 flex flex-col gap-2 z-[70]">
-        <button
-          onClick={() => setIsFullScreen(f => !f)}
-          className="flex items-center justify-center w-9 h-9 bg-white/95 dark:bg-zinc-900/95 border border-gray-200 dark:border-zinc-800 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-zinc-800 text-gray-500 dark:text-gray-400 backdrop-blur-md transition-colors"
-          title={isFullScreen ? 'Exit fullscreen' : 'Fullscreen'}
-        >
-          {isFullScreen
-            ? <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
-            : <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
-          }
+    <div className="fixed top-3 right-3 flex flex-col gap-2 z-[9999]">
+      <button
+        onClick={() => setIsFullScreen(!isFullScreen)}
+        className="flex items-center justify-center w-10 h-10 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-xl shadow-lg text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors"
+        title={isFullScreen ? 'Exit fullscreen' : 'Fullscreen'}
+      >
+        {isFullScreen
+          ? <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
+          : <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
+        }
+      </button>
+      <div className="flex flex-col bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-xl shadow-lg overflow-hidden">
+        <button onClick={zoomIn} className="p-2.5 hover:bg-gray-50 dark:hover:bg-zinc-800 text-gray-600 dark:text-gray-400 border-b border-gray-100 dark:border-zinc-800 transition-colors" title="Zoom in">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
         </button>
-        <div className="flex flex-col bg-white/95 dark:bg-zinc-900/95 border border-gray-200 dark:border-zinc-800 rounded-lg shadow-md backdrop-blur-md overflow-hidden">
-          <button onClick={() => zoomIn()} className="p-2 hover:bg-gray-50 dark:hover:bg-zinc-800 text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-zinc-800 transition-colors" title="Zoom in">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
-          </button>
-          <button onClick={() => zoomOut()} className="p-2 hover:bg-gray-50 dark:hover:bg-zinc-800 text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-zinc-800 transition-colors" title="Zoom out">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M20 12H4"/></svg>
-          </button>
-          <button onClick={() => resetTransform()} className="p-2 hover:bg-gray-50 dark:hover:bg-zinc-800 text-gray-500 dark:text-gray-400 transition-colors" title="Reset view">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-          </button>
-        </div>
+        <button onClick={zoomOut} className="p-2.5 hover:bg-gray-50 dark:hover:bg-zinc-800 text-gray-600 dark:text-gray-400 border-b border-gray-100 dark:border-zinc-800 transition-colors" title="Zoom out">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M20 12H4"/></svg>
+        </button>
+        <button onClick={resetTransform} className="p-2.5 hover:bg-gray-50 dark:hover:bg-zinc-800 text-gray-600 dark:text-gray-400 transition-colors" title="Reset view">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        </button>
       </div>
-
-      {/* Legend bottom-left */}
-      <div className="absolute bottom-4 left-4 flex flex-col gap-1.5 bg-white/95 dark:bg-zinc-900/95 px-3 py-2.5 rounded-xl border border-gray-200 dark:border-zinc-800 text-[10px] shadow-xl backdrop-blur-md z-[70]">
-        <div className="flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-teal-500"/>
-          <span className="font-semibold text-gray-800 dark:text-gray-200">Selected</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400"/>
-          <span className="text-gray-500 dark:text-gray-400">Trustworthy</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-orange-400"/>
-          <span className="text-gray-500 dark:text-gray-400">Weak (Da'if)</span>
-        </div>
-        <div className="h-px bg-gray-100 dark:bg-zinc-800"/>
-        <div className="flex items-center gap-2">
-          <svg width="22" height="8" className="flex-shrink-0">
-            <line x1="0" y1="4" x2="16" y2="4" stroke="rgba(20,184,166,0.9)" strokeWidth="1.5"/>
-            <polygon points="16,1 22,4 16,7" fill="rgba(20,184,166,0.9)"/>
-          </svg>
-          <span className="text-gray-500 dark:text-gray-400">Taught selected</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <svg width="22" height="8" className="flex-shrink-0">
-            <line x1="0" y1="4" x2="16" y2="4" stroke="rgba(168,85,247,0.9)" strokeWidth="1.5"/>
-            <polygon points="16,1 22,4 16,7" fill="rgba(168,85,247,0.9)"/>
-          </svg>
-          <span className="text-gray-500 dark:text-gray-400">Learned from selected</span>
-        </div>
-        <div className="text-[9px] text-gray-400 dark:text-gray-600 font-medium pt-0.5">
-          {isFullScreen ? 'ESC • PINCH TO ZOOM' : 'DRAG • SCROLL • ZOOM'}
-        </div>
-      </div>
-    </>
+    </div>
   );
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
+// ─── Main component ───────────────────────────────────────────────────────────
 export default function NarratorGraph({
-  nodes,
-  edges,
-  centerId,
-  darkMode,
-  lang,
-  onNodeClick,
-  width: containerWidth = 672,
-  height = 560,
+  nodes, edges, centerId, darkMode, lang, onNodeClick,
+  width: _containerWidth = 800, height = 600,
 }: Props) {
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const transformRef = useRef<ReactZoomPanPinchRef>(null);
 
   useEffect(() => { setMounted(true); }, []);
-
   useEffect(() => {
     document.body.style.overflow = isFullScreen ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
   }, [isFullScreen]);
-
   useEffect(() => {
-    const fn = (e: KeyboardEvent) => { if (e.key === 'Escape') setIsFullScreen(false); };
+    const fn = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setIsFullScreen(false); setSelectedId(null); }
+    };
     window.addEventListener('keydown', fn);
-    return () => { window.removeEventListener('keydown', fn); };
+    return () => window.removeEventListener('keydown', fn);
   }, []);
+  useEffect(() => { if (isFullScreen) setIsFullScreen(false); }, [centerId]);
 
-  // Reset fullscreen when centerId changes (new narrator)
-  useEffect(() => {
-    if (isFullScreen) setIsFullScreen(false);
-  }, [centerId]);
+  const zoomIn  = useCallback(() => transformRef.current?.zoomIn(0.25), []);
+  const zoomOut = useCallback(() => transformRef.current?.zoomOut(0.25), []);
+  const resetFn = useCallback(() => transformRef.current?.resetTransform(0.3), []);
 
   // ── Level assignment ──
-  const levelMap = useMemo(
-    () => buildLevelMap(nodes, edges, centerId),
-    [nodes, edges, centerId]
-  );
+  const levelMap = useMemo(() => buildLevelMap(nodes, edges, centerId), [nodes, edges, centerId]);
 
-  // ── Group by level, cap per row ──
-  const LEVEL_ORDER = [-2, -1, 0, 1, 2] as const;
-  const LEVEL_LABELS: Record<number, { en: string; bn: string }> = {
-    '-2': { en: 'Grandteachers', bn: 'পরোক্ষ শায়খ' },
-    '-1': { en: 'Teachers',      bn: 'শায়খগণ' },
-     '0': { en: 'Selected',      bn: 'নির্বাচিত' },
-     '1': { en: 'Students',      bn: 'ছাত্রগণ' },
-     '2': { en: 'Grandstudents', bn: 'পরোক্ষ ছাত্র' },
-  };
+  const LEVELS = [-2, -1, 0, 1, 2] as const;
 
+  // ── Group nodes by level ──
   const levelGroups = useMemo(() => {
-    const groups = new Map<number, NarratorNode[]>();
-    LEVEL_ORDER.forEach(l => groups.set(l, []));
-    nodes.forEach(n => {
-      const l = levelMap.get(n.id) ?? 0;
+    const g = new Map<number, NarratorNode[]>();
+    LEVELS.forEach(l => g.set(l, []));
+    for (const n of nodes) {
+      const l = levelMap.get(Number(n.id)) ?? 0;
       const capped = Math.max(-2, Math.min(2, l));
-      groups.get(capped)!.push(n);
-    });
-    // Sort each level: center first, then by hadith connection count
-    return groups;
+      g.get(capped)!.push(n);
+    }
+    return g;
   }, [nodes, levelMap]);
 
-  // ── Compute node positions (top-down tree) ──
-  const { nodePositions, totalWidth, totalHeight } = useMemo(() => {
-    const pos = new Map<number, { x: number; y: number }>();
+  const activeLevels = useMemo(
+    () => LEVELS.filter(l => (levelGroups.get(l)?.length ?? 0) > 0),
+    [levelGroups]
+  );
 
-    // Only include levels that have nodes
-    const activeLevels = LEVEL_ORDER.filter(l => (levelGroups.get(l)?.length ?? 0) > 0);
-    const maxRowNodes = Math.max(...activeLevels.map(l => Math.min(levelGroups.get(l)!.length, MAX_ROW)), 1);
+  // ── Node positions (LTR columns) ──
+  const { positions, canvasW, canvasH } = useMemo(() => {
+    const pos = new Map<number, { x: number; y: number; isCenter: boolean }>();
 
-    const canvasW = Math.max(
-      containerWidth,
-      maxRowNodes * (NODE_W + H_GAP) + PAD_X * 2
-    );
-    const canvasH = activeLevels.length * V_GAP + PAD_Y * 2 + NODE_H;
+    // Canvas height — driven by the tallest column
+    const maxColCount = Math.max(...activeLevels.map(l => Math.min(levelGroups.get(l)!.length, MAX_COL)), 1);
+    const cH = Math.max(maxColCount * (NODE_H + V_STEP) - V_STEP + PAD_Y * 2, CENTER_H + PAD_Y * 2);
+    const cW = activeLevels.length * H_STEP + PAD_X * 2;
+    const midY = cH / 2;
 
-    activeLevels.forEach((level, lIdx) => {
-      const rawNodes = levelGroups.get(level)!;
-      const rowNodes = rawNodes.slice(0, MAX_ROW);
-      const y = PAD_Y + lIdx * V_GAP + NODE_H / 2;
+    activeLevels.forEach((lvl, colIdx) => {
+      const colNodes = levelGroups.get(lvl)!.slice(0, MAX_COL);
+      const isLvlCenter = lvl === 0;
+      const nW = isLvlCenter ? CENTER_W : NODE_W;
+      const nH = isLvlCenter ? CENTER_H : NODE_H;
 
-      const rowW = rowNodes.length * NODE_W + (rowNodes.length - 1) * H_GAP;
-      const startX = (canvasW - rowW) / 2;
+      // Column X: centre of node in this column
+      const x = PAD_X + colIdx * H_STEP + nW / 2;
 
-      rowNodes.forEach((node, nIdx) => {
-        pos.set(node.id, { x: startX + nIdx * (NODE_W + H_GAP) + NODE_W / 2, y });
+      // Stack nodes vertically, centred around midY
+      const totalH = colNodes.length * nH + (colNodes.length - 1) * V_STEP;
+      const startY  = midY - totalH / 2 + nH / 2;
+
+      colNodes.forEach((n, rowIdx) => {
+        pos.set(Number(n.id), {
+          x,
+          y: startY + rowIdx * (nH + V_STEP),
+          isCenter: Number(n.id) === Number(centerId),
+        });
       });
     });
 
-    return { nodePositions: pos, totalWidth: canvasW, totalHeight: canvasH };
-  }, [levelGroups, containerWidth, isFullScreen]);
+    return { positions: pos, canvasW: cW, canvasH: cH };
+  }, [levelGroups, activeLevels, centerId]);
 
-  // ── Edge paths ──
+  // ── Highlighted node connections ──
+  const connectedIds = useMemo(() => {
+    if (selectedId === null) return new Set<number>();
+    const ids = new Set<number>();
+    for (const e of edges) {
+      const from = Number(e.from_narrator_id), to = Number(e.to_narrator_id);
+      if (from === selectedId || to === selectedId) { ids.add(from); ids.add(to); }
+    }
+    return ids;
+  }, [selectedId, edges]);
+
+  // ── Edge rendering ──
   const edgePaths = useMemo(() => {
     return edges.map((edge, i) => {
-      const s = nodePositions.get(edge.from_narrator_id);
-      const e = nodePositions.get(edge.to_narrator_id);
+      const from = Number(edge.from_narrator_id), to = Number(edge.to_narrator_id);
+      const s = positions.get(from), e = positions.get(to);
       if (!s || !e) return null;
 
-      // Vertical bezier: control points push curve outward
-      const midY = (s.y + e.y) / 2;
-      const path = `M ${s.x} ${s.y + NODE_H / 2} C ${s.x} ${midY}, ${e.x} ${midY}, ${e.x} ${e.y - NODE_H / 2}`;
+      const cId = Number(centerId);
+      const isTeacherEdge = from === cId;   // center is student → edge goes to teacher (left)
+      const isStudentEdge = to === cId;     // center is teacher → edge comes from student (right)
+      const isDirect = isTeacherEdge || isStudentEdge;
 
-      const isTeacher = edge.to_narrator_id === centerId;
-      const isStudent = edge.from_narrator_id === centerId;
-      const isDirect  = isTeacher || isStudent;
+      // Determine highlight state
+      const isHighlighted = selectedId !== null && (from === selectedId || to === selectedId);
+      const isDimmed = selectedId !== null && !isHighlighted;
 
-      const stroke = isTeacher
-        ? 'rgba(20,184,166,0.7)'
-        : isStudent
-        ? 'rgba(168,85,247,0.7)'
-        : darkMode ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
+      // Horizontal S-curve: exit right edge of source, enter left edge of target.
+      // from = student (tends right), to = teacher (tends left) — curve goes source→target
+      const sHalfW = (s.isCenter ? CENTER_W : NODE_W) / 2;
+      const eHalfW = (e.isCenter ? CENTER_W : NODE_W) / 2;
+      const startX = s.x + sHalfW;  // right edge of source
+      const endX   = e.x - eHalfW;  // left edge of target
+      const midX   = (startX + endX) / 2;
+      // Same-column guard: push control points out so it bows rather than straight-lines
+      const dy = Math.abs(e.y - s.y);
+      const bow = dy < 8 ? 60 : 0;
+      const path = `M ${startX} ${s.y} C ${midX + bow} ${s.y}, ${midX - bow} ${e.y}, ${endX} ${e.y}`;
 
-      const marker = isTeacher ? 'url(#arr-teacher)' : isStudent ? 'url(#arr-student)' : 'url(#arr-subtle)';
+      let stroke: string;
+      let strokeWidth: number;
+      let opacity: number;
+
+      if (isDimmed) {
+        stroke = darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+        strokeWidth = 1;
+        opacity = 1;
+      } else if (isHighlighted) {
+        stroke = 'rgba(251,191,36,1)'; // amber highlight
+        strokeWidth = 3;
+        opacity = 1;
+      } else if (isTeacherEdge) {
+        stroke = 'rgba(20,184,166,0.85)';
+        strokeWidth = isDirect ? 3 : 1.5;
+        opacity = 1;
+      } else if (isStudentEdge) {
+        stroke = 'rgba(168,85,247,0.85)';
+        strokeWidth = isDirect ? 3 : 1.5;
+        opacity = 1;
+      } else {
+        stroke = darkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.10)';
+        strokeWidth = 1.5;
+        opacity = 1;
+      }
+
+      const markerId = isHighlighted ? 'arr-hl'
+        : isTeacherEdge ? 'arr-teacher'
+        : isStudentEdge ? 'arr-student'
+        : isDimmed ? 'arr-dim'
+        : 'arr-other';
 
       return (
         <path
@@ -369,150 +375,301 @@ export default function NarratorGraph({
           d={path}
           fill="none"
           stroke={stroke}
-          strokeWidth={isDirect ? 2.5 : 1}
-          markerEnd={marker}
+          strokeWidth={strokeWidth}
+          strokeOpacity={opacity}
+          markerEnd={`url(#${markerId})`}
+          className="transition-all duration-200"
         />
       );
     });
-  }, [edges, nodePositions, centerId, darkMode]);
+  }, [edges, positions, centerId, selectedId, darkMode]);
 
-  // ── Level row labels ──
-  const rowLabels = useMemo(() => {
-    const activeLevels = LEVEL_ORDER.filter(l => (levelGroups.get(l)?.length ?? 0) > 0);
-    return activeLevels.map((level, lIdx) => {
-      const y = PAD_Y + lIdx * V_GAP + NODE_H / 2;
-      const label = LEVEL_LABELS[level][lang === 'bn' ? 'bn' : 'en'];
-      const count = levelGroups.get(level)!.length;
-      const truncated = count > MAX_ROW;
-      return { level, y, label, count, truncated };
+  // ── Level band backgrounds (vertical columns) ──
+  const levelBands = useMemo(() => {
+    return activeLevels.map((lvl, colIdx) => {
+      const nW = lvl === 0 ? CENTER_W : NODE_W;
+      const x = PAD_X + colIdx * H_STEP;
+      const isTeacher = lvl < 0;
+      const isStudent = lvl > 0;
+      return { lvl, x, nW, isTeacher, isStudent };
     });
-  }, [levelGroups, lang]);
-
-  const content = (
-    <div className={clsx(
-      'bg-white dark:bg-zinc-950 border-gray-100 dark:border-zinc-800 transition-all overflow-hidden',
-      isFullScreen
-        ? 'fixed inset-0 z-[100] w-screen h-screen'
-        : 'relative rounded-xl border w-full'
-    )}
-      style={!isFullScreen ? { height } : {}}
-    >
-      <TransformWrapper initialScale={0.85} centerOnInit minScale={0.2} maxScale={3}>
-        <GraphControls isFullScreen={isFullScreen} setIsFullScreen={setIsFullScreen} darkMode={darkMode} lang={lang} />
-        <TransformComponent wrapperStyle={{ width: '100%', height: '100%' }}>
-          <div style={{ width: totalWidth, height: totalHeight, position: 'relative' }}>
-
-                {/* Row labels on left edge */}
-                {rowLabels.map(({ level, y, label, count, truncated }) => (
-                  <div
-                    key={`lbl-${level}`}
-                    className="absolute flex items-center gap-1.5 pointer-events-none"
-                    style={{ left: 8, top: y - 10, transform: 'translateY(-50%)' }}
-                  >
-                    <span className={clsx(
-                      'text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded',
-                      level === 0
-                        ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-400'
-                        : level < 0
-                        ? 'bg-teal-50 text-teal-600 dark:bg-zinc-800 dark:text-teal-500'
-                        : 'bg-purple-50 text-purple-600 dark:bg-zinc-800 dark:text-purple-400'
-                    )}>
-                      {label}
-                    </span>
-                    {truncated && (
-                      <span className="text-[9px] text-gray-400">+{count - MAX_ROW}</span>
-                    )}
-                  </div>
-                ))}
-
-                {/* Edges */}
-                <svg width={totalWidth} height={totalHeight} className="absolute inset-0 pointer-events-none overflow-visible">
-                  <defs>
-                    <marker id="arr-subtle"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-                      <path d="M0 1.5 L8.5 5 L0 8.5z" fill={darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}/>
-                    </marker>
-                    <marker id="arr-teacher" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                      <path d="M0 1.5 L8.5 5 L0 8.5z" fill="rgba(20,184,166,0.95)"/>
-                    </marker>
-                    <marker id="arr-student" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                      <path d="M0 1.5 L8.5 5 L0 8.5z" fill="rgba(168,85,247,0.95)"/>
-                    </marker>
-                  </defs>
-                  {edgePaths}
-                </svg>
-
-                {/* Nodes */}
-                {nodes.map(node => {
-                  const pos = nodePositions.get(node.id);
-                  if (!pos) return null;
-
-                  const isCenter = node.id === centerId;
-                  const rel = node.reliability ?? (node.tabaqah === 1 ? 'thiqah' : null);
-                  const { primary, secondary, transliterated } = getNodeLabels(node, lang);
-                  const primaryIsArabic = /[\u0600-\u06FF]/.test(primary);
-
-                  return (
-                    <button
-                      key={node.id}
-                      onClick={() => onNodeClick(node)}
-                      className={clsx(
-                        'absolute group transition-all duration-200 hover:z-[90] focus:outline-none',
-                        isCenter ? 'z-[80]' : 'z-[20]'
-                      )}
-                      style={{
-                        left: pos.x - NODE_W / 2,
-                        top:  pos.y - NODE_H / 2,
-                        width: NODE_W,
-                        height: NODE_H,
-                      }}
-                    >
-                      <div className={clsx(
-                        'w-full h-full rounded-xl border-2 flex flex-col items-center justify-center px-2 transition-all duration-200',
-                        'group-hover:scale-105 group-hover:shadow-lg',
-                        isCenter
-                          ? 'bg-teal-500 border-teal-300 shadow-teal-500/40 shadow-lg'
-                          : clsx(
-                              'bg-white dark:bg-zinc-900',
-                              rel ? RELIABILITY_RING[rel] : 'border-gray-200 dark:border-zinc-700'
-                            )
-                      )}>
-                        {/* Primary name */}
-                        <span className={clsx(
-                          'leading-tight text-center w-full truncate',
-                          primaryIsArabic ? 'font-arabic text-[12px]' : 'font-medium text-[11px] tracking-tight',
-                          isCenter ? 'text-white font-bold' : 'text-gray-900 dark:text-gray-100',
-                          transliterated && !isCenter ? 'italic' : ''
-                        )}>
-                          {primary}
-                        </span>
-
-                        {/* Secondary (Arabic) */}
-                        {secondary && (
-                          <span className={clsx(
-                            'font-arabic text-[9px] mt-0.5 w-full text-center truncate',
-                            isCenter ? 'text-teal-100' : 'text-gray-400 dark:text-gray-600'
-                          )} dir="rtl">
-                            {secondary}
-                          </span>
-                        )}
-
-                        {/* Reliability dot */}
-                        {rel && !isCenter && (
-                          <span className={clsx(
-                            'absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-zinc-900',
-                            RELIABILITY_DOT[rel]
-                          )}/>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </TransformComponent>
-          </TransformWrapper>
-        </div>
-    );
+  }, [activeLevels]);
 
   if (!mounted) return null;
-  return isFullScreen ? createPortal(content, document.body) : content;
+
+  const graphContent = (
+    <div className="relative w-full h-full select-none" onClick={() => setSelectedId(null)}>
+
+      {/* Legend — bottom-left */}
+      <div className="absolute bottom-3 left-3 z-[999] flex flex-col gap-1.5 bg-white/95 dark:bg-zinc-900/95 px-3 py-2.5 rounded-xl border border-gray-200 dark:border-zinc-700 shadow-md pointer-events-none">
+        <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">Legend</p>
+        <div className="flex items-center gap-2">
+          <span className="w-3 h-3 rounded-full bg-teal-500 flex-shrink-0"/>
+          <span className="text-[10px] text-gray-600 dark:text-gray-400">Selected narrator</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="w-3 h-3 rounded-full border-2 flex-shrink-0" style={{ borderColor: REL_BORDER.thiqah }}/>
+          <span className="text-[10px] text-gray-600 dark:text-gray-400">Trustworthy (thiqah)</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="w-3 h-3 rounded-full border-2 flex-shrink-0" style={{ borderColor: REL_BORDER.saduq }}/>
+          <span className="text-[10px] text-gray-600 dark:text-gray-400">Truthful (saduq)</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="w-3 h-3 rounded-full border-2 flex-shrink-0" style={{ borderColor: REL_BORDER.daif }}/>
+          <span className="text-[10px] text-gray-600 dark:text-gray-400">Weak (daif)</span>
+        </div>
+        <div className="h-px bg-gray-100 dark:bg-zinc-700 my-0.5"/>
+        <div className="flex items-center gap-2">
+          <svg width="22" height="8" className="flex-shrink-0">
+            <line x1="0" y1="4" x2="16" y2="4" stroke="rgba(20,184,166,0.9)" strokeWidth="2"/>
+            <polygon points="14,1.5 22,4 14,6.5" fill="rgba(20,184,166,0.9)"/>
+          </svg>
+          <span className="text-[10px] text-gray-600 dark:text-gray-400">To teacher (left)</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <svg width="22" height="8" className="flex-shrink-0">
+            <line x1="0" y1="4" x2="16" y2="4" stroke="rgba(168,85,247,0.9)" strokeWidth="2"/>
+            <polygon points="14,1.5 22,4 14,6.5" fill="rgba(168,85,247,0.9)"/>
+          </svg>
+          <span className="text-[10px] text-gray-600 dark:text-gray-400">To student (right)</span>
+        </div>
+        <p className="text-[9px] text-gray-400 dark:text-gray-600 mt-0.5">Tap to highlight · Tap again to open</p>
+      </div>
+
+<TransformWrapper 
+        ref={transformRef} 
+        initialScale={0.85} 
+        centerOnInit 
+        minScale={0.2} 
+        maxScale={3}
+      >
+        <TransformComponent wrapperStyle={{ width: '100%', height: '100%' }}>
+          <div style={{ width: canvasW, height: canvasH, position: 'relative' }}>
+
+            {/* Level band backgrounds (vertical columns) */}
+            {levelBands.map(({ lvl, x, nW, isTeacher, isStudent }) => (
+              <div
+                key={`band-${lvl}`}
+                className="absolute top-0 bottom-0 pointer-events-none"
+                style={{
+                  left: x - 12,
+                  width: nW + 24,
+                  background: isTeacher
+                    ? 'rgba(20,184,166,0.04)'
+                    : isStudent
+                    ? 'rgba(168,85,247,0.04)'
+                    : 'transparent',
+                  borderLeft:  isTeacher ? '1px solid rgba(20,184,166,0.12)' : isStudent ? '1px solid rgba(168,85,247,0.12)' : 'none',
+                  borderRight: isTeacher ? '1px solid rgba(20,184,166,0.12)' : isStudent ? '1px solid rgba(168,85,247,0.12)' : 'none',
+                }}
+              />
+            ))}
+
+            {/* Level labels — top of each column */}
+            {activeLevels.map((lvl, colIdx) => {
+              const nW = lvl === 0 ? CENTER_W : NODE_W;
+              const cx = PAD_X + colIdx * H_STEP + nW / 2;
+              const meta = LEVEL_META[lvl];
+              const label = lang === 'bn' ? meta.bn : meta.en;
+              const count = levelGroups.get(lvl)!.length;
+              const truncated = count > MAX_COL;
+              return (
+                <div
+                  key={`lbl-${lvl}`}
+                  className="absolute pointer-events-none flex flex-col items-center gap-0.5"
+                  style={{ left: cx - 56, top: 8, width: 112 }}
+                >
+                  <span className={clsx(
+                    'text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-md border w-full text-center',
+                    meta.color, meta.darkColor
+                  )}>
+                    {label}
+                  </span>
+                  {truncated && (
+                    <span className="text-[8px] text-gray-400 dark:text-gray-600">
+                      +{count - MAX_COL} more
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Edges SVG */}
+            <svg
+              width={canvasW}
+              height={canvasH}
+              className="absolute inset-0 pointer-events-none"
+              style={{ overflow: 'visible' }}
+            >
+              <defs>
+                <marker id="arr-teacher" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M0 2 L10 6 L0 10z" fill="rgba(20,184,166,0.9)"/>
+                </marker>
+                <marker id="arr-student" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M0 2 L10 6 L0 10z" fill="rgba(168,85,247,0.9)"/>
+                </marker>
+                <marker id="arr-hl" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                  <path d="M0 2 L10 6 L0 10z" fill="rgba(251,191,36,1)"/>
+                </marker>
+                <marker id="arr-other" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+                  <path d="M0 2 L10 6 L0 10z" fill={darkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.18)'}/>
+                </marker>
+                <marker id="arr-dim" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+                  <path d="M0 2 L10 6 L0 10z" fill={darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}/>
+                </marker>
+              </defs>
+              {edgePaths}
+            </svg>
+
+            {/* Nodes */}
+            {nodes.map(node => {
+              const nId = Number(node.id);
+              const pos = positions.get(nId);
+              if (!pos) return null;
+
+              const isCenter = nId === Number(centerId);
+              const isSelected = nId === selectedId;
+              const isConnected = selectedId !== null && connectedIds.has(nId);
+              const isDimmed = selectedId !== null && !isSelected && !isConnected;
+              const rel = node.reliability ?? (node.tabaqah === 1 ? 'thiqah' : null);
+              const { primary, secondary } = getLabel(node, lang);
+              const primaryIsArabic = /[\u0600-\u06FF]/.test(primary);
+
+              const nW = isCenter ? CENTER_W : NODE_W;
+              const nH = isCenter ? CENTER_H : NODE_H;
+
+              const borderColor = isSelected
+                ? '#fbbf24' // amber
+                : isConnected
+                ? '#fbbf24'
+                : isCenter
+                ? '#5eead4' // teal-300
+                : rel
+                ? REL_BORDER[rel]
+                : (darkMode ? '#3f3f46' : '#e5e7eb');
+
+              const glowColor = isSelected || isConnected
+                ? 'rgba(251,191,36,0.35)'
+                : isCenter
+                ? 'rgba(20,184,166,0.4)'
+                : rel
+                ? REL_GLOW[rel]
+                : 'transparent';
+
+              return (
+                <button
+                  key={nId}
+                  onClick={(ev) => {
+                    ev.stopPropagation();
+                    if (isSelected) {
+                      onNodeClick(node);
+                    } else {
+                      setSelectedId(nId);
+                    }
+                  }}
+                  className={clsx(
+                    'absolute flex flex-col items-center justify-center rounded-2xl border-2',
+                    'transition-all duration-200 focus:outline-none',
+                    isCenter
+                      ? 'bg-teal-500 text-white z-[80]'
+                      : darkMode
+                      ? 'bg-zinc-900 text-gray-100 z-[20]'
+                      : 'bg-white text-gray-900 z-[20]',
+                    isDimmed ? 'opacity-25' : 'opacity-100',
+                    !isDimmed && 'hover:scale-105 active:scale-95',
+                  )}
+                  style={{
+                    left: pos.x - nW / 2,
+                    top:  pos.y - nH / 2,
+                    width: nW,
+                    height: nH,
+                    borderColor,
+                    boxShadow: isDimmed
+                      ? 'none'
+                      : `0 0 0 ${isSelected || isConnected ? 3 : 0}px ${glowColor}, 0 4px 16px ${glowColor}, 0 1px 4px rgba(0,0,0,0.08)`,
+                    padding: '6px 10px',
+                  }}
+                >
+                  {/* Arabic name */}
+                  <span
+                    className={clsx(
+                      'font-arabic text-center w-full leading-tight',
+                      isCenter ? 'text-[14px] text-white font-semibold' : 'text-[12px]',
+                      !isCenter && (darkMode ? 'text-gray-100' : 'text-gray-900')
+                    )}
+                    dir="rtl"
+                    style={{ maxWidth: nW - 20, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                  >
+                    {node.name_ar}
+                  </span>
+
+                  {/* Transliterated / local name */}
+                  {primary && !primaryIsArabic && (
+                    <span
+                      className={clsx(
+                        'text-center w-full leading-tight mt-0.5',
+                        isCenter ? 'text-[10px] text-teal-100' : 'text-[9px]',
+                        !isCenter && (darkMode ? 'text-gray-400' : 'text-gray-500')
+                      )}
+                      style={{ maxWidth: nW - 20, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    >
+                      {primary}
+                    </span>
+                  )}
+
+                  {/* Death year */}
+                  {node.death_year && (
+                    <span className={clsx(
+                      'text-[8px] mt-0.5',
+                      isCenter ? 'text-teal-200' : (darkMode ? 'text-gray-500' : 'text-gray-400')
+                    )}>
+                      d. {node.death_year} AH
+                    </span>
+                  )}
+
+                  {/* Reliability dot — top-right */}
+                  {rel && !isCenter && (
+                    <span
+                      className="absolute -top-1.5 -right-1.5 w-3 h-3 rounded-full border-2 border-white dark:border-zinc-900"
+                      style={{ background: REL_BORDER[rel] }}
+                    />
+                  )}
+
+                  {/* Duplicate indicator — top-left */}
+                  {(node as any)._hasDuplicates && !isCenter && (
+                    <span className="absolute -top-1.5 -left-1.5 w-3 h-3 rounded-full bg-amber-400 border-2 border-white dark:border-zinc-900" title="Multiple entries"/>
+                  )}
+
+                </button>
+              );
+            })}
+          </div>
+        </TransformComponent>
+      </TransformWrapper>
+    </div>
+  );
+
+  const containerCls = clsx(
+    'bg-gray-50 dark:bg-zinc-950 transition-all overflow-hidden',
+    isFullScreen ? 'fixed inset-0 z-[100] w-screen h-screen' : 'relative rounded-2xl border border-gray-200 dark:border-zinc-800 w-full'
+  );
+
+  const containerEl = (
+    <div className={containerCls} style={!isFullScreen ? { height } : {}}>
+      {graphContent}
+    </div>
+  );
+
+  return (
+    <>
+      {mounted && (
+        <GraphControls
+          zoomIn={zoomIn} zoomOut={zoomOut} resetTransform={resetFn}
+          isFullScreen={isFullScreen} setIsFullScreen={setIsFullScreen}
+        />
+      )}
+      {isFullScreen ? createPortal(containerEl, document.body) : containerEl}
+    </>
+  );
 }

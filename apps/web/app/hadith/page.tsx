@@ -121,6 +121,10 @@ export default function HadithPage() {
       .catch(console.error);
     const layout = localStorage.getItem('hujjah-layout');
     if (layout === 'compact') setContainerClass('max-w-3xl');
+
+    const onPageshow = (e: PageTransitionEvent) => { if (e.persisted) setMounted(true); };
+    window.addEventListener('pageshow', onPageshow);
+    return () => window.removeEventListener('pageshow', onPageshow);
   }, []);
 
   useEffect(() => {

@@ -140,14 +140,14 @@ const CITY_LABELS: Record<string, { en: string; bn: string; ar: string }> = {
 // ─── Example narrators for quick-start chips ─────────────────────────────────
 
 const EXAMPLE_NARRATORS = [
-  { ar: 'أَبِي هُرَيْرَةَ',   en: 'Abu Hurayra',      bn: 'আবু হুরাইরা',       note: '943 links' },
-  { ar: 'عَائِشَةَ',          en: 'Aisha',            bn: 'আয়িশা',             note: '672 links' },
-  { ar: 'الزُّهْرِيِّ',       en: 'al-Zuhri',         bn: 'আল-জুহরী',          note: '799 links' },
-  { ar: 'شُعْبَةُ',           en: 'Shuba ibn al-Hajjaj', bn: 'শুবা ইবনে আল-হাজ্জাজ', note: '1230 links' },
-  { ar: 'سُفْيَانُ',         en: 'Sufyan al-Thawri',  bn: 'সুফিয়ান আল-সাওরি', note: '1192 links' },
-  { ar: 'ابْنِ عَبَّاسٍ',     en: 'Ibn Abbas',        bn: 'ইবনে আব্বাস',       note: '544 links' },
-  { ar: 'قَتَادَةَ',          en: 'Qatada ibn Diama',  bn: 'কাতাদা ইবনে দিয়ামা', note: '554 links' },
-  { ar: 'وَكِيعٌ',            en: 'Waki ibn al-Jarrah', bn: 'উকী ইবনে আল-জাররাহ', note: '626 links' },
+  { ar: 'أَبِي هُرَيْرَةَ',   en: 'Abu Hurayra',      bn: 'আবু হুরাইরা' },
+  { ar: 'عَائِشَةَ',          en: 'Aisha',            bn: 'আয়িশা' },
+  { ar: 'الزُّهْرِيِّ',       en: 'al-Zuhri',         bn: 'আল-জুহরী' },
+  { ar: 'شُعْبَةُ',           en: 'Shuba',            bn: 'শুবা' },
+  { ar: 'سُفْيَانُ',         en: 'Sufyan',           bn: 'সুফিয়ান' },
+  { ar: 'ابْنِ عَبَّاسٍ',     en: 'Ibn Abbas',        bn: 'ইবনে আব্বাস' },
+  { ar: 'قَتَادَةَ',          en: 'Qatada',           bn: 'কাতাদা' },
+  { ar: 'وَكِيعٌ',            en: 'Waki',             bn: 'উকী' },
 ];
 
 function getCityLabel(city: string | null | undefined, lang: Lang): string {
@@ -545,8 +545,8 @@ export default function ChainPage() {
                 <div className="flex flex-wrap gap-2">
                   {EXAMPLE_NARRATORS.map((n) => (
                     <button
-                      key={n.ar}
-                      onClick={() => handleSearch(n.ar)}
+                      key={n.en}
+                      onClick={() => handleSearch(n.en)}
                       className="group flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-lg hover:border-teal-400 dark:hover:border-teal-600 hover:bg-teal-50 dark:hover:bg-teal-900/10 transition-colors text-left"
                     >
                       <span className="text-sm font-medium text-gray-900 dark:text-white" dir="rtl">{n.ar}</span>

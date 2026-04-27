@@ -1,12 +1,10 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import dynamic from 'next/dynamic';
+import { useState, useEffect, useRef, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { clsx } from 'clsx';
 import { AppNav } from '@hujjah/ui';
 import type { NarratorNode, NarratorEdge } from '@hujjah/ui';
-
-const NarratorGraph = dynamic(() => import('@hujjah/ui').then(m => ({ default: m.NarratorGraph })), { ssr: false });
 
 type Lang = 'en' | 'bn' | 'ar';
 
@@ -28,7 +26,7 @@ const CHAIN_I18N = {
     heading: 'Sanad Chain Explorer',
     subtitle: 'Search for a narrator to explore their transmission chains. Covers Kutub al-Sittah (36K hadith).',
     placeholder: 'Search narrator (Arabic or English)...',
-    showGraph: 'Show Graph (2-hop)',
+    showGraph: 'View Network (2-hop)',
     teachers: 'Teachers (narrated from)',
     students: 'Students (narrated to)',
     networkTitle: '2-Hop Network',
@@ -45,7 +43,7 @@ const CHAIN_I18N = {
       'Type a narrator name in Arabic or English above',
       'Select from the dropdown to see their profile',
       'Click any teacher or student to see shared hadith',
-      'Hit "Show Graph" for a visual 2-hop network',
+      'Hit "View Network" for a full-screen 2-hop graph',
     ],
     tryTitle: 'Try these narrators',
   },
@@ -54,7 +52,7 @@ const CHAIN_I18N = {
     heading: 'সনদ চেইন এক্সপ্লোরার',
     subtitle: 'একজন রাবীর নাম খুঁজুন এবং তাদের বর্ণনা সূত্র দেখুন। কুতুব আল-সিত্তাহ (৩৬ হাজার হাদিস)।',
     placeholder: 'রাবীর নাম খুঁজুন (আরবি বা ইংরেজি)...',
-    showGraph: 'গ্রাফ দেখুন (২-স্তর)',
+    showGraph: 'নেটওয়ার্ক দেখুন (২-স্তর)',
     teachers: 'শায়খগণ (যাঁদের থেকে বর্ণনা করেছেন)',
     students: 'ছাত্রগণ (যাঁরা বর্ণনা করেছেন)',
     networkTitle: '২-স্তর নেটওয়ার্ক',
@@ -71,7 +69,7 @@ const CHAIN_I18N = {
       'উপরের বক্সে আরবি বা ইংরেজিতে রাবীর নাম লিখুন',
       'ড্রপডাউন থেকে রাবী বেছে নিন — প্রোফাইল দেখাবে',
       'শায়খ বা ছাত্রের নামে ক্লিক করলে সনদসহ হাদিস দেখাবে',
-      '"গ্রাফ দেখুন" বাটনে চাপলে ২-স্তর নেটওয়ার্ক ভিজুয়াল আসবে',
+      '"নেটওয়ার্ক দেখুন" বাটনে চাপলে ফুল-স্ক্রিন গ্রাফ আসবে',
     ],
     tryTitle: 'এই রাবীদের দিয়ে শুরু করুন',
   },
@@ -97,7 +95,7 @@ const CHAIN_I18N = {
       'اكتب اسم الراوي بالعربية في الأعلى',
       'اختر من القائمة لعرض ترجمته',
       'انقر على شيخ أو تلميذ لعرض الأحاديث المشتركة',
-      'انقر "عرض الشبكة" لرؤية شبكة درجتين',
+      'انقر "عرض الشبكة" لرؤية رسم بياني كامل الشاشة',
     ],
     tryTitle: 'جرّب هؤلاء الرواة',
   },
@@ -135,14 +133,14 @@ const CITY_LABELS: Record<string, { en: string; bn: string; ar: string }> = {
 };
 
 const EXAMPLE_NARRATORS = [
-  { ar: 'أَبِي هُرَيْرَةَ',   en: 'Abu Hurayra',      bn: 'আবু হুরাইরা',       note: '943 links' },
-  { ar: 'عَائِشَةَ',          en: 'Aisha',            bn: 'আয়িশা',             note: '672 links' },
-  { ar: 'الزُّهْرِيِّ',       en: 'al-Zuhri',         bn: 'আল-জুহরী',          note: '799 links' },
-  { ar: 'شُعْبَةُ',           en: 'Shuba ibn al-Hajjaj', bn: 'শুবা ইবনে আল-হাজ্জাজ', note: '1230 links' },
-  { ar: 'سُفْيَانُ',         en: 'Sufyan al-Thawri',  bn: 'সুফিয়ান আল-সাওরি', note: '1192 links' },
-  { ar: 'ابْنِ عَبَّاسٍ',     en: 'Ibn Abbas',        bn: 'ইবনে আব্বাস',       note: '544 links' },
-  { ar: 'قَتَادَةَ',          en: 'Qatada ibn Diama',  bn: 'কাতাদা ইবনে দিয়ামা', note: '554 links' },
-  { ar: 'وَكِيعٌ',            en: 'Waki ibn al-Jarrah', bn: 'উকী ইবনে আল-জাররাহ', note: '626 links' },
+  { ar: 'أَبِي هُرَيْرَةَ',   en: 'Abu Hurayra',      bn: 'আবু হুরাইরা' },
+  { ar: 'عَائِشَةَ',          en: 'Aisha',            bn: 'আয়িশা' },
+  { ar: 'الزُّهْرِيِّ',       en: 'al-Zuhri',         bn: 'আল-জুহরী' },
+  { ar: 'شُعْبَةُ',           en: 'Shuba',            bn: 'শুবা' },
+  { ar: 'سُفْيَانُ',         en: 'Sufyan',           bn: 'সুফিয়ান' },
+  { ar: 'ابْنِ عَبَّاسٍ',     en: 'Ibn Abbas',        bn: 'ইবনে আব্বাস' },
+  { ar: 'قَتَادَةَ',          en: 'Qatada',           bn: 'কাতাদা' },
+  { ar: 'وَكِيعٌ',            en: 'Waki',             bn: 'উকী' },
 ];
 
 function getCityLabel(city: string | null | undefined, lang: Lang): string {
@@ -190,7 +188,9 @@ function cleanHadithText(text: string): string {
     .trim();
 }
 
-export default function ChainPage() {
+function ChainContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [mounted, setMounted] = useState(false);
   const [lang, setLang] = useState<Lang>('en');
   const [query, setQuery] = useState('');
@@ -201,8 +201,6 @@ export default function ChainPage() {
   const [darkMode, setDarkMode] = useState(false);
   const [selectedEdge, setSelectedEdge] = useState<NarratorEdge | null>(null);
   const [edgeHadith, setEdgeHadith] = useState<HadithChain[]>([]);
-  const [graphMode, setGraphMode] = useState(false);
-  const [graphData, setGraphData] = useState<{ nodes: NarratorNode[]; edges: NarratorEdge[] } | null>(null);
   const [hadithChainData, setHadithChainData] = useState<{ hadith: any; chain: NarratorNode[] } | null>(null);
   const [selectedFullHadith, setSelectedFullHadith] = useState<any | null>(null);
   const [showAllTeachers, setShowAllTeachers] = useState(false);
@@ -226,7 +224,25 @@ export default function ChainPage() {
     if (layout === 'compact') setContainerClass('max-w-3xl');
 
     const params = new URLSearchParams(window.location.search);
+    const nId = params.get('id');
     const hId = params.get('hadith');
+
+    if (nId) {
+      setLoading(true);
+      fetch(`/api/chain?action=narrator&id=${nId}`)
+        .then(r => r.json())
+        .then(async (n) => {
+          if (n) {
+            setSelectedNarrator(n);
+            setQuery(n.name_ar ?? '');
+            const res = await fetch(`/api/chain?action=edges&id=${n.id}`);
+            setEdges(await res.json());
+          }
+        })
+        .catch(console.error)
+        .finally(() => setLoading(false));
+    }
+
     if (hId) {
       setLoading(true);
       fetch(`/api/chain?action=hadithChain&id=${hId}`)
@@ -273,13 +289,12 @@ export default function ChainPage() {
   const handleSelectNarrator = async (n: NarratorNode) => {
     setSelectedNarrator(n);
     setResults([]);
-    setQuery(n.name_ar);
+    setQuery(n.name_ar || '');
     setSelectedEdge(null);
     setEdgeHadith([]);
-    setGraphData(null);
-    setGraphMode(false);
     setShowAllTeachers(false);
     setShowAllStudents(false);
+    router.push(`/chain?id=${n.id}`);
     try {
       const res = await fetch(`/api/chain?action=edges&id=${n.id}`);
       const e = await res.json();
@@ -304,17 +319,9 @@ export default function ChainPage() {
     }
   };
 
-  const handleShowGraph = async () => {
+  const handleShowGraph = () => {
     if (!selectedNarrator) return;
-    setGraphMode(true);
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/chain?action=graph&id=${selectedNarrator.id}&depth=2`);
-      const g = await res.json();
-      setGraphData(g);
-    } finally {
-      setLoading(false);
-    }
+    router.push(`/chain/graph?id=${selectedNarrator.id}`);
   };
 
   if (!mounted) return null;
@@ -501,8 +508,8 @@ export default function ChainPage() {
                 <div className="flex flex-wrap gap-2">
                   {EXAMPLE_NARRATORS.map((n) => (
                     <button
-                      key={n.ar}
-                      onClick={() => handleSearch(n.ar)}
+                      key={n.en}
+                      onClick={() => handleSearch(n.en)}
                       className="group flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-lg hover:border-teal-400 dark:hover:border-teal-600 hover:bg-teal-50 dark:hover:bg-teal-900/10 transition-colors text-left"
                     >
                       <span className="text-sm font-medium text-gray-900 dark:text-white" dir="rtl">{n.ar}</span>
@@ -580,28 +587,6 @@ export default function ChainPage() {
                 </div>
               </div>
             </div>
-
-            {/* Graph Mode */}
-            {graphMode && graphData && (
-              <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-100 dark:border-zinc-800">
-                  <h4 className="text-sm font-semibold text-gray-900 dark:text-white">{t.networkTitle}</h4>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                    {t.networkMeta(graphData.nodes.length, graphData.edges.length)}
-                  </p>
-                </div>
-                <NarratorGraph
-                  nodes={graphData.nodes}
-                  edges={graphData.edges}
-                  centerId={selectedNarrator.id}
-                  darkMode={darkMode}
-                  lang={lang}
-                  onNodeClick={handleSelectNarrator}
-                  width={900}
-                  height={420}
-                />
-              </div>
-            )}
 
             {/* Teachers */}
             {edges.teachers.length > 0 && (
@@ -787,5 +772,17 @@ export default function ChainPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function ChainPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-8 h-8 border-3 border-teal-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    }>
+      <ChainContent />
+    </Suspense>
   );
 }

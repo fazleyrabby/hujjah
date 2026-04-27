@@ -1,6 +1,6 @@
 export { default as AppNav } from './AppNav';
 export type { LangOption } from './AppNav';
-export { default as NarratorGraph, transliterateArabic } from './NarratorGraph';
+export { default as NarratorGraph } from './NarratorGraph';
 export { default as LinkedVerseText } from './LinkedVerseText';
 export { default as ErrorBoundary } from './ErrorBoundary';
 export type { NarratorNode, NarratorEdge } from './types';
