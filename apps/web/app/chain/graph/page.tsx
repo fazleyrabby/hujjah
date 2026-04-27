@@ -134,9 +134,9 @@ function GraphPage() {
         </div>
       </div>
 
-      <div className="h-[calc(100vh)]">
+      <div className="bg-gray-50 dark:bg-zinc-950 transition-all overflow-hidden relative rounded-2xl border border-gray-200 dark:border-zinc-800 w-full" style={{ minHeight: 'calc(100vh - 9.5rem)' }}>
         {loading && (
-          <div className="flex items-center justify-center h-full">
+          <div className="flex items-center justify-center flex-1">
             <div className="flex flex-col items-center gap-3">
               <div className="w-8 h-8 border-3 border-teal-600 border-t-transparent rounded-full animate-spin" />
               <span className="text-sm text-gray-500 dark:text-gray-400">{t.loading}</span>
@@ -145,7 +145,7 @@ function GraphPage() {
         )}
 
         {!loading && !narrator && (
-          <div className="flex items-center justify-center h-full">
+          <div className="flex items-center justify-center flex-1">
             <div className="text-center">
               <p className="text-lg font-semibold text-gray-900 dark:text-white">{t.notFound}</p>
               <button
