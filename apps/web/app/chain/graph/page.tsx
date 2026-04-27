@@ -134,7 +134,7 @@ function GraphPage() {
         </div>
       </div>
 
-      <div className="bg-gray-50 dark:bg-zinc-950 transition-all overflow-hidden relative rounded-2xl border border-gray-200 dark:border-zinc-800 w-full" style={{ minHeight: 'calc(100vh - 9.5rem)' }}>
+      <div className="bg-gray-50 dark:bg-zinc-950 transition-all overflow-auto relative rounded-2xl border border-gray-200 dark:border-zinc-800 w-full" style={{ minHeight: 'calc(100vh - 9.5rem)' }}>
         {loading && (
           <div className="flex items-center justify-center flex-1">
             <div className="flex flex-col items-center gap-3">
