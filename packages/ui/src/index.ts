@@ -3,6 +3,7 @@ export type { LangOption } from './AppNav';
 export { default as NarratorGraph } from './NarratorGraph';
 export { default as LinkedVerseText } from './LinkedVerseText';
 export { default as ErrorBoundary } from './ErrorBoundary';
+export { ThemeProvider, useTheme } from './ThemeProvider';
 export type { NarratorNode, NarratorEdge } from './types';
 
 // UI primitives

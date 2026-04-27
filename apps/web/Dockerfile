@@ -4,6 +4,9 @@ FROM node:22-slim AS builder
 
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ \
+ && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /build
 
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
@@ -15,12 +18,14 @@ RUN pnpm install --frozen-lockfile
 COPY packages/ui/ ./packages/ui/
 COPY apps/web/ ./apps/web/
 
-ENV NEXT_TELEMETRY_DISABLED=1 NEXT_PUBLIC_IS_WEB=true \
-    DB_DATA_DIR=/data/hujjah
+ENV NEXT_TELEMETRY_DISABLED=1 NEXT_PUBLIC_IS_WEB=true DB_DATA_DIR=/data/hujjah
 
 WORKDIR /build/apps/web
-RUN pnpm install --frozen-lockfile --no-symlinks
 RUN pnpm build
+
+# Rebuild better-sqlite3 for target platform inside the standalone output
+RUN cd /build/apps/web/.next/standalone/Desktop/Projects/hujjah/node_modules/.pnpm/better-sqlite3@11.10.0/node_modules/better-sqlite3 \
+ && npm run build-release
 
 FROM node:22-slim AS runner
 
@@ -34,7 +39,6 @@ WORKDIR /app
 COPY --from=builder --chown=nextjs:nodejs /build/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /build/apps/web/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /build/apps/web/public ./public
-COPY --from=builder --chown=nextjs:nodejs /build/apps/web/.next/server.js ./
 
 USER nextjs
 
@@ -43,4 +47,5 @@ EXPOSE 3000
 ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0 \
     NEXT_TELEMETRY_DISABLED=1 NEXT_PUBLIC_IS_WEB=true DB_DATA_DIR=/data/hujjah
 
+WORKDIR /app/apps/web
 CMD ["node", "server.js"]

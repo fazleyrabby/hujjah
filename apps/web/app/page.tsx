@@ -158,11 +158,11 @@ export default function Home() {
         <>
           {/* Mobile overlay backdrop */}
           <div 
-            className="fixed inset-0 bg-black/50 z-40 md:hidden"
+            className="fixed inset-0 bg-black/50 z-[55] md:hidden"
             onClick={() => setSidebarOpen(false)}
           />
           <aside className={clsx(
-            'bg-white dark:bg-zinc-900 border-r border-gray-200 dark:border-zinc-800 flex flex-col z-50',
+            'bg-white dark:bg-zinc-900 border-r border-gray-200 dark:border-zinc-800 flex flex-col z-[60]',
             'fixed md:sticky md:top-0 md:h-screen md:w-64',
             'left-0 top-0 h-full w-72 md:w-64 transform transition-transform duration-300',
             sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
@@ -217,13 +217,6 @@ export default function Home() {
           <div className="bg-white dark:bg-zinc-900 border-t border-gray-100 dark:border-zinc-800/60">
             <div className="max-w-3xl mx-auto px-6 py-3">
               <div className="flex items-center gap-2 mb-2">
-                <button onClick={() => setSidebarOpen(v => !v)}
-                  className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
-                  title="Toggle surah list">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-                  </svg>
-                </button>
                 <div className="flex items-center bg-gray-100 dark:bg-zinc-800 rounded-lg p-0.5">
                   {(['quran', 'hadith'] as const).map(d => (
                     <button key={d} type="button"
@@ -476,6 +469,17 @@ export default function Home() {
           )}
         </div>
       </main>
+
+      {/* Sidebar toggle - floating button */}
+      <button onClick={() => setSidebarOpen(v => !v)}
+        className={clsx('fixed top-[54px] z-50 flex items-center gap-1 px-2 py-2 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 shadow-md text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-all',
+          sidebarOpen ? 'left-64 border-l-0 rounded-r-full' : 'left-0 border-l-0 rounded-r-full')}
+        title="Toggle surah list">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+        </svg>
+        {!sidebarOpen && <span className="text-xs">Surahs</span>}
+      </button>
 
     </div>
   );

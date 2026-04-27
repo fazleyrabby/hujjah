@@ -221,28 +221,31 @@ export default function HadithPage() {
           onDarkModeToggle={() => setDarkMode((d) => !d)}
           containerClass={containerClass}
           hiddenRoutes={['/chat']}
-          extra={
-            <div className="flex items-center bg-gray-100 dark:bg-zinc-800 rounded-md p-0.5">
-              {TRANSLATORS.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setTranslator(t.id)}
-                  className={`px-2 py-0.5 text-[11px] font-medium rounded transition-all ${
-                    translator === t.id
-                      ? 'bg-white dark:bg-zinc-700 text-gray-900 dark:text-white shadow-sm'
-                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-                  }`}
-                  title={t.description}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
-          }
         />
       </header>
 
       <div className={`${containerClass} mx-auto px-6 py-6`}>
+        {/* ─── Translator toggle ─── */}
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-xs text-gray-500 dark:text-gray-400">Translation:</span>
+          <div className="flex items-center bg-gray-100 dark:bg-zinc-800 rounded-md p-0.5">
+            {TRANSLATORS.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setTranslator(t.id)}
+                className={`px-2 py-0.5 text-[11px] font-medium rounded transition-all ${
+                  translator === t.id
+                    ? 'bg-white dark:bg-zinc-700 text-gray-900 dark:text-white shadow-sm'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                }`}
+                title={t.description}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* ─── Search ─── */}
         <div className="mb-6">
           <div className="relative">

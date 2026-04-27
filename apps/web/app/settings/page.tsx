@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { AppNav } from '@hujjah/ui';
+import { AppNav, useTheme } from '@hujjah/ui';
 
 const LANG_OPTIONS = [
   { code: 'en', label: 'English', native: 'English' },
@@ -10,17 +10,12 @@ const LANG_OPTIONS = [
 
 export default function SettingsPage() {
   const [mounted, setMounted] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
-  const [fontSize, setFontSize] = useState('medium');
+  const { darkMode, toggleDarkMode, fontSize, setFontSize } = useTheme();
   const [layoutWidth, setLayoutWidth] = useState<'compact' | 'full'>('full');
   const [lang, setLang] = useState('en');
 
   useEffect(() => {
     setMounted(true);
-    const savedDark = localStorage.getItem('hujjah-dark');
-    if (savedDark) setDarkMode(savedDark === 'true');
-    const savedFont = localStorage.getItem('hujjah-font-size');
-    if (savedFont) setFontSize(savedFont);
     const savedLayout = localStorage.getItem('hujjah-layout');
     if (savedLayout) setLayoutWidth(savedLayout as 'compact' | 'full');
     const savedLang = localStorage.getItem('hujjah-lang');
@@ -30,17 +25,6 @@ export default function SettingsPage() {
     window.addEventListener('pageshow', onPageshow);
     return () => window.removeEventListener('pageshow', onPageshow);
   }, []);
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', darkMode);
-    localStorage.setItem('hujjah-dark', String(darkMode));
-  }, [darkMode]);
-
-  useEffect(() => {
-    localStorage.setItem('hujjah-font-size', fontSize);
-    const scale = fontSize === 'small' ? '0.875' : fontSize === 'large' ? '1.125' : '1';
-    document.documentElement.style.setProperty('--font-scale', scale);
-  }, [fontSize]);
 
   useEffect(() => {
     localStorage.setItem('hujjah-layout', layoutWidth);
@@ -63,9 +47,9 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen bg-white dark:bg-zinc-950">
       <header className="bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800 sticky top-0 z-50">
-        <AppNav
+          <AppNav
           darkMode={darkMode}
-          onDarkModeToggle={() => setDarkMode(d => !d)}
+          onDarkModeToggle={toggleDarkMode}
           hiddenRoutes={['/chat']}
           containerClass={containerClass}
         />
@@ -87,8 +71,8 @@ export default function SettingsPage() {
                 <p className="text-sm font-medium text-gray-900 dark:text-white">Dark Mode</p>
                 <p className="text-xs text-gray-500 dark:text-gray-400">Switch between light and dark themes</p>
               </div>
-              <button
-                onClick={() => setDarkMode(d => !d)}
+                <button
+                onClick={toggleDarkMode}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                   darkMode ? 'bg-teal-600' : 'bg-gray-200 dark:bg-zinc-700'
                 }`}

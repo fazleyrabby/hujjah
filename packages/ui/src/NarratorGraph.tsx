@@ -204,7 +204,7 @@ export default function NarratorGraph({
     setExpanded(next);
   };
 
-  function TreeNodeComponent({ treeNode, depth, isLast }: { treeNode: TreeNode; depth: number; isLast: boolean }) {
+  function TreeNodeComponent({ treeNode, depth, isLast, continuations }: { treeNode: TreeNode; depth: number; isLast: boolean; continuations: boolean[] }) {
     const n = treeNode.node;
     const hasChildren = treeNode.children.size > 0;
     const isExpanded = expanded.has(treeNode.id);
@@ -214,6 +214,21 @@ export default function NarratorGraph({
     return (
       <div className="flex flex-col">
         <div className="flex items-center">
+          {depth > 0 && (
+            <div className="flex items-center">
+              {continuations.slice(0, depth - 1).map((cont, i) => (
+                <span key={i} className="select-none text-[10px] text-gray-400 dark:text-gray-500 leading-6 pr-1 w-4 text-center">
+                  {cont ? '│' : ' '}
+                </span>
+              ))}
+              <span className="select-none text-[10px] text-gray-400 dark:text-gray-500 leading-6 pr-1 w-4 text-center">
+                {isLast ? '└' : '├'}
+              </span>
+              <span className="select-none text-[10px] text-gray-400 dark:text-gray-500 leading-6 pr-1">
+                ──
+              </span>
+            </div>
+          )}
           <button
             onClick={() => hasChildren && toggleExpand(treeNode.id)}
             className={clsx(
@@ -250,16 +265,18 @@ export default function NarratorGraph({
           )}
         </div>
         {hasChildren && isExpanded && (
-          <div className="flex flex-col gap-1 mt-1 pl-4">
+          <div className="flex flex-col gap-1 mt-1">
             {childrenArray.map((child, idx) => {
               const childIsLast = idx === childrenArray.length - 1;
+              const newContinuations = [...continuations, !childIsLast];
               return (
-                <div key={child.id} className="flex items-start">
-                  <div className="select-none text-[10px] text-gray-400 dark:text-gray-500 leading-6 pr-1 whitespace-nowrap">
-                    {childIsLast ? '└──' : '├──'}
-                  </div>
-                  <TreeNodeComponent treeNode={child} depth={depth + 1} isLast={childIsLast} />
-                </div>
+                <TreeNodeComponent
+                  key={child.id}
+                  treeNode={child}
+                  depth={depth + 1}
+                  isLast={childIsLast}
+                  continuations={newContinuations}
+                />
               );
             })}
           </div>
@@ -274,7 +291,7 @@ export default function NarratorGraph({
       'w-full p-4'
     )}>
       {treeRoot ? (
-        <TreeNodeComponent treeNode={treeRoot} depth={0} isLast={true} />
+        <TreeNodeComponent treeNode={treeRoot} depth={0} isLast={true} continuations={[]} />
       ) : (
         <div className="text-center text-gray-500 dark:text-gray-400 py-8">
           No chains found

@@ -4,14 +4,13 @@ import { useState, useEffect } from 'react';
 import { getQuranStats, purgeLegacyStorage } from '@/lib/db';
 import { getHadithStats } from '@/lib/hadith-db';
 import { getTieredModelPath, detectDeviceTier } from '@/lib/ai/llama';
-import { AppNav } from '@hujjah/ui';
+import { AppNav, useTheme } from '@hujjah/ui';
 
 export default function SettingsPage() {
   const [mounted, setMounted] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
+  const { darkMode, toggleDarkMode, fontSize: themeFontSize, setFontSize } = useTheme();
   const [lang, setLang] = useState<'en' | 'bn'>('en');
   const [layout, setLayout] = useState<'compact' | 'full'>('full');
-  const [fontSize, setFontSize] = useState<'small' | 'medium' | 'large'>('medium');
   const [stats, setStats] = useState({ verses: 0, translations: 0, languages: 0 });
   const [hadithStats, setHadithStats] = useState({ hadith: 0, books: 0, narrators: 0 });
   const [loading, setLoading] = useState(false);
@@ -24,14 +23,10 @@ export default function SettingsPage() {
       if (e.persisted) setMounted(true);
     };
     window.addEventListener('pageshow', onPageshow);
-    const savedDark = localStorage.getItem('hujjah-dark');
-    if (savedDark) setDarkMode(savedDark === 'true');
     const savedLang = localStorage.getItem('hujjah-lang');
     if (savedLang && ['en', 'bn'].includes(savedLang)) setLang(savedLang as 'en' | 'bn');
     const savedLayout = localStorage.getItem('hujjah-layout') as 'compact' | 'full' | null;
     if (savedLayout) setLayout(savedLayout);
-    const savedFont = localStorage.getItem('hujjah-font-size') as 'small' | 'medium' | 'large' | null;
-    if (savedFont) setFontSize(savedFont);
     loadStats();
     getTieredModelPath().then(setModelPath).catch(() => setModelPath('Unknown'));
     detectDeviceTier().then(setDeviceTier).catch(() => setDeviceTier('desktop'));
@@ -42,16 +37,6 @@ export default function SettingsPage() {
     if (!mounted) return;
     localStorage.setItem('hujjah-layout', layout);
   }, [layout, mounted]);
-
-  useEffect(() => {
-    if (!mounted) return;
-    localStorage.setItem('hujjah-font-size', fontSize);
-    const sizeMap = { small: 'text-sm', medium: 'text-base', large: 'text-lg' };
-    document.documentElement.className = document.documentElement.className
-      .replace(/text-(sm|base|lg)/g, '')
-      .trim();
-    document.documentElement.classList.add(sizeMap[fontSize]);
-  }, [fontSize, mounted]);
 
   const loadStats = async () => {
     try {

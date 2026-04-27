@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import { ErrorBoundary } from '@hujjah/ui';
+import { ErrorBoundary, ThemeProvider } from '@hujjah/ui';
 import { AudioProvider } from '@/contexts/AudioContext';
 import AudioPlayer from '@/components/AudioPlayer';
 
@@ -39,10 +39,12 @@ export default function RootLayout({
       </head>
       <body suppressHydrationWarning>
         <ErrorBoundary>
-          <AudioProvider>
-            {children}
-            <AudioPlayer />
-          </AudioProvider>
+          <ThemeProvider>
+            <AudioProvider>
+              {children}
+              <AudioPlayer />
+            </AudioProvider>
+          </ThemeProvider>
         </ErrorBoundary>
       </body>
     </html>
