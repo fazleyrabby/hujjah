@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { clsx } from 'clsx';
-import { AppNav } from '@hujjah/ui';
+import { AppNav, useTheme } from '@hujjah/ui';
 import type { NarratorNode, NarratorEdge } from '@hujjah/ui';
 import dynamic from 'next/dynamic';
 
@@ -43,7 +43,7 @@ function GraphPage() {
   const searchParams = useSearchParams();
   const [mounted, setMounted] = useState(false);
   const [lang, setLang] = useState<Lang>('en');
-  const [darkMode, setDarkMode] = useState(false);
+  const { darkMode, toggleDarkMode } = useTheme();
   const [loading, setLoading] = useState(true);
   const [narrator, setNarrator] = useState<NarratorNode | null>(null);
   const [graphData, setGraphData] = useState<{ nodes: NarratorNode[]; edges: NarratorEdge[] } | null>(null);
@@ -52,18 +52,9 @@ function GraphPage() {
 
   useEffect(() => {
     setMounted(true);
-    const saved = localStorage.getItem('hujjah-dark');
-    if (saved) setDarkMode(saved === 'true');
     const savedLang = localStorage.getItem('hujjah-lang') as Lang | null;
     if (savedLang && ['en', 'bn', 'ar'].includes(savedLang)) setLang(savedLang);
   }, []);
-
-  useEffect(() => {
-    const root = document.documentElement;
-    if (darkMode) root.classList.add('dark');
-    else root.classList.remove('dark');
-    localStorage.setItem('hujjah-dark', String(darkMode));
-  }, [darkMode]);
 
   useEffect(() => {
     const id = searchParams.get('id');
@@ -107,7 +98,7 @@ function GraphPage() {
           onLangChange={(l) => handleLangChange(l as Lang)}
           langs={[{ code: 'en', label: 'EN' }, { code: 'bn', label: 'বাং' }]}
           darkMode={darkMode}
-          onDarkModeToggle={() => setDarkMode((d) => !d)}
+          onDarkModeToggle={toggleDarkMode}
           containerClass="max-w-none"
           hiddenRoutes={['/chat']}
         />

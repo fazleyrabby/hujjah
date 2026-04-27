@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { AppNav, LinkedVerseText } from '@hujjah/ui';
+import { AppNav, LinkedVerseText, useTheme } from '@hujjah/ui';
 import { useQuranAudio } from '@/contexts/AudioContext';
 import { clsx } from 'clsx';
 
@@ -33,16 +33,14 @@ export default function Home() {
   const [selectedTranslator, setSelectedTranslator] = useState('');
   const [searchMode, setSearchMode] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [darkMode, setDarkMode] = useState(false);
   const [searchDomain, setSearchDomain] = useState<'quran' | 'hadith'>('quran');
   const [latency, setLatency] = useState<number | null>(null);
   const { play: playAudio, pause: pauseAudio, resume: resumeAudio, stop: stopAudio, isPlaying: isAudioPlaying, current: currentAudio } = useQuranAudio();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { darkMode, toggleDarkMode } = useTheme();
 
   useEffect(() => {
     setMounted(true);
-    const saved = localStorage.getItem('hujjah-dark');
-    if (saved) setDarkMode(saved === 'true');
     const savedLang = localStorage.getItem('hujjah-lang');
     if (savedLang && ['en', 'bn'].includes(savedLang)) setLang(savedLang);
     const savedFont = localStorage.getItem('hujjah-font-size');
@@ -56,11 +54,6 @@ export default function Home() {
     window.addEventListener('pageshow', onPageshow);
     return () => window.removeEventListener('pageshow', onPageshow);
   }, []);
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', darkMode);
-    localStorage.setItem('hujjah-dark', String(darkMode));
-  }, [darkMode]);
 
   const loadSurah = useCallback(async (surahId: number, activeLang: string, translatorSlug?: string) => {
     setLoading(true);
@@ -209,14 +202,14 @@ export default function Home() {
               lang={lang}
               onLangChange={handleLangChange}
               langs={[{ code: 'en', label: 'EN' }, { code: 'bn', label: 'বাং' }]}
-              darkMode={darkMode} onDarkModeToggle={() => setDarkMode(d => !d)}
+              darkMode={darkMode} onDarkModeToggle={toggleDarkMode}
               hiddenRoutes={['/chat']}
             />
           </header>
 
           <div className="bg-white dark:bg-zinc-900 border-t border-gray-100 dark:border-zinc-800/60">
             <div className="max-w-3xl mx-auto px-6 py-3">
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center justify-end gap-2 mb-2">
                 <div className="flex items-center bg-gray-100 dark:bg-zinc-800 rounded-lg p-0.5">
                   {(['quran', 'hadith'] as const).map(d => (
                     <button key={d} type="button"

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { clsx } from 'clsx';
-import { AppNav } from '@hujjah/ui';
+import { AppNav, useTheme } from '@hujjah/ui';
 
 const ITEMS_PER_PAGE = 20;
 
@@ -92,7 +92,7 @@ function cleanHadithText(text: string): string {
 
 export default function HadithPage() {
   const [mounted, setMounted] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
+  const { darkMode, toggleDarkMode } = useTheme();
   const [lang, setLang] = useState<'en' | 'bn'>('en');
   const [translator, setTranslator] = useState<'github' | 'qwen'>('github');
   const [books, setBooks] = useState<HadithBook[]>([]);
@@ -108,8 +108,6 @@ export default function HadithPage() {
 
   useEffect(() => {
     setMounted(true);
-    const savedDark = localStorage.getItem('hujjah-dark');
-    if (savedDark) setDarkMode(savedDark === 'true');
     const savedLang = localStorage.getItem('hujjah-lang');
     if (savedLang && ['en', 'bn'].includes(savedLang)) setLang(savedLang as 'en' | 'bn');
     const savedFont = localStorage.getItem('hujjah-font-size');
@@ -128,25 +126,12 @@ export default function HadithPage() {
   }, []);
 
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', darkMode);
-    localStorage.setItem('hujjah-dark', String(darkMode));
-  }, [darkMode]);
-
-  useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setSelectedFullHadith(null);
     };
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
   }, []);
-
-  useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, [darkMode]);
 
   const loadBook = useCallback(async (bookId: number, page: number) => {
     setLoading(true);
@@ -218,7 +203,7 @@ export default function HadithPage() {
           onLangChange={(l) => setLang(l as 'en' | 'bn')}
           langs={[{ code: 'en', label: 'EN' }, { code: 'bn', label: 'বাং' }]}
           darkMode={darkMode}
-          onDarkModeToggle={() => setDarkMode((d) => !d)}
+          onDarkModeToggle={toggleDarkMode}
           containerClass={containerClass}
           hiddenRoutes={['/chat']}
         />

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { clsx } from 'clsx';
-import { AppNav } from '@hujjah/ui';
+import { AppNav, useTheme } from '@hujjah/ui';
 import type { NarratorNode, NarratorEdge } from '@hujjah/ui';
 
 type Lang = 'en' | 'bn' | 'ar';
@@ -198,7 +198,7 @@ function ChainContent() {
   const [selectedNarrator, setSelectedNarrator] = useState<NarratorNode | null>(null);
   const [edges, setEdges] = useState<{ teachers: NarratorEdge[]; students: NarratorEdge[] } | null>(null);
   const [loading, setLoading] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
+  const { darkMode, toggleDarkMode } = useTheme();
   const [selectedEdge, setSelectedEdge] = useState<NarratorEdge | null>(null);
   const [edgeHadith, setEdgeHadith] = useState<HadithChain[]>([]);
   const [hadithChainData, setHadithChainData] = useState<{ hadith: any; chain: NarratorNode[] } | null>(null);
@@ -213,8 +213,6 @@ function ChainContent() {
 
   useEffect(() => {
     setMounted(true);
-    const saved = localStorage.getItem('hujjah-dark');
-    if (saved) setDarkMode(saved === 'true');
     const savedLang = localStorage.getItem('hujjah-lang') as Lang | null;
     if (savedLang && ['en', 'bn', 'ar'].includes(savedLang)) setLang(savedLang);
     const savedFont = localStorage.getItem('hujjah-font-size');
@@ -260,13 +258,6 @@ function ChainContent() {
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
   }, []);
-
-  useEffect(() => {
-    const root = document.documentElement;
-    if (darkMode) root.classList.add('dark');
-    else root.classList.remove('dark');
-    localStorage.setItem('hujjah-dark', String(darkMode));
-  }, [darkMode]);
 
   const handleLangChange = (l: Lang) => {
     setLang(l);
@@ -335,7 +326,7 @@ function ChainContent() {
           onLangChange={(l) => handleLangChange(l as Lang)}
           langs={[{ code: 'en', label: 'EN' }, { code: 'bn', label: 'বাং' }]}
           darkMode={darkMode}
-          onDarkModeToggle={() => setDarkMode((d) => !d)}
+          onDarkModeToggle={toggleDarkMode}
           containerClass={containerClass}
           hiddenRoutes={['/chat']}
         />
