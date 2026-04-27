@@ -9,5 +9,11 @@
     "build:web": "pnpm --filter @hujjah/web build",
     "tauri:dev": "pnpm --filter @hujjah/tauri tauri:dev",
     "tauri:build": "pnpm --filter @hujjah/tauri tauri:build"
+  },
+  "dependencies": {
+    "dagre": "^0.8.5"
+  },
+  "devDependencies": {
+    "@types/dagre": "^0.7.54"
   }
 }
