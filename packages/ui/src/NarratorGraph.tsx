@@ -97,14 +97,33 @@ function getLabel(node: NarratorNode, lang: 'en' | 'bn' | 'ar') {
 
 // ─── Level assignment ─────────────────────────────────────────────────────────
 /**
- * CONFIRMED edge semantics (from actual data):
- *   from_narrator_id = TEACHER (earlier generation, left side)
- *   to_narrator_id   = STUDENT (later generation, right side)
- *
- * Example: Aisha (Companion, tabaqah=1) is FROM; her students (tabaqah=3) are TO.
- *
- * Level convention: teacher side = negative (left), student side = positive (right).
- *   grandteachers=-2, teachers=-1, center=0, students=+1, grandstudents=+2
+ * Build adjacency maps for BFS traversal.
+ * incoming[student] = all teachers of this student
+ * outgoing[teacher] = all students of this teacher
+ */
+function buildAdjacency(edges: NarratorEdge[]) {
+  const incoming = new Map<number, number[]>();
+  const outgoing = new Map<number, number[]>();
+
+  for (const e of edges) {
+    const from = Number(e.from_narrator_id);
+    const to = Number(e.to_narrator_id);
+    if (from === to) continue;
+
+    if (!incoming.has(to)) incoming.set(to, []);
+    if (!outgoing.has(from)) outgoing.set(from, []);
+
+    incoming.get(to)!.push(from);
+    outgoing.get(from)!.push(to);
+  }
+
+  return { incoming, outgoing };
+}
+
+/**
+ * BFS from center to assign levels.
+ * Teachers (incoming edges) go ABOVE (negative levels)
+ * Students (outgoing edges) go BELOW (positive levels)
  */
 function buildLevelMap(
   nodes: NarratorNode[],
@@ -112,59 +131,38 @@ function buildLevelMap(
   centerId: number
 ): Map<number, number> {
   const cId = Number(centerId);
-  const centerNode = nodes.find(n => Number(n.id) === cId);
-  const centerTabaqah = centerNode?.tabaqah ?? null;
+  const { incoming, outgoing } = buildAdjacency(edges);
 
-  const level = new Map<number, number>();
-  level.set(cId, 0);
+  const levels = new Map<number, number>();
+  levels.set(cId, 0);
 
-  // Seed direct neighbors, skipping self-loops
-  for (const e of edges) {
-    const from = Number(e.from_narrator_id), to = Number(e.to_narrator_id);
-    if (from === to) continue;
-    // center is FROM (teacher) → to is student = +1 (right)
-    if (from === cId && !level.has(to)) level.set(to,   1);
-    // center is TO (student) → from is teacher = -1 (left)
-    if (to   === cId && !level.has(from)) level.set(from, -1);
-  }
+  const queue: number[] = [cId];
 
-  // BFS outward from all seeded neighbors
-  const queue: number[] = [...level.keys()].filter(id => id !== cId);
   while (queue.length) {
     const curr = queue.shift()!;
-    const currLevel = level.get(curr)!;
-    for (const e of edges) {
-      const from = Number(e.from_narrator_id), to = Number(e.to_narrator_id);
-      if (from === to) continue;
-      // curr is FROM (teacher) → to is student = one step right
-      if (from === curr && !level.has(to)) {
-        level.set(to, Math.min(2, currLevel + 1));
-        queue.push(to);
+    const currLevel = levels.get(curr)!;
+
+    for (const teacher of incoming.get(curr) || []) {
+      if (!levels.has(teacher)) {
+        levels.set(teacher, currLevel - 1);
+        queue.push(teacher);
       }
-      // curr is TO (student) → from is teacher = one step left
-      if (to === curr && !level.has(from)) {
-        level.set(from, Math.max(-2, currLevel - 1));
-        queue.push(from);
+    }
+
+    for (const student of outgoing.get(curr) || []) {
+      if (!levels.has(student)) {
+        levels.set(student, currLevel + 1);
+        queue.push(student);
       }
     }
   }
 
-  // Tabaqah fallback for nodes unreachable via edges from center
-  // higher tabaqah = later generation = student side (+)
-  if (centerTabaqah) {
-    for (const n of nodes) {
-      if (level.has(Number(n.id)) || !n.tabaqah) continue;
-      const diff = n.tabaqah - centerTabaqah;
-      level.set(Number(n.id), Math.max(-2, Math.min(2, diff)));
-    }
-  }
-
-  // Final fallback
   for (const n of nodes) {
-    if (!level.has(Number(n.id))) level.set(Number(n.id), 0);
+    const id = Number(n.id);
+    if (!levels.has(id)) levels.set(id, 0);
   }
 
-  return level;
+  return levels;
 }
 
 // ─── Level metadata ───────────────────────────────────────────────────────────

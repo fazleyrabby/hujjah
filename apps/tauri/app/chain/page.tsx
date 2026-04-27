@@ -628,8 +628,8 @@ export default function ChainPage() {
 
             {/* Graph Mode */}
             {graphMode && graphData && (
-              <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-100 dark:border-zinc-800">
+              <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl overflow-auto">
+                <div className="px-6 py-4 border-b border-gray-100 dark:border-zinc-800 sticky top-0 bg-white dark:bg-zinc-900 z-10">
                   <h4 className="text-sm font-semibold text-gray-900 dark:text-white">{t.networkTitle}</h4>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                     {t.networkMeta(graphData.nodes.length, graphData.edges.length)}
