@@ -66,11 +66,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(deduplicateNarrators(rows).slice(0, limit));
     }
 
-    if (action === 'narrator') {
+if (action === 'narrator') {
       const id = Number(searchParams.get('id'));
       const rows = await db.select<any[]>(
-        `SELECT n.id, n.name_ar, n.name_en, n.name_bn, n.birth_year, n.death_year, n.tabaqah, n.reliability, n.city, n.data_source
-         FROM narrators WHERE id = ?`,
+        `SELECT id, name_ar, name_en, name_bn, birth_year, death_year, tabaqah, reliability, city, data_source
+          FROM narrators WHERE id = ?`,
         [id]
       );
       if (!rows[0]) return NextResponse.json(null);

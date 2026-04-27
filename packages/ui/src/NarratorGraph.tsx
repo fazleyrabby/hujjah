@@ -30,11 +30,11 @@ const NODE_W   = 190;
 const NODE_H   = 76;
 const CENTER_W = 220;
 const CENTER_H = 84;
-const H_STEP   = 270;  // horizontal distance between column centres
-const V_STEP   = 16;   // vertical gap between nodes in the same column
-const PAD_X    = 60;
-const PAD_Y    = 52;
-const MAX_COL  = 20;   // max nodes shown per column
+const H_STEP     = 320;  // horizontal distance between column centres
+const SPREAD_GAP = 120;  // vertical distance between node centres within a column
+const PAD_X      = 60;
+const PAD_Y      = 52;
+const MAX_COL    = 999;  // no column cap — show all nodes
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
 const REL_BORDER: Record<string, string> = {
@@ -240,52 +240,48 @@ export default function NarratorGraph({
   // ── Level assignment ──
   const levelMap = useMemo(() => buildLevelMap(nodes, edges, centerId), [nodes, edges, centerId]);
 
-  const LEVELS = [-2, -1, 0, 1, 2] as const;
+  const uniqueLevels = useMemo(() => {
+    const levels = new Set(levelMap.values());
+    return Array.from(levels).sort((a, b) => a - b);
+  }, [levelMap]);
 
   // ── Group nodes by level ──
   const levelGroups = useMemo(() => {
     const g = new Map<number, NarratorNode[]>();
-    LEVELS.forEach(l => g.set(l, []));
     for (const n of nodes) {
       const l = levelMap.get(Number(n.id)) ?? 0;
-      const capped = Math.max(-2, Math.min(2, l));
-      g.get(capped)!.push(n);
+      if (!g.has(l)) g.set(l, []);
+      g.get(l)!.push(n);
     }
     return g;
   }, [nodes, levelMap]);
 
-  const activeLevels = useMemo(
-    () => LEVELS.filter(l => (levelGroups.get(l)?.length ?? 0) > 0),
-    [levelGroups]
-  );
+  const activeLevels = uniqueLevels.filter(l => (levelGroups.get(l)?.length ?? 0) > 0);
 
   // ── Node positions (LTR columns) ──
   const { positions, canvasW, canvasH } = useMemo(() => {
     const pos = new Map<number, { x: number; y: number; isCenter: boolean }>();
 
-    // Canvas height — driven by the tallest column
-    const maxColCount = Math.max(...activeLevels.map(l => Math.min(levelGroups.get(l)!.length, MAX_COL)), 1);
-    const cH = Math.max(maxColCount * (NODE_H + V_STEP) - V_STEP, CENTER_H);
+    // Canvas height driven by tallest column, using spread formula
+    const maxColCount = Math.max(...activeLevels.map(l => levelGroups.get(l)!.length), 1);
+    const cH = Math.max((maxColCount - 1) * SPREAD_GAP + NODE_H + PAD_Y * 2, CENTER_H + PAD_Y * 2);
     const cW = activeLevels.length * H_STEP + PAD_X * 2;
     const midY = cH / 2;
 
     activeLevels.forEach((lvl, colIdx) => {
-      const colNodes = levelGroups.get(lvl)!.slice(0, MAX_COL);
+      const colNodes = levelGroups.get(lvl)!;
       const isLvlCenter = lvl === 0;
       const nW = isLvlCenter ? CENTER_W : NODE_W;
-      const nH = isLvlCenter ? CENTER_H : NODE_H;
 
       // Column X: centre of node in this column
       const x = PAD_X + colIdx * H_STEP + nW / 2;
 
-      // Stack nodes vertically, centred around midY
-      const totalH = colNodes.length * nH + (colNodes.length - 1) * V_STEP;
-      const startY  = midY - totalH / 2 + nH / 2;
-
-      colNodes.forEach((n, rowIdx) => {
+      // Spread nodes symmetrically around column midpoint
+      colNodes.forEach((n, i) => {
+        const offset = (i - (colNodes.length - 1) / 2) * SPREAD_GAP;
         pos.set(Number(n.id), {
           x,
-          y: startY + rowIdx * (nH + V_STEP),
+          y: midY + offset,
           isCenter: Number(n.id) === Number(centerId),
         });
       });
@@ -435,15 +431,19 @@ export default function NarratorGraph({
           <span className="text-[10px] text-gray-600 dark:text-gray-400">Center → student</span>
         </div>
         <p className="text-[9px] text-gray-400 dark:text-gray-600 mt-0.5">Tap to highlight · Tap again to open</p>
+        <p className="text-[9px] text-gray-400 dark:text-gray-600 mt-1">Ctrl + scroll to zoom</p>
       </div>
 
-<TransformWrapper 
-        ref={transformRef} 
-        initialScale={0.85} 
-        centerOnInit 
-        minScale={0.2} 
-        maxScale={3}
-      >
+<div className="overflow-auto h-full" style={{ touchAction: 'pan-y' }}>
+        <TransformWrapper
+          ref={transformRef}
+          initialScale={0.85}
+          centerOnInit
+          minScale={0.2}
+          maxScale={3}
+          wheel={{ activationKeys: ['Control', 'Meta'] }}
+          panning={{ disabled: false }}
+        >
         <TransformComponent wrapperStyle={{ width: '100%', height: '100%' }}>
           <div style={{ width: canvasW, height: canvasH, position: 'relative' }}>
 
@@ -473,7 +473,7 @@ export default function NarratorGraph({
               const meta = LEVEL_META[lvl];
               const label = lang === 'bn' ? meta.bn : meta.en;
               const count = levelGroups.get(lvl)!.length;
-              const truncated = count > MAX_COL;
+              const truncated = false; // MAX_COL removed — all nodes shown
               return (
                 <div
                   key={`lbl-${lvl}`}
@@ -646,7 +646,8 @@ export default function NarratorGraph({
             })}
           </div>
         </TransformComponent>
-      </TransformWrapper>
+        </TransformWrapper>
+        </div>
     </div>
   );
 
