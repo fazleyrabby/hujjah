@@ -21,8 +21,6 @@ interface Props {
   darkMode: boolean;
   lang: 'en' | 'bn' | 'ar';
   onNodeClick: (node: NarratorNode) => void;
-  width?: number;
-  height?: number;
 }
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
@@ -34,7 +32,7 @@ const H_STEP   = 270;  // horizontal distance between column centres
 const V_STEP   = 16;   // vertical gap between nodes in the same column
 const PAD_X    = 60;
 const PAD_Y    = 52;
-const MAX_COL  = 10;   // max nodes shown per column
+const MAX_COL  = 20;   // max nodes shown per column
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
 const REL_BORDER: Record<string, string> = {
@@ -97,11 +95,14 @@ function getLabel(node: NarratorNode, lang: 'en' | 'bn' | 'ar') {
 
 // ─── Level assignment ─────────────────────────────────────────────────────────
 /**
- * Edge semantics: from_narrator_id = student, to_narrator_id = teacher.
- * (Confirmed by chain-db.ts: "Teachers of selected = edges where selected is from and to is teacher")
+ * CONFIRMED edge semantics (from actual data):
+ *   from_narrator_id = TEACHER (earlier generation, left side)
+ *   to_narrator_id   = STUDENT (later generation, right side)
  *
- * Uses Number() coercion on all comparisons to handle string/number type mismatches
- * that can occur between JSON-parsed API responses and component props.
+ * Example: Aisha (Companion, tabaqah=1) is FROM; her students (tabaqah=3) are TO.
+ *
+ * Level convention: teacher side = negative (left), student side = positive (right).
+ *   grandteachers=-2, teachers=-1, center=0, students=+1, grandstudents=+2
  */
 function buildLevelMap(
   nodes: NarratorNode[],
@@ -115,53 +116,39 @@ function buildLevelMap(
   const level = new Map<number, number>();
   level.set(cId, 0);
 
-  // Direct teachers: center is student (from) → to is teacher
-  for (const e of edges) {
-    if (Number(e.from_narrator_id) === cId && !level.has(Number(e.to_narrator_id)))
-      level.set(Number(e.to_narrator_id), -1);
-  }
-  // Direct students: center is teacher (to) → from is student
-  for (const e of edges) {
-    if (Number(e.to_narrator_id) === cId && !level.has(Number(e.from_narrator_id)))
-      level.set(Number(e.from_narrator_id), 1);
-  }
-
-  const teacherIds = new Set([...level.entries()].filter(([,l]) => l === -1).map(([id]) => id));
-  const studentIds = new Set([...level.entries()].filter(([,l]) => l ===  1).map(([id]) => id));
-
-  // Grandteachers
+  // Seed direct neighbors, skipping self-loops
   for (const e of edges) {
     const from = Number(e.from_narrator_id), to = Number(e.to_narrator_id);
-    if (teacherIds.has(from) && !level.has(to)) level.set(to, -2);
-  }
-  // Grandstudents
-  for (const e of edges) {
-    const from = Number(e.from_narrator_id), to = Number(e.to_narrator_id);
-    if (studentIds.has(to) && !level.has(from)) level.set(from, 2);
+    if (from === to) continue;
+    // center is FROM (teacher) → to is student = +1 (right)
+    if (from === cId && !level.has(to)) level.set(to,   1);
+    // center is TO (student) → from is teacher = -1 (left)
+    if (to   === cId && !level.has(from)) level.set(from, -1);
   }
 
-  // BFS: propagate levels outward from center, capping at [-2, 2]
-  const queue: number[] = [...teacherIds, ...studentIds];
+  // BFS outward from all seeded neighbors
+  const queue: number[] = [...level.keys()].filter(id => id !== cId);
   while (queue.length) {
     const curr = queue.shift()!;
     const currLevel = level.get(curr)!;
     for (const e of edges) {
       const from = Number(e.from_narrator_id), to = Number(e.to_narrator_id);
-      // curr is student (from) → to is teacher (one level higher/left)
-      if (from === curr && !level.has(to) && currLevel - 1 >= -2) {
-        level.set(to, currLevel - 1);
+      if (from === to) continue;
+      // curr is FROM (teacher) → to is student = one step right
+      if (from === curr && !level.has(to)) {
+        level.set(to, Math.min(2, currLevel + 1));
         queue.push(to);
       }
-      // curr is teacher (to) → from is student (one level lower/right)
-      if (to === curr && !level.has(from) && currLevel + 1 <= 2) {
-        level.set(from, currLevel + 1);
+      // curr is TO (student) → from is teacher = one step left
+      if (to === curr && !level.has(from)) {
+        level.set(from, Math.max(-2, currLevel - 1));
         queue.push(from);
       }
     }
   }
 
-  // Tabaqah-based fallback for nodes still unassigned
-  // Higher tabaqah = later generation = student side (+)
+  // Tabaqah fallback for nodes unreachable via edges from center
+  // higher tabaqah = later generation = student side (+)
   if (centerTabaqah) {
     for (const n of nodes) {
       if (level.has(Number(n.id)) || !n.tabaqah) continue;
@@ -224,7 +211,6 @@ function GraphControls({
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function NarratorGraph({
   nodes, edges, centerId, darkMode, lang, onNodeClick,
-  width: _containerWidth = 800, height = 600,
 }: Props) {
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -277,7 +263,7 @@ export default function NarratorGraph({
 
     // Canvas height — driven by the tallest column
     const maxColCount = Math.max(...activeLevels.map(l => Math.min(levelGroups.get(l)!.length, MAX_COL)), 1);
-    const cH = Math.max(maxColCount * (NODE_H + V_STEP) - V_STEP + PAD_Y * 2, CENTER_H + PAD_Y * 2);
+    const cH = Math.max(maxColCount * (NODE_H + V_STEP) - V_STEP, CENTER_H);
     const cW = activeLevels.length * H_STEP + PAD_X * 2;
     const midY = cH / 2;
 
@@ -325,22 +311,26 @@ export default function NarratorGraph({
       if (!s || !e) return null;
 
       const cId = Number(centerId);
-      const isTeacherEdge = from === cId;   // center is student → edge goes to teacher (left)
-      const isStudentEdge = to === cId;     // center is teacher → edge comes from student (right)
+      // from=TEACHER, to=STUDENT
+      const isStudentEdge = from === cId;  // center is teacher → to is student (right)
+      const isTeacherEdge = to === cId;    // center is student → from is teacher (left)
       const isDirect = isTeacherEdge || isStudentEdge;
+
+      // Skip self-loops
+      if (from === to) return null;
 
       // Determine highlight state
       const isHighlighted = selectedId !== null && (from === selectedId || to === selectedId);
       const isDimmed = selectedId !== null && !isHighlighted;
 
-      // Horizontal S-curve: exit right edge of source, enter left edge of target.
-      // from = student (tends right), to = teacher (tends left) — curve goes source→target
+      // Horizontal S-curve: from exits right edge, to enters left edge
+      // from=teacher (left column), to=student (right column) → curve goes left-to-right
       const sHalfW = (s.isCenter ? CENTER_W : NODE_W) / 2;
       const eHalfW = (e.isCenter ? CENTER_W : NODE_W) / 2;
-      const startX = s.x + sHalfW;  // right edge of source
-      const endX   = e.x - eHalfW;  // left edge of target
+      const startX = s.x + sHalfW;  // right edge of teacher (source)
+      const endX   = e.x - eHalfW;  // left edge of student (target)
       const midX   = (startX + endX) / 2;
-      // Same-column guard: push control points out so it bows rather than straight-lines
+      // Same-column guard: bow the curve so nodes in same column don't get straight lines
       const dy = Math.abs(e.y - s.y);
       const bow = dy < 8 ? 60 : 0;
       const path = `M ${startX} ${s.y} C ${midX + bow} ${s.y}, ${midX - bow} ${e.y}, ${endX} ${e.y}`;
@@ -433,14 +423,14 @@ export default function NarratorGraph({
             <line x1="0" y1="4" x2="16" y2="4" stroke="rgba(20,184,166,0.9)" strokeWidth="2"/>
             <polygon points="14,1.5 22,4 14,6.5" fill="rgba(20,184,166,0.9)"/>
           </svg>
-          <span className="text-[10px] text-gray-600 dark:text-gray-400">To teacher (left)</span>
+          <span className="text-[10px] text-gray-600 dark:text-gray-400">Teacher → center</span>
         </div>
         <div className="flex items-center gap-2">
           <svg width="22" height="8" className="flex-shrink-0">
             <line x1="0" y1="4" x2="16" y2="4" stroke="rgba(168,85,247,0.9)" strokeWidth="2"/>
             <polygon points="14,1.5 22,4 14,6.5" fill="rgba(168,85,247,0.9)"/>
           </svg>
-          <span className="text-[10px] text-gray-600 dark:text-gray-400">To student (right)</span>
+          <span className="text-[10px] text-gray-600 dark:text-gray-400">Center → student</span>
         </div>
         <p className="text-[9px] text-gray-400 dark:text-gray-600 mt-0.5">Tap to highlight · Tap again to open</p>
       </div>
@@ -664,7 +654,7 @@ export default function NarratorGraph({
   );
 
   const containerEl = (
-    <div className={containerCls} style={!isFullScreen ? { height } : {}}>
+    <div className={containerCls}>
       {graphContent}
     </div>
   );

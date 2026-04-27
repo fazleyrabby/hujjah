@@ -166,8 +166,6 @@ function GraphPage() {
             darkMode={darkMode}
             lang={lang}
             onNodeClick={handleNodeClick}
-            width={window.innerWidth}
-            height={window.innerHeight - 200}
           />
         )}
       </div>
