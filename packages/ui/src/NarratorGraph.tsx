@@ -21,6 +21,8 @@ interface Props {
   darkMode: boolean;
   lang: 'en' | 'bn' | 'ar';
   onNodeClick: (node: NarratorNode) => void;
+  width?: number;
+  height?: number;
 }
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
@@ -211,6 +213,8 @@ function GraphControls({
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function NarratorGraph({
   nodes, edges, centerId, darkMode, lang, onNodeClick,
+  width: _containerWidth = 800,
+  height: _containerHeight = 600,
 }: Props) {
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [mounted, setMounted] = useState(false);
