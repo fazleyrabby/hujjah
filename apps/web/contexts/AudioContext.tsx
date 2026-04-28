@@ -8,6 +8,7 @@ import {
   useRef,
   useEffect,
 } from 'react';
+import { DEFAULT_RECITER_ID } from '@/lib/reciters';
 
 export interface PlayOptions {
   surah: number;
@@ -24,6 +25,8 @@ interface AudioContextType {
   surahProgress: number;
   surahCurrentTime: number;
   surahTotalDuration: number;
+  reciter: string;
+  setReciter: (id: string) => void;
   play: (opts: PlayOptions) => Promise<void>;
   pause: () => void;
   resume: () => Promise<void>;
@@ -35,8 +38,8 @@ const AudioContext = createContext<AudioContextType | null>(null);
 
 let globalAudio: HTMLAudioElement | null = null;
 
-function buildAudioUrl(surah: number, ayah: number): string {
-  return `/api/audio?surah=${surah}&ayah=${ayah}`;
+function buildAudioUrl(surah: number, ayah: number, reciter: string): string {
+  return `/api/audio?surah=${surah}&ayah=${ayah}&reciter=${reciter}`;
 }
 
 async function fetchSurahVerseCount(surah: number): Promise<number> {
@@ -75,6 +78,20 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   const [surahProgress, setSurahProgress] = useState(0);
   const [surahCurrentTime, setSurahCurrentTime] = useState(0);
   const [surahTotalDuration, setSurahTotalDuration] = useState(0);
+  const [reciter, setReciterState] = useState(DEFAULT_RECITER_ID);
+
+  const reciterRef = useRef(DEFAULT_RECITER_ID);
+
+  const setReciter = useCallback((id: string) => {
+    reciterRef.current = id;
+    setReciterState(id);
+    localStorage.setItem('hujjah-reciter', id);
+  }, []);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('hujjah-reciter');
+    if (saved) { reciterRef.current = saved; setReciterState(saved); }
+  }, []);
 
   const autoPlayRef = useRef(false);
   const loadingRef = useRef(false);
@@ -167,7 +184,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      const url = buildAudioUrl(surah, ayah);
+      const url = buildAudioUrl(surah, ayah, reciterRef.current);
       const audio = new Audio(url);
       audio.preload = 'auto';
       globalAudio = audio;
@@ -175,7 +192,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       await new Promise<void>((resolve, reject) => {
         audio.oncanplay = () => resolve();
         audio.onerror = () => reject(new Error(`Failed to load audio for ${surah}:${ayah}`));
-        setTimeout(() => reject(new Error('Audio load timeout')), 10000);
+        setTimeout(() => reject(new Error('Audio load timeout')), 30000);
       });
 
       const dur = audio.duration || 0;
@@ -282,7 +299,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
 
     cleanupAudio();
     clearProgressInterval();
-    const url = buildAudioUrl(surah, targetAyah);
+    const url = buildAudioUrl(surah, targetAyah, reciterRef.current);
     const audio = new Audio(url);
     audio.preload = 'auto';
     globalAudio = audio;
@@ -343,6 +360,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     <AudioContext.Provider value={{
       isPlaying, current, progress, currentTime, duration,
       surahProgress, surahCurrentTime, surahTotalDuration,
+      reciter, setReciter,
       play, pause, resume, stop, seekTo
     }}>
       {children}
