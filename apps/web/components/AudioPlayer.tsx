@@ -79,20 +79,28 @@ export default function AudioPlayer() {
 
   const displayProgress = dragPreview !== null ? dragPreview : surahProgress;
 
+  function navigateToVerse(surah: number, ayah: number) {
+    window.dispatchEvent(new CustomEvent('hujjah:navigate-verse', { detail: { surah, ayah } }));
+  }
+
   if (minimized) {
     return (
-      <div className="fixed bottom-4 left-4 z-50 flex items-center gap-3 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-full shadow-lg px-3 py-2 pr-4">
+      <div className="fixed bottom-4 left-4 z-[65] flex items-center gap-3 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-full shadow-lg px-3 py-2 pr-4">
         <div className="w-8 h-8 bg-teal-50 dark:bg-teal-900/20 rounded-full flex items-center justify-center flex-shrink-0">
           <span className="text-xs font-bold text-teal-700 dark:text-teal-400">{current.surah}</span>
         </div>
-        <div className="min-w-0">
+        <button
+          className="min-w-0 text-left hover:opacity-75 transition-opacity"
+          onClick={() => navigateToVerse(current.surah, current.ayah)}
+          title="Go to verse"
+        >
           <p className="text-xs font-medium text-gray-900 dark:text-white truncate">
             {surahInfo ? surahInfo.name_en : `Surah ${current.surah}`}
           </p>
-          <p className="text-[10px] text-gray-500 dark:text-gray-400">
-            Ayah {current.ayah}
+          <p className="text-[10px] text-teal-600 dark:text-teal-400">
+            Ayah {current.ayah} ↗
           </p>
-        </div>
+        </button>
         {isPlaying ? (
           <button onClick={pause} className="w-7 h-7 flex items-center justify-center bg-teal-600 text-white rounded-full">
             <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" /></svg>
@@ -179,10 +187,23 @@ export default function AudioPlayer() {
           </button>
         </div>
 
-        <div className="flex-1 min-w-0 text-right">
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            {surahInfo ? surahInfo.name_en : `Surah ${current.surah}`} · {fmtTime(surahCurrentTime)} / {fmtTime(surahTotalDuration)}
-          </p>
+        <div className="flex-1 min-w-0 flex items-center justify-end gap-2">
+          <button
+            onClick={() => navigateToVerse(current.surah, current.ayah)}
+            className="text-xs text-gray-500 dark:text-gray-400 truncate hover:text-teal-600 dark:hover:text-teal-400 transition-colors text-right"
+            title="Go to verse"
+          >
+            {surahInfo ? surahInfo.name_en : `Surah ${current.surah}`} · {fmtTime(surahCurrentTime)} / {fmtTime(surahTotalDuration)} ↗
+          </button>
+          <button
+            onClick={() => setMinimized(true)}
+            className="flex-shrink-0 p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-full transition-colors"
+            title="Minimize player"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
         </div>
       </div>
     </div>

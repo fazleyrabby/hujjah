@@ -182,7 +182,7 @@ export default function NarratorGraph({
   const edges = processed?.edges ?? rawEdges;
 
   const chains = useMemo(
-    () => extractChains(nodes, edges, centerId, 15),
+    () => extractChains(nodes, edges, centerId, 50),
     [nodes, edges, centerId]
   );
 

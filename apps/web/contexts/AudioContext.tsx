@@ -37,9 +37,32 @@ interface AudioContextType {
 const AudioContext = createContext<AudioContextType | null>(null);
 
 let globalAudio: HTMLAudioElement | null = null;
+let preloadedAudio: HTMLAudioElement | null = null;
+let preloadedKey: string | null = null;
 
 function buildAudioUrl(surah: number, ayah: number, reciter: string): string {
   return `/api/audio?surah=${surah}&ayah=${ayah}&reciter=${reciter}`;
+}
+
+function cleanupPreload() {
+  if (preloadedAudio) {
+    preloadedAudio.src = '';
+    preloadedAudio.load();
+    preloadedAudio = null;
+    preloadedKey = null;
+  }
+}
+
+function schedulePreload(surah: number, ayah: number, reciter: string, verseCount: number) {
+  const nextAyah = ayah + 1;
+  if (nextAyah > verseCount) return;
+  const key = `${surah}:${nextAyah}`;
+  if (preloadedKey === key) return; // already preloading this one
+  cleanupPreload();
+  const audio = new Audio(buildAudioUrl(surah, nextAyah, reciter));
+  audio.preload = 'auto';
+  preloadedAudio = audio;
+  preloadedKey = key;
 }
 
 async function fetchSurahVerseCount(surah: number): Promise<number> {
@@ -184,16 +207,35 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      const url = buildAudioUrl(surah, ayah, reciterRef.current);
-      const audio = new Audio(url);
-      audio.preload = 'auto';
-      globalAudio = audio;
+      const key = vKey(surah, ayah);
+      let audio: HTMLAudioElement;
 
-      await new Promise<void>((resolve, reject) => {
-        audio.oncanplay = () => resolve();
-        audio.onerror = () => reject(new Error(`Failed to load audio for ${surah}:${ayah}`));
-        setTimeout(() => reject(new Error('Audio load timeout')), 30000);
-      });
+      if (preloadedAudio && preloadedKey === key) {
+        // Reuse already-buffered audio — no network wait
+        audio = preloadedAudio;
+        preloadedAudio = null;
+        preloadedKey = null;
+        globalAudio = audio;
+        // If not yet ready, wait — but it's been buffering so this is near-instant
+        if (audio.readyState < 3) {
+          await new Promise<void>((resolve, reject) => {
+            audio.oncanplay = () => resolve();
+            audio.onerror = () => reject(new Error(`Failed to load audio for ${surah}:${ayah}`));
+            setTimeout(() => reject(new Error('Audio load timeout')), 30000);
+          });
+        }
+      } else {
+        cleanupPreload();
+        const url = buildAudioUrl(surah, ayah, reciterRef.current);
+        audio = new Audio(url);
+        audio.preload = 'auto';
+        globalAudio = audio;
+        await new Promise<void>((resolve, reject) => {
+          audio.oncanplay = () => resolve();
+          audio.onerror = () => reject(new Error(`Failed to load audio for ${surah}:${ayah}`));
+          setTimeout(() => reject(new Error('Audio load timeout')), 30000);
+        });
+      }
 
       const dur = audio.duration || 0;
       if (dur > 0) {
@@ -229,6 +271,9 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       setIsPlaying(true);
       setCurrent({ surah, ayah });
       startProgressTracking();
+
+      // Start preloading next verse immediately after this one begins
+      schedulePreload(surah, ayah, reciterRef.current, surahVerseCountRef.current);
     } catch (err) {
       console.error('[Web Audio] Playback error:', err);
       setIsPlaying(false);
@@ -259,6 +304,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   const stop = useCallback(() => {
     clearProgressInterval();
     cleanupAudio();
+    cleanupPreload();
     setIsPlaying(false);
     setCurrent(null);
     setProgress(0);

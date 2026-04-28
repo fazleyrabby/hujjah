@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { AppNav, LinkedVerseText, useTheme } from '@hujjah/ui';
 import { useQuranAudio } from '@/contexts/AudioContext';
+import { RECITERS } from '@/lib/reciters';
 import { clsx } from 'clsx';
 
 interface Surah { id: number; name_ar: string; name_en: string; name_bn: string; }
@@ -34,8 +35,10 @@ export default function Home() {
   const [searchMode, setSearchMode] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchDomain, setSearchDomain] = useState<'quran' | 'hadith'>('quran');
+  const [searchOpen, setSearchOpen] = useState(false);
   const [latency, setLatency] = useState<number | null>(null);
-  const { play: playAudio, pause: pauseAudio, resume: resumeAudio, stop: stopAudio, isPlaying: isAudioPlaying, current: currentAudio } = useQuranAudio();
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const { play: playAudio, pause: pauseAudio, resume: resumeAudio, stop: stopAudio, isPlaying: isAudioPlaying, current: currentAudio, reciter, setReciter } = useQuranAudio();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { darkMode, toggleDarkMode } = useTheme();
 
@@ -136,6 +139,15 @@ export default function Home() {
     }, 300);
   }, [loadSurah, lang]);
 
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { surah, ayah } = (e as CustomEvent).detail;
+      handleNavigateToVerse(surah, ayah);
+    };
+    window.addEventListener('hujjah:navigate-verse', handler);
+    return () => window.removeEventListener('hujjah:navigate-verse', handler);
+  }, [handleNavigateToVerse]);
+
   const highlightTerms = useCallback((text: string, searchQuery: string) => {
     if (!searchQuery.trim()) return text;
     const terms = searchQuery.trim().split(/\s+/).filter(t => t.length > 2);
@@ -180,7 +192,7 @@ export default function Home() {
                 </svg>
               </button>
             </div>
-            <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
+            <nav className="flex-1 overflow-y-auto p-2 space-y-0.5 scrollbar-minimal">
               {surahs.map(s => (
                 <button key={s.id} onClick={() => { loadSurah(s.id, lang); setSidebarOpen(false); }}
                   className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
@@ -193,6 +205,9 @@ export default function Home() {
                     <p className="text-sm font-medium truncate">{lang === 'bn' ? s.name_bn : s.name_en}</p>
                     <p className="text-xs text-gray-400 truncate" dir="rtl">{s.name_ar}</p>
                   </div>
+                  {currentAudio?.surah === s.id && (
+                    <span className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-teal-500 animate-pulse" />
+                  )}
                 </button>
               ))}
             </nav>
@@ -214,8 +229,9 @@ export default function Home() {
           </header>
 
           <div className="bg-white dark:bg-zinc-900 border-t border-gray-100 dark:border-zinc-800/60">
-            <div className="max-w-3xl mx-auto px-6 py-3">
-              <div className="flex items-center justify-end gap-2 mb-2">
+            <div className="max-w-3xl mx-auto px-6 py-2">
+              {/* Tab row + search toggle */}
+              <div className="flex items-center gap-2">
                 <div className="flex items-center bg-gray-100 dark:bg-zinc-800 rounded-lg p-0.5">
                   {(['quran', 'hadith'] as const).map(d => (
                     <button key={d} type="button"
@@ -235,27 +251,55 @@ export default function Home() {
                     </button>
                   ))}
                 </div>
-              </div>
-              <div className="relative">
-                <input type="text" value={query} onChange={e => handleQueryChange(e.target.value)}
-                  placeholder={searchDomain === 'hadith'
-                    ? (lang === 'bn' ? 'হাদিস অনুসন্ধান...' : 'Search hadith...')
-                    : (lang === 'bn' ? 'কুরআন অনুসন্ধান...' : 'Search the Quran...')}
-                  className="w-full px-5 py-3.5 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 text-base shadow-sm"
-                />
-                {query.trim() && (
-                  <button type="button" onClick={() => { setQuery(''); setResults(null); setHadithResults(null); setSurahVerses(null); setSelectedSurah(null); }}
-                    className="absolute right-16 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-600 rounded-md">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                )}
-                <button type="button" disabled={loading || !query.trim()} onClick={() => executeSearch(query, lang)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 px-4 py-2 bg-gray-900 dark:bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:opacity-40">
-                  {loading ? '...' : lang === 'bn' ? 'খুঁজুন' : 'Search'}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchOpen(o => {
+                      if (!o) setTimeout(() => searchInputRef.current?.focus(), 50);
+                      return !o;
+                    });
+                  }}
+                  className={`p-1.5 rounded-lg transition-colors ${
+                    searchOpen || query.trim()
+                      ? 'bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400'
+                      : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-zinc-800 hover:text-gray-600 dark:hover:text-gray-300'
+                  }`}
+                  title={searchOpen ? 'Close search' : 'Search'}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+                  </svg>
                 </button>
               </div>
+
+              {/* Collapsible search bar */}
+              {(searchOpen || query.trim()) && (
+                <div className="relative mt-2">
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    value={query}
+                    onChange={e => handleQueryChange(e.target.value)}
+                    placeholder={searchDomain === 'hadith'
+                      ? (lang === 'bn' ? 'হাদিস অনুসন্ধান...' : 'Search hadith...')
+                      : (lang === 'bn' ? 'কুরআন অনুসন্ধান...' : 'Search the Quran...')}
+                    className="w-full px-4 py-2.5 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm shadow-sm"
+                  />
+                  {query.trim() && (
+                    <button type="button"
+                      onClick={() => { setQuery(''); setResults(null); setHadithResults(null); setSurahVerses(null); setSelectedSurah(null); }}
+                      className="absolute right-16 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-600 rounded-md">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                  <button type="button" disabled={loading || !query.trim()} onClick={() => executeSearch(query, lang)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-gray-900 dark:bg-teal-600 text-white text-xs font-medium rounded-lg hover:bg-gray-800 disabled:opacity-40">
+                    {loading ? '...' : lang === 'bn' ? 'খুঁজুন' : 'Search'}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -360,17 +404,31 @@ export default function Home() {
                   <span className="text-xs text-gray-400">{surahVerses.length} verses</span>
                 </div>
               </div>
-              {availableTranslators.length > 1 && (
-                <div className="flex items-center gap-2 mb-4">
-                  <span className="text-xs text-gray-500 uppercase tracking-wider">{lang === 'bn' ? 'অনুবাদক:' : 'Translator:'}</span>
-                  <select value={selectedTranslator}
-                    onChange={e => { setSelectedTranslator(e.target.value); loadSurah(selectedSurah, lang, e.target.value); }}
-                    className="text-sm bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500 capitalize">
-                    {availableTranslators.map(slug => <option key={slug} value={slug}>{slug}</option>)}
+              <div className="flex flex-wrap items-center gap-4 mb-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500 uppercase tracking-wider">{lang === 'bn' ? 'ক্বারী:' : 'Reciter:'}</span>
+                  <select
+                    value={reciter}
+                    onChange={e => setReciter(e.target.value)}
+                    className="text-sm bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  >
+                    {RECITERS.map(r => (
+                      <option key={r.id} value={r.id}>{r.name}</option>
+                    ))}
                   </select>
                 </div>
-              )}
-              <div className="space-y-6">
+                {availableTranslators.length > 1 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500 uppercase tracking-wider">{lang === 'bn' ? 'অনুবাদক:' : 'Translator:'}</span>
+                    <select value={selectedTranslator}
+                      onChange={e => { setSelectedTranslator(e.target.value); loadSurah(selectedSurah, lang, e.target.value); }}
+                      className="text-sm bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500 capitalize">
+                      {availableTranslators.map(slug => <option key={slug} value={slug}>{slug}</option>)}
+                    </select>
+                  </div>
+                )}
+              </div>
+              <div className={`space-y-6 ${currentAudio ? 'pb-24' : ''}`}>
                 {surahVerses.map((v, i) => (
                   <div key={`${v.id}-${i}`} id={`verse-${v.surah}-${v.ayah}`}
                     className={`bg-white dark:bg-zinc-900 border rounded-xl p-5 transition-all ${
