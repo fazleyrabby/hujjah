@@ -1,152 +1,166 @@
-# Session Notes — 2026-04-28
+# Session Notes — 2026-04-28 (Updated)
+
+## Chain Graph Visualization (Major Rewrite — Round 2)
+
+### SanadExplorer Component (UPDATED)
+- **File**: `packages/ui/src/SanadExplorer.tsx`
+- **Edge routing overhaul**: Midpoint curves, close-node straight lines, reduced noise
+  - `offset = min(|dx| * 0.08, 40)` (was `|dx| * 0.2`)
+  - Midpoint control points: `C x1,midY x2,midY` instead of asymmetric offsets
+  - Straight line when `|dx| < 40`
+  - Stroke: `rgba(100, 116, 139, 0.6)` instead of `currentColor`
+  - Parent edges: `opacity 0.25 / strokeWidth 1` (was `0.5 / 1.2`)
+  - Center/child edges: `opacity 0.9 / strokeWidth 2.4`
+  - `MAX_EDGES_PER_NODE = 2` limits deep clutter
+- **Expansion feedback (NEW)**:
+  - `activeNode` state: clicked node gets amber ring + scale for 800ms
+  - Connected edges turn amber (`rgba(251, 191, 36, 0.9)`) with `strokeWidth 2.8`
+  - `newNodes` diff tracking: newly added nodes flash yellow for 800ms
+  - Auto-scrolls expanded node into center view
+- **Bug fix**: `useEffect` depending on `allLevels` moved after its `useMemo` declaration
+
+### ChainPreview Component (NEW)
+- **File**: `packages/ui/src/ChainPreview.tsx`
+- Minimal sanad preview: 1 level teachers + center + 1 level students
+- No graph edges, no expansion logic
+- Teachers styled sky-blue, students emerald-green, center teal
+- "+N more" buttons navigate to full graph view via `onViewMore` callback
+- Mobile-friendly `flex-wrap` layout
+
+### RadialSanad Component (NEW)
+- **File**: `packages/ui/src/RadialSanad.tsx`
+- Radial/circular sanad visualization
+- Undirected BFS layering into concentric rings
+- `radius = depth * 120`, `angleStep = 2π / count`
+- Quadratic Bézier curves for edges with control point pulled toward center
+- Hover: connected edges highlight amber, unrelated edges fade to 10%
+- Depth-based coloring (rose → amber → emerald → cyan → violet → pink)
+- `MAX_PER_LAYER = 40` to prevent overcrowding
+
+### NarratorGraph Component (UPDATED)
+- **File**: `packages/ui/src/NarratorGraph.tsx`
+- Replaced ASCII connectors (`│ ├ └ ──`) with CSS-based tree lines
+- Hover path highlighting: entire sanad path lights up on hover
+- Unrelated nodes dim to `opacity-30`
+- Smooth expansion animation via `max-height` transition
+- Separate click targets: main node navigates, arrow button toggles expand
+
+### Package Exports
+- **File**: `packages/ui/src/index.ts`
+- Added exports for `ChainPreview` and `RadialSanad`
+
+## Chain Graph Visualization (Major Rewrite)
+
+### SanadExplorer Component (NEW)
+- **File**: `packages/ui/src/SanadExplorer.tsx`
+- Complete rewrite from recursive tree to BFS layered graph
+- **Layout**: Horizontal rows per level, vertical connectors between levels
+- **Expansion**: Per-node expand buttons (↑/↓) with actual neighbor loading
+- **SVG Lines**: Lightweight connection lines between adjacent levels (no library)
+- **Limits**: Base 5 nodes per direction, expands to 10 when toggled
+- **Depth**: Default 2 levels, expands to 3 when any node is expanded
+- **Hidden counts**: Shows `+N↑` / `+N↓` indicators for remaining nodes
+- **Duplicate prevention**: Uses `seen` Set in BFS to avoid same narrator in one layer
+
+### NarratorGraph (Deprecated)
+- **File**: `packages/ui/src/NarratorGraph.tsx`
+- Old recursive tree component with ASCII connectors
+- Still exists but unused in favor of SanadExplorer
+- Backup saved as `packages/ui/src/narattorGraphBckup.txt`
+
+### Chain API Endpoints (NEW)
+- **File**: `apps/web/app/api/chain/route.ts`
+- `GET /api/chain?action=narratorParents&id=X&limit=5` — paginated parent narrators
+- `GET /api/chain?action=narratorChildren&id=X&limit=5` — paginated child narrators
+- Sorted by `hadith_count DESC` for relevance
+
+### Chain Graph Page Update
+- **File**: `apps/web/app/chain/graph/page.tsx`
+- Uses SanadExplorer instead of NarratorGraph
+- Loads graph data via `/api/chain?action=graph&id=X&depth=2`
+- Node click navigates to `/chain?id=X`
+
+## Audio Playback Improvements
+
+### Reciter Selection (NEW)
+- **File**: `apps/web/lib/reciters.ts`
+- Support for multiple reciters: Alafasy, Husary, Minshawi, Ayyoub, Shaatree, Maher Muaiqly
+- Each reciter has multiple CDN sources: `verses.quran.com`, `cdn.islamic.network`, `everyayah.com`
+
+### Audio API Proxy
+- **File**: `apps/web/app/api/audio/route.ts`
+- Fetches from upstream CDNs with fallback chain
+- Prioritizes `islamic.network` (works on VPS), falls back to `everyayah.com`
+- Timeout: 25s for upstream fetch
+- Returns audio/mpeg with proper headers
+
+### AudioPlayer Component
+- **File**: `apps/web/components/AudioPlayer.tsx`
+- Bottom bar + floating controls
+- Reciter selector dropdown
+- Surah progress tracking with verse-by-verse navigation
+
+### AudioContext Updates
+- **File**: `apps/web/contexts/AudioContext.tsx`
+- Global audio state management
+- `loadingRef` guard prevents duplicate audio on rapid clicks
+- Verse highlighting and auto-scroll during playback
+- Keyboard shortcut: Space to play/pause
 
 ## UI Fixes
 
-### Chain Graph Tree Visualization
-- **File**: `packages/ui/src/NarratorGraph.tsx`
-- Added GitHub-style tree connectors (`├──`, `└──`, `│`)
-- Connected vertical lines showing sibling relationships
-- Recursive `TreeNodeComponent` with `continuations` array tracking active branches
-- Expand/collapse toggle with ▼/▶ buttons
-- Leaf nodes show ↗ link button to narrator detail page
-- First-level children expanded by default
-
 ### Mobile Nav Overflow
 - **File**: `packages/ui/src/AppNav.tsx`
-- Nav links scroll horizontally on small screens (hidden scrollbar)
-- Right-side buttons use compact `p-1.5` on mobile, `p-2` on desktop
-- Lang toggle uses `px-2` on mobile, `px-4` on desktop
-- Added `min-w-0 flex-1` to left section to prevent overflow
+- Horizontal scroll on small screens
+- Compact padding on mobile
 
 ### Sidebar z-index Fix
 - **File**: `apps/web/app/page.tsx`
-- Mobile overlay backdrop: `z-[55]`
-- Sidebar aside: `z-[60]`
-- Sticky header: `z-50`
-- Sidebar now appears above header on mobile
+- Mobile overlay: `z-[55]`, Sidebar: `z-[60]`, Header: `z-50`
 
-### Floating Sidebar Toggle Button
-- **File**: `apps/web/app/page.tsx`
-- Restored `fixed top-[54px]` floating button to toggle surah list
-- Shows "Surahs" label when sidebar is closed
-- Removed duplicate inline toggle button from search bar area
+### ThemeProvider
+- **File**: `packages/ui/src/ThemeProvider.tsx`
+- Centralized dark mode + font size state
+- Used by settings pages
 
-### Hadith Page Translator Toggle
-- **File**: `apps/web/app/hadith/page.tsx`
-- Moved Classic/AI translator toggle from `AppNav` `extra` prop to content area above search bar
-- Prevents header overcrowding on mobile
+## Deployment
 
-### ThemeProvider (Global Dark Mode)
-- **New file**: `packages/ui/src/ThemeProvider.tsx`
-- Centralized dark mode + font size state in React Context
-- Syncs `localStorage` and `document.documentElement.classList`
-- Settings pages now use `useTheme()` instead of local `useState`
-- **Files updated**: `apps/web/app/layout.tsx`, `apps/tauri/app/layout.tsx`, both `settings/page.tsx`
+### Docker Build
+- Multi-stage build with `better-sqlite3` native rebuild
+- Static files copied to correct path: `/app/apps/web/.next/static`
+- SQLite binary copied to runner stage
 
-## Deployment Fixes
+### VPS Deploy Script
+- **File**: `scripts/deploy-web.sh`
+- Builds locally with `docker buildx`
+- Transfers image via `docker save | ssh | docker load`
+- Uses Docker Compose for container management
+- Cloudflare tunnel for HTTPS
 
-### Docker Build Issues
-
-#### 1. Static Files Not Serving (404 on `_next/static/chunks/*.js`)
-**Root cause**: Next.js standalone output puts static files in `apps/web/.next/static`, but the Dockerfile copied them to `/app/.next/static` instead of `/app/apps/web/.next/static`.
-
-**Fix in `apps/web/Dockerfile`**:
-```dockerfile
-COPY --from=builder --chown=nextjs:nodejs /build/apps/web/.next/static ./apps/web/.next/static
-COPY --from=builder --chown=nextjs:nodejs /build/apps/web/public ./apps/web/public
-```
-
-#### 2. better-sqlite3 Native Bindings Missing
-**Root cause**: The `better_sqlite3.node` binary was built in the builder stage but never copied to the runner stage. Container logs showed:
-```
-Could not locate the bindings file. Tried:
- → .../build/better_sqlite3.node
- → .../Release/better_sqlite3.node
-```
-
-**Fix in `apps/web/Dockerfile`**:
-```dockerfile
-# Copy the rebuilt better-sqlite3 native binary
-COPY --from=builder --chown=nextjs:nodejs \
-  /build/node_modules/.pnpm/better-sqlite3@11.10.0/node_modules/better-sqlite3/build/Release/better_sqlite3.node \
-  /app/node_modules/.pnpm/better-sqlite3@11.10.0/node_modules/better-sqlite3/build/Release/better_sqlite3.node
-```
-
-Also added `python3 make g++` to runner stage for in-container rebuild fallback.
-
-#### 3. SQLite "unable to open database file"
-**Root cause**: Docker volume was mounted with `:ro` (read-only), but SQLite requires write access for WAL mode and journal files.
-
-**Fix in `docker-compose.yml`**:
-```yaml
-volumes:
-  - ${DB_DATA_DIR:-/data/hujjah}:${DB_DATA_DIR:-/data/hujjah}
-# Removed :ro suffix
-```
-
-#### 4. DB Files Missing on VPS
-**Root cause**: `/data/hujjah/` directory existed but was empty — DB files were never transferred.
-
-**Fix**: Copied both `.db` files from local `apps/tauri/src-tauri/resources/` to VPS `/data/hujjah/`:
-```bash
-scp hujjah-quran.db signalstack:/tmp/
-scp hujjah-hadith-core.db signalstack:/tmp/
-sudo mv /tmp/hujjah-*.db /data/hujjah/
-sudo chown -R 1001:1001 /data/hujjah
-```
-
-### Cloudflare Tunnel Setup
-- Domain `hujjah.fazleyrabbi.xyz` routes through existing `signalstack` tunnel
-- Config added to `/etc/cloudflared/config.yml`:
-  ```yaml
-  - hostname: hujjah.fazleyrabbi.xyz
-    service: http://localhost:3002
-  ```
-- Tunnel restarted via `systemctl restart cloudflared`
-
-## Deployment Checklist
-
-```bash
-# 1. Build image locally (buildx for linux/amd64)
-docker buildx build --platform linux/amd64 --load -t hujjah-web:latest -f apps/web/Dockerfile .
-
-# 2. Transfer image to VPS
-docker save hujjah-web:latest | ssh signalstack "docker load"
-
-# 3. Ensure DB files exist on host
-ssh signalstack "ls -la /data/hujjah/"
-# Should show: hujjah-quran.db, hujjah-hadith-core.db
-
-# 4. Deploy
-cd ~/hujjah-web && docker compose up -d --force-recreate
-
-# 5. Verify
-curl http://localhost:3002/api/health
-curl http://localhost:3002/api/quran?action=surahs | head -c 100
-curl http://localhost:3002/_next/static/chunks/0xbt0p7sc6bwe.js
-```
-
-## Known Issues
-
-- **Turbopack NFT warning**: `Encountered unexpected file in NFT list` due to dynamic `path.join` in `web-db.ts`. Harmless but shows in build logs.
-- **Phone blank page**: Was caused by static JS chunks returning 404. Fixed by correcting Dockerfile static file COPY path.
-- **Mac DNS cache**: `hujjah.fazleyrabbi.xyz` may not resolve immediately after tunnel changes. Use `sudo killall -HUP mDNSResponder` or test with explicit IP.
+### Environment
+- Web app runs on port 3002 (host) → 3000 (container)
+- DB files in `/data/hujjah/` (volume mounted)
+- Domain: https://hujjah.fazleyrabbi.xyz
 
 ## Files Changed
 
 ```
-packages/ui/src/NarratorGraph.tsx      # Tree connectors, recursive rendering
-packages/ui/src/AppNav.tsx              # Mobile overflow fixes
-packages/ui/src/ThemeProvider.tsx       # NEW - Global theme context
-packages/ui/src/index.ts                # Export ThemeProvider, useTheme
-apps/web/app/layout.tsx                 # Wrap with ThemeProvider
-apps/web/app/page.tsx                   # Floating toggle, z-index fixes
-apps/web/app/hadith/page.tsx            # Translator toggle moved
-apps/web/app/settings/page.tsx          # Use useTheme()
-apps/web/app/chain/graph/page.tsx       # z-index fix
-apps/tauri/app/layout.tsx               # ThemeProvider + theme script
-apps/tauri/app/settings/page.tsx        # Use useTheme()
-apps/web/Dockerfile                     # Static path, sqlite3 binary copy
-apps/web/docker-compose.yml             # Remove :ro flag
-scripts/deploy-web.sh                   # Image save/load flow
+packages/ui/src/SanadExplorer.tsx        # NEW - BFS layered graph explorer
+packages/ui/src/NarratorGraph.tsx        # Deprecated (tree component)
+packages/ui/src/narattorGraphBckup.txt   # Backup of old tree component
+packages/ui/src/index.ts                 # Export SanadExplorer
+apps/web/app/chain/graph/page.tsx        # Use SanadExplorer
+apps/web/app/api/chain/route.ts          # New API: narratorParents, narratorChildren
+apps/web/app/api/audio/route.ts          # CDN proxy with fallbacks
+apps/web/contexts/AudioContext.tsx       # Global audio state
+apps/web/components/AudioPlayer.tsx      # Bottom bar player
+apps/web/lib/reciters.ts                 # NEW - Reciter definitions
+apps/web/app/page.tsx                    # Audio integration, sidebar fixes
+apps/web/app/globals.css                 # Audio highlight styles
 ```
+
+## Known Issues
+
+- **Turbopack NFT warning**: Dynamic `path.join` in `web-db.ts` — harmless
+- **Audio timeout on VPS**: `everyayah.com` may be blocked; `islamic.network` prioritized
+- **SVG lines**: Simple straight lines between all nodes in adjacent levels (not precise edges)

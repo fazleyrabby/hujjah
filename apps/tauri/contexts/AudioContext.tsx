@@ -41,7 +41,7 @@ function pad3(n: number): string {
 }
 
 function buildAudioUrl(surah: number, ayah: number): string {
-  return `https://everyayah.com/data/Alafasy_128kbps/${pad3(surah)}${pad3(ayah)}.mp3`;
+  return `https://everyayah.com/data/Alhusary_128kbps/${pad3(surah)}${pad3(ayah)}.mp3`;
 }
 
 async function resolveLocalPath(surah: number, ayah: number): Promise<string | null> {

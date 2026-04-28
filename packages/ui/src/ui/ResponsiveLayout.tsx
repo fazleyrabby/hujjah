@@ -25,7 +25,7 @@ export function ResponsiveLayout({
   showSidebar = false,
   onToggleSidebar,
 }: ResponsiveLayoutProps) {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(showSidebar);
 
   return (
     <div className="min-h-screen bg-[#FDFDFB]">

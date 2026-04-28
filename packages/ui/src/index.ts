@@ -2,6 +2,8 @@ export { default as AppNav } from './AppNav';
 export type { LangOption } from './AppNav';
 export { default as NarratorGraph } from './NarratorGraph';
 export { default as SanadExplorer } from './SanadExplorer';
+export { default as ChainPreview } from './ChainPreview';
+export { default as RadialSanad } from './RadialSanad';
 export { default as LinkedVerseText } from './LinkedVerseText';
 export { default as ErrorBoundary } from './ErrorBoundary';
 export { ThemeProvider, useTheme } from './ThemeProvider';

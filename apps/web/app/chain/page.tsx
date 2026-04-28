@@ -371,7 +371,7 @@ function ChainContent() {
                     <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 text-left">
                       {getNarratorName(n, lang)}
                       {n.death_year ? ` · ${t.died} ${n.death_year} ${t.ah}` : ''}
-                      {n.data_source ? ` · (${n.data_source})` : ''}
+                      {n.data_source === 'computed' ? ' · name only' : n.data_source ? ` · ${n.data_source}` : ''}
                     </div>
                   )}
                 </button>
@@ -420,54 +420,56 @@ function ChainContent() {
                 </div>
 
                 {/* Vertical Sanad */}
-                <div className="px-6 py-8 relative">
-                  <div className="absolute left-[2.25rem] top-8 bottom-8 w-0.5 bg-gradient-to-b from-teal-500/50 to-teal-500/10" />
-                  <div className="space-y-6">
-                    {hadithChainData.chain.map((n, i) => (
-                      <div key={`chain-${n.id}-${i}`} className="relative flex gap-4 group">
-                        <div className="relative z-10 flex-shrink-0 w-10 h-10 rounded-full bg-white dark:bg-zinc-900 border-2 border-teal-500 flex items-center justify-center text-teal-600 dark:text-teal-400 font-bold text-sm shadow-sm group-hover:scale-110 transition-transform">
-                          {i + 1}
-                        </div>
-                        <button
-                          onClick={() => handleSelectNarrator(n)}
-                          className="flex-1 text-left p-4 rounded-xl border border-gray-100 dark:border-zinc-800 hover:border-teal-300 dark:hover:border-teal-700 hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-all shadow-sm group-hover:shadow-md"
-                        >
-                          <div className="flex items-start justify-between gap-4">
-                            <div>
-                              <h5 className="font-arabic text-base text-gray-900 dark:text-white" dir="rtl">{n.name_ar}</h5>
-                              {(() => {
-                                const localName = getNarratorLocalName(n, lang);
-                                return localName ? (
-                                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{localName}</p>
-                                ) : null;
-                              })()}
+                <div className="px-4 py-6 relative">
+                  {/* Line centered behind the w-10 circles: 16px padding + 20px (half of 40px circle) = 36px */}
+                  <div className="absolute left-9 top-6 bottom-6 w-0.5 bg-gradient-to-b from-teal-500/60 to-teal-500/5" />
+                  <div className="space-y-4">
+                    {hadithChainData.chain.map((n, i) => {
+                      const rel = effectiveReliability(n);
+                      const relKey = rel ?? 'unknown';
+                      const localName = getNarratorLocalName(n, lang);
+                      return (
+                        <div key={`chain-${n.id}-${i}`} className="relative flex items-start gap-3 group">
+                          {/* Number circle */}
+                          <div className="relative z-10 flex-shrink-0 w-10 h-10 rounded-full bg-white dark:bg-zinc-900 border-2 border-teal-500 flex items-center justify-center text-teal-600 dark:text-teal-400 font-bold text-sm shadow-sm group-hover:scale-110 transition-transform">
+                            {i + 1}
+                          </div>
+                          {/* Card */}
+                          <button
+                            onClick={() => handleSelectNarrator(n)}
+                            className="flex-1 min-w-0 text-left p-3 rounded-xl border border-gray-100 dark:border-zinc-800 hover:border-teal-300 dark:hover:border-teal-700 hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-all shadow-sm group-hover:shadow-md"
+                          >
+                            {/* Top row: English name + reliability badge */}
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                {localName ?? '—'}
+                              </p>
+                              <span className={clsx('text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider flex-shrink-0', RELIABILITY_COLORS[relKey] || 'bg-gray-100')}>
+                                {t.reliability[relKey] || relKey}
+                                {!n.reliability && n.tabaqah === 1 && ' ✦'}
+                              </span>
                             </div>
-                            {(() => {
-                              const rel = effectiveReliability(n);
-                              const key = rel ?? 'unknown';
-                              return (
-                                <span className={clsx('text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider flex-shrink-0', RELIABILITY_COLORS[key] || 'bg-gray-100')}>
-                                  {t.reliability[key] || key}
-                                  {!n.reliability && n.tabaqah === 1 && ' ✦'}
+                            {/* Arabic name full-width, right-aligned */}
+                            <p className="font-arabic text-base text-gray-900 dark:text-white leading-snug text-right" dir="rtl">
+                              {n.name_ar}
+                            </p>
+                            {/* Bottom badges */}
+                            <div className="mt-1.5 flex flex-wrap gap-1.5">
+                              {n.tabaqah && (
+                                <span className="text-[10px] text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-zinc-800 border border-gray-100 dark:border-zinc-700 px-1.5 py-0.5 rounded">
+                                  {t.tabaqahLabels[n.tabaqah]}
                                 </span>
-                              );
-                            })()}
-                          </div>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {n.tabaqah && (
-                              <span className="text-[10px] text-gray-400 dark:text-gray-500 border border-gray-100 dark:border-zinc-800 px-1.5 py-0.5 rounded">
-                                {t.tabaqahLabels[n.tabaqah]}
-                              </span>
-                            )}
-                            {n.death_year && (
-                              <span className="text-[10px] text-gray-400 dark:text-gray-500 border border-gray-100 dark:border-zinc-800 px-1.5 py-0.5 rounded">
-                                {t.died} {n.death_year} {t.ah}
-                              </span>
-                            )}
-                          </div>
-                        </button>
-                      </div>
-                    ))}
+                              )}
+                              {n.death_year && (
+                                <span className="text-[10px] text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-zinc-800 border border-gray-100 dark:border-zinc-700 px-1.5 py-0.5 rounded">
+                                  {t.died} {n.death_year} {t.ah}
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -559,11 +561,22 @@ function ChainContent() {
                       📍 {getCityLabel(selectedNarrator.city, lang)}
                     </span>
                   )}
-                  {selectedNarrator.data_source && (
+                  {selectedNarrator.data_source && selectedNarrator.data_source !== 'computed' && (
                     <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-zinc-800 text-gray-400 dark:text-gray-500">
                       ({selectedNarrator.data_source})
                     </span>
                   )}
+                </div>
+              )}
+
+              {selectedNarrator.data_source === 'computed' && (
+                <div className="mb-4 flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/40 text-amber-800 dark:text-amber-400 text-xs">
+                  <span className="flex-shrink-0 mt-0.5">⚠️</span>
+                  <span>
+                    {lang === 'bn'
+                      ? 'এই রাবীর জীবনীমূলক তথ্য পাওয়া যায়নি — শুধু নাম-ভিত্তিক রেকর্ড।'
+                      : 'No biographical data available — name-only record derived from hadith chains.'}
+                  </span>
                 </div>
               )}
 

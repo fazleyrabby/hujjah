@@ -6,8 +6,7 @@ import { clsx } from 'clsx';
 
 const BASE_LIMIT = 5;
 const EXPANDED_MULTIPLIER = 2;
-const DEFAULT_DEPTH = 2;
-const EXPANDED_DEPTH = 3;
+const DEFAULT_DEPTH = 1;
 
 /* ─── Types ─── */
 interface AdjacencyMaps {
@@ -41,16 +40,21 @@ interface Props {
 
 /* ─── Utility ─── */
 function buildAdjacency(edges: NarratorEdge[] | any): AdjacencyMaps {
-  const parents = new Map<number, number[]>();
-  const children = new Map<number, number[]>();
+  // DB edge: from_narrator_id = student, to_narrator_id = teacher
+  // Visual tree: parents (↑ above) = teachers, children (↓ below) = students
+  const parents = new Map<number, number[]>();  // X → X's teachers
+  const children = new Map<number, number[]>(); // X → X's students
   const edgeList = Array.isArray(edges) ? edges : [];
   for (const e of edgeList) {
-    const from = Number(e.from_narrator_id);
-    const to = Number(e.to_narrator_id);
-    if (!children.has(from)) children.set(from, []);
-    children.get(from)!.push(to);
-    if (!parents.has(to)) parents.set(to, []);
-    parents.get(to)!.push(from);
+    const student = Number(e.from_narrator_id);
+    const teacher = Number(e.to_narrator_id);
+    if (student === teacher) continue; // skip self-edges
+    // student's parent (above) = teacher
+    if (!parents.has(student)) parents.set(student, []);
+    parents.get(student)!.push(teacher);
+    // teacher's child (below) = student
+    if (!children.has(teacher)) children.set(teacher, []);
+    children.get(teacher)!.push(student);
   }
   for (const [k, v] of parents) parents.set(k, [...new Set(v)]);
   for (const [k, v] of children) children.set(k, [...new Set(v)]);
@@ -147,6 +151,7 @@ function bfsLayers(
 /* ─── Node Card ─── */
 function NarratorNodeCard({
   node,
+  id,
   isCenter,
   darkMode,
   lang,
@@ -159,8 +164,13 @@ function NarratorNodeCard({
   onExpandDown,
   expandedUp,
   expandedDown,
+  activeNode,
+  newNodes,
+  hoveredNode,
+  setHoveredNode,
 }: {
   node: NarratorNode;
+  id: number;
   isCenter: boolean;
   darkMode: boolean;
   lang: 'en' | 'bn' | 'ar';
@@ -173,6 +183,10 @@ function NarratorNodeCard({
   onExpandDown: () => void;
   expandedUp: boolean;
   expandedDown: boolean;
+  activeNode: number | null;
+  newNodes: Set<number>;
+  hoveredNode: number | null;
+  setHoveredNode: (id: number | null) => void;
 }) {
   const name = node.name_ar;
   const subname = lang === 'bn'
@@ -189,31 +203,53 @@ function NarratorNodeCard({
 
   const hiddenParents = Math.max(0, totalParents - renderedParents);
   const hiddenChildren = Math.max(0, totalChildren - renderedChildren);
-  const canExpandUp = hiddenParents > 0;
-  const canExpandDown = hiddenChildren > 0;
+  const canExpandUp = isCenter && hiddenParents > 0;
+  const canExpandDown = isCenter && hiddenChildren > 0;
+
+  const isExpanded = expandedUp || expandedDown;
 
   return (
     <div className="flex flex-col items-center gap-1 shrink-0">
       <button
         onClick={onClick}
+        onMouseEnter={() => setHoveredNode(id)}
+        onMouseLeave={() => setHoveredNode(null)}
         className={clsx(
-          'relative px-4 py-2.5 rounded-xl border transition-all flex flex-col items-center min-w-[110px] max-w-[180px]',
+          'relative px-4 py-2.5 rounded-xl border transition-all flex flex-col items-center min-w-[90px] max-w-[140px] md:min-w-[110px] md:max-w-[180px]',
           isCenter
             ? 'bg-teal-500 text-white font-semibold shadow-lg ring-2 ring-teal-400 scale-105 z-10'
-            : darkMode
-              ? 'bg-zinc-800 text-gray-100 border-zinc-700 hover:bg-zinc-700'
-              : 'bg-white text-gray-900 border-gray-200 hover:bg-gray-50',
+            : hoveredNode === id
+              ? 'ring-2 ring-amber-400 scale-[1.03] shadow-md'
+              : activeNode === id
+                ? 'ring-2 ring-amber-400 shadow-lg shadow-amber-200/50 scale-[1.02] bg-white dark:bg-zinc-800 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-zinc-700'
+                : newNodes.has(id)
+                  ? 'bg-yellow-100 dark:bg-yellow-900/20 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-zinc-700'
+                  : isExpanded
+                    ? 'bg-white dark:bg-zinc-800 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-zinc-700 ring-2 ring-amber-400'
+                    : darkMode
+                      ? 'bg-zinc-800 text-gray-100 border-zinc-700 hover:bg-zinc-700'
+                      : 'bg-white text-gray-900 border-gray-200 hover:bg-gray-50',
         )}
       >
-        <span dir="rtl" className={isCenter ? 'font-bold text-sm' : 'text-[12px]'}>{name}</span>
+        <span dir="rtl" className={isCenter ? 'font-bold text-sm' : 'text-[11px] md:text-[12px]'}>{name}</span>
         {subname && (
-          <span className={clsx('text-[9px] opacity-75', isCenter ? 'text-white/80' : darkMode ? 'text-gray-400' : 'text-gray-500')}>
+          <span className={clsx('text-[8px] md:text-[9px] opacity-75', isCenter ? 'text-white/80' : darkMode ? 'text-gray-400' : 'text-gray-500')}>
             {subname}
           </span>
         )}
+        <span className={clsx('text-[8px] md:text-[9px] mt-1 font-medium', darkMode ? 'text-gray-100' : 'text-gray-500')}>
+          {totalParents > 0 && `${totalParents} teachers`}
+          {totalParents > 0 && totalChildren > 0 && ' · '}
+          {totalChildren > 0 && `${totalChildren} students`}
+        </span>
         {rel && (
           <span className={clsx('text-[8px] px-1.5 py-0.5 rounded-full mt-1 font-medium', relColor)}>
             {rel}
+          </span>
+        )}
+        {node.data_source === 'computed' && (
+          <span className="text-[7px] px-1 py-0.5 rounded mt-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium">
+            name only
           </span>
         )}
       </button>
@@ -227,7 +263,7 @@ function NarratorNodeCard({
                 'w-5 h-5 rounded-full text-[9px] flex items-center justify-center transition-colors',
                 expandedUp ? 'bg-amber-400 text-zinc-900' : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-amber-200'
               )}
-              title={`${hiddenParents} more parents`}
+              title={`${hiddenParents} more teachers`}
             >
               {expandedUp ? '▲' : '↑'}
             </button>
@@ -239,7 +275,7 @@ function NarratorNodeCard({
                 'w-5 h-5 rounded-full text-[9px] flex items-center justify-center transition-colors',
                 expandedDown ? 'bg-amber-400 text-zinc-900' : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-amber-200'
               )}
-              title={`${hiddenChildren} more children`}
+              title={`${hiddenChildren} more students`}
             >
               {expandedDown ? '▼' : '↓'}
             </button>
@@ -249,9 +285,9 @@ function NarratorNodeCard({
 
       {(hiddenParents > 0 || hiddenChildren > 0) && (
         <span className="text-[8px] text-amber-600 dark:text-amber-400 font-medium">
-          {hiddenParents > 0 && `${hiddenParents}↑`}
-          {hiddenParents > 0 && hiddenChildren > 0 && ' '}
-          {hiddenChildren > 0 && `${hiddenChildren}↓`}
+          {hiddenParents > 0 && `+${hiddenParents} more teachers`}
+          {hiddenParents > 0 && hiddenChildren > 0 && ' · '}
+          {hiddenChildren > 0 && `+${hiddenChildren} more students`}
         </span>
       )}
     </div>
@@ -271,6 +307,11 @@ function GraphRow({
   onNodeClick,
   onExpandUp,
   onExpandDown,
+  setNodeRef,
+  activeNode,
+  newNodes,
+  hoveredNode,
+  setHoveredNode,
 }: {
   nodeIds: number[];
   nodeMap: Map<number, NarratorNode>;
@@ -283,115 +324,158 @@ function GraphRow({
   onNodeClick: (id: number) => void;
   onExpandUp: (id: number) => void;
   onExpandDown: (id: number) => void;
+  setNodeRef: (id: number) => (el: HTMLDivElement | null) => void;
+  activeNode: number | null;
+  newNodes: Set<number>;
+  hoveredNode: number | null;
+  setHoveredNode: (id: number | null) => void;
 }) {
   if (nodeIds.length === 0) return null;
+  // Flat layer (no fake sibling grouping)
+  const groups = new Map<number, number[]>();
+  groups.set(0, nodeIds);
   return (
-    <div className="flex gap-4 justify-center px-4">
-      {nodeIds.map(id => {
-        const node = nodeMap.get(id);
-        if (!node) return null;
-        const counts = renderedCounts.get(id) ?? { parents: 0, children: 0 };
-        const totalParents = (adj.parents.get(id) || []).length;
-        const totalChildren = (adj.children.get(id) || []).length;
-        return (
-          <NarratorNodeCard
-            key={id}
-            node={node}
-            isCenter={false}
-            darkMode={darkMode}
-            lang={lang}
-            totalParents={totalParents}
-            totalChildren={totalChildren}
-            renderedParents={counts.parents}
-            renderedChildren={counts.children}
-            onClick={() => onNodeClick(id)}
-            onExpandUp={() => onExpandUp(id)}
-            onExpandDown={() => onExpandDown(id)}
-            expandedUp={expandedUp.has(id)}
-            expandedDown={expandedDown.has(id)}
-          />
-        );
-      })}
+    <div className="flex flex-wrap gap-2 md:gap-4 justify-center px-2 md:px-4">
+      {Array.from(groups.values()).map((group, gi) => (
+        <div key={gi} className="flex flex-col items-center gap-1">
+          <div className="flex gap-3">
+            {group.map(id => {
+              const node = nodeMap.get(id);
+              if (!node) return null;
+              const counts = renderedCounts.get(id) ?? { parents: 0, children: 0 };
+              const totalParents = (adj.parents.get(id) || []).length;
+              const totalChildren = (adj.children.get(id) || []).length;
+              return (
+                <div key={id} ref={setNodeRef(id)}>
+                  <NarratorNodeCard
+                    node={node}
+                    id={id}
+                    isCenter={false}
+                    darkMode={darkMode}
+                    lang={lang}
+                    totalParents={totalParents}
+                    totalChildren={totalChildren}
+                    renderedParents={counts.parents}
+                    renderedChildren={counts.children}
+                    onClick={() => onNodeClick(id)}
+                    onExpandUp={() => {}}
+                    onExpandDown={() => {}}
+                    expandedUp={expandedUp.has(id)}
+                    expandedDown={expandedDown.has(id)}
+                    activeNode={activeNode}
+                    newNodes={newNodes}
+                    hoveredNode={hoveredNode}
+                    setHoveredNode={setHoveredNode}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
 
 /* ─── SVG Connection Lines ─── */
 function ConnectionLines({
-  levels,
+  edges,
   nodeRefs,
   containerRef,
+  activeNode,
+  hoveredNode,
 }: {
-  levels: number[][];
+  edges: NarratorEdge[];
   nodeRefs: React.MutableRefObject<Map<number, HTMLDivElement>>;
   containerRef: React.RefObject<HTMLDivElement | null>;
+  activeNode: number | null;
+  hoveredNode: number | null;
 }) {
-  const [lines, setLines] = useState<Array<{ x1: number; y1: number; x2: number; y2: number }>>([]);
+  const [lines, setLines] = useState<Array<{ x1: number; y1: number; x2: number; y2: number; key: string; offset: number; student: number; teacher: number }>>([]);
 
   useEffect(() => {
     function compute() {
       const container = containerRef.current;
       if (!container) return;
       const cRect = container.getBoundingClientRect();
-      const newLines: Array<{ x1: number; y1: number; x2: number; y2: number }> = [];
+      const seen = new Set<string>();
+      const newLines: typeof lines = [];
 
-      for (let i = 0; i < levels.length - 1; i++) {
-        const upperLevel = levels[i];
-        const lowerLevel = levels[i + 1];
+      for (const e of edges) {
+        const student = Number(e.from_narrator_id);
+        const teacher = Number(e.to_narrator_id);
+        if (student === teacher) continue;
+        const key = `${student}-${teacher}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
 
-        for (const upperId of upperLevel) {
-          const upperEl = nodeRefs.current.get(upperId);
-          if (!upperEl) continue;
-          const upperRect = upperEl.getBoundingClientRect();
-          const upperX = upperRect.left + upperRect.width / 2 - cRect.left;
-          const upperY = upperRect.bottom - cRect.top;
+        // teacher node is above, student node is below
+        const teacherEl = nodeRefs.current.get(teacher);
+        const studentEl = nodeRefs.current.get(student);
+        if (!teacherEl || !studentEl) continue;
 
-          for (const lowerId of lowerLevel) {
-            const lowerEl = nodeRefs.current.get(lowerId);
-            if (!lowerEl) continue;
-            const lowerRect = lowerEl.getBoundingClientRect();
-            const lowerX = lowerRect.left + lowerRect.width / 2 - cRect.left;
-            const lowerY = lowerRect.top - cRect.top;
+        const tRect = teacherEl.getBoundingClientRect();
+        const sRect = studentEl.getBoundingClientRect();
 
-            // Simple distance check for adjacency (adjacent in graph)
-            // In a real implementation you'd check adjacency maps
-            // For now, draw lines between all visible nodes in adjacent levels
-            newLines.push({ x1: upperX, y1: upperY, x2: lowerX, y2: lowerY });
-          }
-        }
+        const x1 = tRect.left + tRect.width / 2 - cRect.left;
+        const y1 = tRect.bottom - cRect.top;
+        const x2 = sRect.left + sRect.width / 2 - cRect.left;
+        const y2 = sRect.top - cRect.top;
+        const offset = Math.min(Math.abs(x2 - x1) * 0.08, 40);
+
+        newLines.push({
+          key,
+          x1,
+          y1,
+          x2,
+          y2,
+          offset,
+          student,
+          teacher,
+        });
       }
 
       setLines(newLines);
     }
 
-    compute();
+    // Delay slightly so DOM has laid out
+    const timer = setTimeout(compute, 50);
     window.addEventListener('resize', compute);
     const observer = new MutationObserver(compute);
     if (containerRef.current) {
-      observer.observe(containerRef.current, { childList: true, subtree: true, attributes: true });
+      observer.observe(containerRef.current, { childList: true, subtree: true });
     }
     return () => {
+      clearTimeout(timer);
       window.removeEventListener('resize', compute);
       observer.disconnect();
     };
-  }, [levels, nodeRefs, containerRef]);
+  }, [edges, nodeRefs, containerRef]);
 
   if (lines.length === 0) return null;
 
   return (
-    <svg className="absolute inset-0 pointer-events-none z-0" style={{ width: '100%', height: '100%' }}>
-      {lines.map((line, i) => (
-        <line
-          key={i}
-          x1={line.x1}
-          y1={line.y1}
-          x2={line.x2}
-          y2={line.y2}
-          stroke="#d1d5db"
-          strokeWidth="1"
-          opacity="0.4"
-        />
-      ))}
+    <svg className="absolute inset-0 pointer-events-none z-0 hidden md:block" style={{ width: '100%', height: '100%' }}>
+      {lines.map(line => {
+        const midY = (line.y1 + line.y2) / 2;
+        const isClose = Math.abs(line.x2 - line.x1) < 40;
+        const d = isClose
+          ? `M ${line.x1},${line.y1} L ${line.x2},${line.y2}`
+          : `M ${line.x1},${line.y1} C ${line.x1},${midY} ${line.x2},${midY} ${line.x2},${line.y2}`;
+        const isActive =
+          (activeNode !== null && (line.teacher === activeNode || line.student === activeNode)) ||
+          (hoveredNode !== null && (line.teacher === hoveredNode || line.student === hoveredNode));
+        return (
+          <path
+            key={line.key}
+            d={d}
+            stroke={isActive ? 'rgba(251, 191, 36, 0.9)' : 'rgba(100, 116, 139, 0.6)'}
+            strokeWidth={isActive ? 2.8 : (line.y1 < line.y2 ? 1 : 2.4)}
+            fill="none"
+            opacity={isActive ? 1 : 0.15}
+          />
+        );
+      })}
     </svg>
   );
 }
@@ -412,14 +496,23 @@ export default function SanadExplorer({
 }: Props) {
   const [expandedUp, setExpandedUp] = useState<Set<number>>(new Set());
   const [expandedDown, setExpandedDown] = useState<Set<number>>(new Set());
+  const [activeNode, setActiveNode] = useState<number | null>(null);
+  const [newNodes, setNewNodes] = useState<Set<number>>(new Set());
+  const [hoveredNode, setHoveredNode] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const nodeRefs = useRef(new Map<number, HTMLDivElement>());
+  const prevVisibleRef = useRef<Set<number>>(new Set());
+  const isFirstRender = useRef(true);
 
   // Reset on center change
   useEffect(() => {
     setExpandedUp(new Set());
     setExpandedDown(new Set());
+    setActiveNode(null);
+    setNewNodes(new Set());
     nodeRefs.current = new Map();
+    prevVisibleRef.current = new Set();
+    isFirstRender.current = true;
   }, [centerId]);
 
   // Build adjacency + node map
@@ -430,11 +523,8 @@ export default function SanadExplorer({
     return { adj, nodeMap };
   }, [rawNodes, rawEdges]);
 
-  // Dynamic depth: expand ANY node = deeper exploration
-  const maxDepth = useMemo(() => {
-    if (expandedUp.size > 0 || expandedDown.size > 0) return EXPANDED_DEPTH;
-    return DEFAULT_DEPTH;
-  }, [expandedUp, expandedDown]);
+  // Dynamic depth: fixed at DEFAULT_DEPTH
+  const maxDepth = DEFAULT_DEPTH;
 
   // Build layers
   const layers = useMemo(() => {
@@ -455,6 +545,28 @@ export default function SanadExplorer({
     ];
   }, [layers, centerId]);
 
+  // Track newly added nodes when layers change
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      prevVisibleRef.current = new Set(allLevels.flat());
+      return;
+    }
+    const current = new Set(allLevels.flat());
+    const prev = prevVisibleRef.current;
+    const added = new Set<number>();
+    for (const id of current) {
+      if (!prev.has(id)) added.add(id);
+    }
+    if (added.size > 0) {
+      setNewNodes(added);
+      const timer = setTimeout(() => setNewNodes(new Set()), 800);
+      prevVisibleRef.current = current;
+      return () => clearTimeout(timer);
+    }
+    prevVisibleRef.current = current;
+  }, [allLevels]);
+
   const centerNode = nodeMap.get(centerId);
   if (!centerNode) {
     return (
@@ -474,6 +586,12 @@ export default function SanadExplorer({
   }, [nodeMap, onNodeClick]);
 
   const toggleExpandUp = useCallback((id: number) => {
+    setActiveNode(id);
+    setTimeout(() => {
+      const el = nodeRefs.current.get(id);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 50);
+    setTimeout(() => setActiveNode(null), 800);
     setExpandedUp(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -483,6 +601,12 @@ export default function SanadExplorer({
   }, []);
 
   const toggleExpandDown = useCallback((id: number) => {
+    setActiveNode(id);
+    setTimeout(() => {
+      const el = nodeRefs.current.get(id);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 50);
+    setTimeout(() => setActiveNode(null), 800);
     setExpandedDown(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -498,18 +622,84 @@ export default function SanadExplorer({
   }, []);
 
   return (
-    <div className="relative flex flex-col items-center gap-2 p-4 overflow-x-auto rounded-2xl border border-gray-200 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-950" ref={containerRef}>
-      {/* SVG Lines */}
-      <ConnectionLines levels={allLevels} nodeRefs={nodeRefs} containerRef={containerRef} />
+    <div
+      className="relative flex flex-col items-center gap-2 p-6 overflow-x-auto md:overflow-visible px-2 md:px-6 rounded-2xl border border-gray-200 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-950 min-h-[60vh]"
+      ref={containerRef}
+    >
+      {/* SVG Lines — only actual edges */}
+      <ConnectionLines
+        edges={useMemo(() => {
+          const visible = new Set(allLevels.flat());
+          const filtered: NarratorEdge[] = [];
+          const MAX_EDGES_PER_NODE = 2;
+          const nodeEdgeCounts = new Map<number, number>();
+          for (const e of rawEdges) {
+            const student = Number(e.from_narrator_id);
+            const teacher = Number(e.to_narrator_id);
+            if (!visible.has(student) || !visible.has(teacher)) continue;
+
+            // enforce ONLY layer-to-layer connections
+            let studentLayer = -1;
+            let teacherLayer = -1;
+
+            allLevels.forEach((lvl, idx) => {
+              if (lvl.includes(student)) studentLayer = idx;
+              if (lvl.includes(teacher)) teacherLayer = idx;
+            });
+
+            if (Math.abs(studentLayer - teacherLayer) !== 1) continue;
+
+            // --- limit edges for center node ---
+            const MAX_CENTER_EDGES = 6;
+            if (teacher === centerId) {
+              const firstLayer = layers.childLevels[0] || [];
+              const allowed = firstLayer.slice(0, MAX_CENTER_EDGES);
+              if (!allowed.includes(student)) continue;
+            }
+            if (student === centerId) {
+              const lastParentLayer = layers.parentLevels[layers.parentLevels.length - 1] || [];
+              const allowed = lastParentLayer.slice(0, MAX_CENTER_EDGES);
+              if (!allowed.includes(teacher)) continue;
+            }
+
+            // --- limit deep edge clutter per node ---
+            const studentCount = nodeEdgeCounts.get(student) || 0;
+            const teacherCount = nodeEdgeCounts.get(teacher) || 0;
+            if (studentCount >= MAX_EDGES_PER_NODE || teacherCount >= MAX_EDGES_PER_NODE) continue;
+            nodeEdgeCounts.set(student, studentCount + 1);
+            nodeEdgeCounts.set(teacher, teacherCount + 1);
+
+            filtered.push(e);
+          }
+          return filtered;
+        }, [rawEdges, allLevels, layers, centerId])}
+        nodeRefs={nodeRefs}
+        containerRef={containerRef}
+        activeNode={activeNode}
+        hoveredNode={hoveredNode}
+      />
 
       {/* Stats */}
-      <div className="text-xs text-gray-500 dark:text-gray-400 mb-2 z-10">
-        {layers.parentLevels.length} parent levels · {layers.childLevels.length} child levels
+      <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 z-10 text-center">
+        <span className="text-amber-600 dark:text-amber-400 font-medium">{centerTotalParents} teachers</span>
+        <span className="mx-2 text-gray-300 dark:text-gray-600">·</span>
+        <span className="text-teal-600 dark:text-teal-400 font-medium">{centerTotalChildren} students</span>
+        <span className="mx-2 text-gray-300 dark:text-gray-600">·</span>
+        <span>{rawNodes.length} nodes shown (partial view)</span>
+      </div>
+      <div className="text-[10px] text-gray-400 dark:text-gray-500 mb-2 z-10">
+        Showing partial chain · expand nodes to explore full sanad
       </div>
 
-      {/* ── PARENT LEVELS (top) ── */}
+      {centerTotalParents > centerCounts.parents && (
+        <div className="text-xs text-gray-500 mb-2 z-10">
+          +{centerTotalParents - centerCounts.parents} more teachers
+        </div>
+      )}
+
+      {/* ── PARENT LEVELS (teachers, top) ── */}
       {[...layers.parentLevels].reverse().map((level, idx) => (
-        <div key={`p-${idx}`} className="flex flex-col items-center gap-1 z-10" ref={setNodeRef(level[0])}>
+        <div key={`p-${idx}`} className="flex flex-col items-center gap-1 z-10 w-full">
           <GraphRow
             nodeIds={level}
             nodeMap={nodeMap}
@@ -522,6 +712,11 @@ export default function SanadExplorer({
             onNodeClick={handleNodeClick}
             onExpandUp={toggleExpandUp}
             onExpandDown={toggleExpandDown}
+            setNodeRef={setNodeRef}
+            activeNode={activeNode}
+            newNodes={newNodes}
+            hoveredNode={hoveredNode}
+            setHoveredNode={setHoveredNode}
           />
           <VConnector />
         </div>
@@ -531,6 +726,7 @@ export default function SanadExplorer({
       <div className="z-10" ref={setNodeRef(centerId)}>
         <NarratorNodeCard
           node={centerNode}
+          id={centerId}
           isCenter={true}
           darkMode={darkMode}
           lang={lang}
@@ -543,12 +739,16 @@ export default function SanadExplorer({
           onExpandDown={() => toggleExpandDown(centerId)}
           expandedUp={expandedUp.has(centerId)}
           expandedDown={expandedDown.has(centerId)}
+          activeNode={activeNode}
+          newNodes={newNodes}
+          hoveredNode={hoveredNode}
+          setHoveredNode={setHoveredNode}
         />
       </div>
 
-      {/* ── CHILD LEVELS (bottom) ── */}
+      {/* ── CHILD LEVELS (students, bottom) ── */}
       {layers.childLevels.map((level, idx) => (
-        <div key={`c-${idx}`} className="flex flex-col items-center gap-1 z-10" ref={setNodeRef(level[0])}>
+        <div key={`c-${idx}`} className="flex flex-col items-center gap-1 z-10 w-full">
           <VConnector />
           <GraphRow
             nodeIds={level}
@@ -562,9 +762,20 @@ export default function SanadExplorer({
             onNodeClick={handleNodeClick}
             onExpandUp={toggleExpandUp}
             onExpandDown={toggleExpandDown}
+            setNodeRef={setNodeRef}
+            activeNode={activeNode}
+            newNodes={newNodes}
+            hoveredNode={hoveredNode}
+            setHoveredNode={setHoveredNode}
           />
         </div>
       ))}
+
+      {centerTotalChildren > centerCounts.children && (
+        <div className="text-xs text-gray-500 mt-2 z-10">
+          +{centerTotalChildren - centerCounts.children} more students
+        </div>
+      )}
     </div>
   );
 }

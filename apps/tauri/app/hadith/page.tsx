@@ -80,6 +80,8 @@ export default function HadithPage() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [selectedFullHadith, setSelectedFullHadith] = useState<HadithResult | null>(null);
   const [containerClass, setContainerClass] = useState('max-w-5xl');
+  const [searchMode, setSearchMode] = useState<'keyword' | 'number'>('keyword');
+  const [numberFilter, setNumberFilter] = useState('');
 
   useEffect(() => {
     setMounted(true);
@@ -156,16 +158,45 @@ export default function HadithPage() {
     }
   }, [lang]);
 
+  const handleNumberSearch = useCallback(async (num: string) => {
+    const numInt = parseInt(num, 10);
+    if (!selectedBook || isNaN(numInt) || numInt < 1) {
+      return;
+    }
+    setLoading(true);
+    setSearchQuery('');
+    setSearchResults(null);
+    try {
+      const data = await getHadithsByBook(selectedBook, 1, 100, lang);
+      const matched = data.hadiths.filter(h => h.num_in_book === numInt);
+      if (matched.length > 0) {
+        setHadithData({
+          ...data,
+          hadiths: matched,
+          total: matched.length,
+          totalPages: 1,
+        });
+        setCurrentPage(1);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, [lang, selectedBook]);
+
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (searchQuery.trim()) {
+      if (searchMode === 'keyword' && searchQuery.trim()) {
         handleSearch(searchQuery);
-      } else {
+      } else if (searchMode === 'number' && numberFilter.trim()) {
+        handleNumberSearch(numberFilter);
+      } else if (!searchQuery.trim() && !numberFilter.trim()) {
         setSearchResults(null);
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [searchQuery, handleSearch]);
+  }, [searchQuery, numberFilter, searchMode, handleSearch, handleNumberSearch]);
 
   if (!mounted) {
     return (
@@ -217,31 +248,86 @@ export default function HadithPage() {
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={lang === 'bn' ? 'হাদিস খুঁজুন... (Arabic or English)' : 'Search hadith... (Arabic or English)'}
-              className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 dark:focus:ring-teal-400 transition-shadow"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => { setSearchQuery(''); setSearchResults(null); }}
-                className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+            {searchMode === 'keyword' ? (
+              <>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder={lang === 'bn' ? 'হাদিস খুঁজুন... (Arabic or English)' : 'Search hadith... (Arabic or English)'}
+                  className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 dark:focus:ring-teal-400 transition-shadow"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => { setSearchQuery(''); setSearchResults(null); }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </>
+            ) : (
+              <>
+                <input
+                  type="number"
+                  value={numberFilter}
+                  onChange={(e) => setNumberFilter(e.target.value)}
+                  placeholder={selectedBook ? (lang === 'bn' ? 'হাদিস নম্বর খুঁজুন...' : 'Search by hadith number...') : (lang === 'bn' ? 'প্রথমে কিতাব নির্বাচন করুন' : 'Select a book first')}
+                  disabled={!selectedBook}
+                  className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-xl text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 dark:focus:ring-teal-400 transition-shadow disabled:opacity-50"
+                />
+                {numberFilter && (
+                  <button
+                    onClick={() => { setNumberFilter(''); }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </>
             )}
           </div>
-          {searchLoading && (
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">Searching...</p>
-          )}
+          <div className="flex items-center justify-between mt-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                {lang === 'bn' ? 'খোঁজার ��রন:' : 'Search by:'}
+              </span>
+              <div className="flex items-center bg-gray-100 dark:bg-zinc-800 rounded-md p-0.5">
+                <button
+                  onClick={() => { setSearchMode('keyword'); setSearchQuery(''); setNumberFilter(''); }}
+                  className={`px-2 py-0.5 text-[11px] font-medium rounded transition-all ${
+                    searchMode === 'keyword'
+                      ? 'bg-white dark:bg-zinc-700 text-gray-900 dark:text-white shadow-sm'
+                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                  }`}
+                >
+                  {lang === 'bn' ? 'কিওয়ার্ড' : 'Keyword'}
+                </button>
+                <button
+                  onClick={() => { setSearchMode('number'); setSearchQuery(''); setNumberFilter(''); }}
+                  disabled={!selectedBook}
+                  className={`px-2 py-0.5 text-[11px] font-medium rounded transition-all ${
+                    searchMode === 'number'
+                      ? 'bg-white dark:bg-zinc-700 text-gray-900 dark:text-white shadow-sm'
+                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                  } ${!selectedBook ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  {lang === 'bn' ? 'নম্বর' : 'Number'}
+                </button>
+              </div>
+            </div>
+            {searchLoading && (
+              <p className="text-xs text-gray-400 dark:text-gray-500">Searching...</p>
+            )}
+          </div>
         </div>
 
-        {/* ─── Search Results ─── */}
-        {searchResults !== null && (
+        {/* ─── Search Results (Keyword Mode) ─── */}
+        {searchMode === 'keyword' && searchResults !== null && (
           <div>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
               {lang === 'bn'
@@ -256,8 +342,46 @@ export default function HadithPage() {
           </div>
         )}
 
+        {/* ─── Search Results (Number Mode) ─── */}
+        {searchMode === 'number' && numberFilter && hadithData && hadithData.hadiths.length > 0 && (
+          <div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+              {lang === 'bn'
+                ? `${hadithData.hadiths.length} টি হাদিস পাওয়া গেছে`
+                : `${hadithData.hadiths.length} hadith${hadithData.hadiths.length !== 1 ? 's' : ''} found`}
+            </p>
+            <div className="space-y-4">
+              {hadithData.hadiths.map((h) => (
+                <HadithCard key={h.id} hadith={h} lang={lang} translator={translator} onViewFull={setSelectedFullHadith} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ─── Search (Number Mode - Hide Results) ─── */}
+        {searchMode === 'number' && numberFilter.trim() === '' && (
+          <div className="mb-6 p-4 bg-gray-50 dark:bg-zinc-800/50 rounded-xl border border-gray-200 dark:border-zinc-700">
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              {lang === 'bn'
+                ? 'হাদিস নম্বর দ্বারা খুঁজতে উপরের বক্সে নম্বর লিখুন। যেমন: ১২৩'
+                : 'Enter a hadith number to jump directly to that hadith in the selected book. Example: 123'}
+            </p>
+          </div>
+        )}
+
+        {/* ─── Search (Number Mode - No Results) ─── */}
+        {searchMode === 'number' && numberFilter && hadithData && hadithData.hadiths.length === 0 && !loading && (
+          <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800">
+            <p className="text-sm text-amber-700 dark:text-amber-400">
+              {lang === 'bn'
+                ? `কোনো হাদিস পাওয়া যায়নি #${numberFilter} - ${selectedBook ? (books.find(b => b.id === selectedBook)?.name_en ?? '') : ''}`
+                : `No hadith found at #${numberFilter} in ${selectedBook ? (books.find(b => b.id === selectedBook)?.name_en ?? '') : ''}`}
+            </p>
+          </div>
+        )}
+
         {/* ─── Book Selector ─── */}
-        {searchResults === null && (
+        {(searchMode === 'keyword' && searchResults === null) || (searchMode === 'number' && !numberFilter) ? (
           <>
             <div className="mb-6">
               <h2 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">

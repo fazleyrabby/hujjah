@@ -160,6 +160,7 @@ export default function NarratorGraph({
   nodes: rawNodes, edges: rawEdges, centerId, darkMode, lang, onNodeClick,
 }: Props) {
   const [processed, setProcessed] = useState<{ nodes: NarratorNode[]; edges: NarratorEdge[] } | null>(null);
+  const [hoveredNode, setHoveredNode] = useState<number | null>(null);
 
   useEffect(() => {
     let nodes = rawNodes.filter(isValidNarrator);
@@ -195,78 +196,140 @@ export default function NarratorGraph({
     setExpanded(next);
   };
 
-  function TreeNodeComponent({ treeNode, depth, isLast, continuations }: { treeNode: TreeNode; depth: number; isLast: boolean; continuations: boolean[] }) {
+  function TreeNodeComponent({
+    treeNode,
+    depth,
+    isLast,
+    path,
+  }: {
+    treeNode: TreeNode;
+    depth: number;
+    isLast: boolean;
+    path: number[];
+  }) {
     const n = treeNode.node;
     const hasChildren = treeNode.children.size > 0;
     const isExpanded = expanded.has(treeNode.id);
     const isRoot = depth === 0;
     const childrenArray = Array.from(treeNode.children.values());
+    const currentPath = [...path, treeNode.id];
+
+    const isHovered = hoveredNode === treeNode.id;
+
+    // highlight node + its ancestors when hovering descendant
+    const isInPath =
+      hoveredNode !== null &&
+      (treeNode.id === hoveredNode || path.includes(hoveredNode));
+
+    const isDimmed = hoveredNode !== null && !isHovered && !isInPath;
 
     return (
       <div className="flex flex-col">
-        <div className="flex items-center">
+        <div className="flex items-start">
+          {/* Connector lines */}
           {depth > 0 && (
-            <div className="flex items-center">
-              {continuations.slice(0, depth - 1).map((cont, i) => (
-                <span key={i} className="select-none text-[10px] text-gray-400 dark:text-gray-500 leading-6 pr-1 w-4 text-center">
-                  {cont ? '│' : ' '}
-                </span>
-              ))}
-              <span className="select-none text-[10px] text-gray-400 dark:text-gray-500 leading-6 pr-1 w-4 text-center">
-                {isLast ? '└' : '├'}
-              </span>
-              <span className="select-none text-[10px] text-gray-400 dark:text-gray-500 leading-6 pr-1">
-                ──
-              </span>
+            <div className="relative flex items-start pt-3 mr-1">
+              {/* Vertical line from parent */}
+              <div
+                className={clsx(
+                  'absolute left-0 top-0 bottom-0 w-px -translate-x-1/2',
+                  isHovered || isInPath
+                    ? 'bg-amber-400'
+                    : 'bg-gray-300 dark:bg-gray-700'
+                )}
+              />
+              {/* Horizontal branch line */}
+              <div
+                className={clsx(
+                  'absolute left-0 top-3 w-3 h-px -translate-x-1/2',
+                  isHovered || isInPath
+                    ? 'bg-amber-400'
+                    : 'bg-gray-300 dark:bg-gray-700'
+                )}
+              />
+              {/* Continuation line indicator for siblings below */}
+              {!isLast && (
+                <div
+                  className={clsx(
+                    'absolute left-0 top-3 bottom-0 w-px -translate-x-1/2',
+                    isHovered || isInPath
+                      ? 'bg-amber-400'
+                      : 'bg-gray-300 dark:bg-gray-700'
+                  )}
+                />
+              )}
+              <div className="w-3" />
             </div>
           )}
-          <button
-            onClick={() => hasChildren && toggleExpand(treeNode.id)}
-            className={clsx(
-              'relative px-3 py-1.5 rounded-lg border transition-all text-xs flex flex-col items-center min-w-[90px]',
-              isRoot ? 'bg-teal-500 text-white font-semibold' :
-                darkMode ? 'bg-zinc-800 text-gray-100 border-zinc-700' : 'bg-white text-gray-900 border-gray-200',
-              hasChildren ? 'cursor-pointer' : 'cursor-default'
-            )}
-          >
-            <span dir="rtl" className={isRoot ? 'font-bold text-sm' : 'text-[11px]'}>{n.name_ar}</span>
-            <span className={clsx('text-[8px] opacity-70', isRoot ? 'text-white/80' : darkMode ? 'text-gray-400' : 'text-gray-500')}>
-              {lang === 'bn' ? (n.name_bn ?? n.name_en) : (n.name_en ?? n.name_bn)}
-            </span>
-          </button>
-          {!hasChildren && (
+
+          <div className="flex items-center">
+            {/* Main node button */}
             <button
               onClick={() => onNodeClick(n)}
-              className="ml-1 w-5 h-5 rounded-full bg-teal-500 text-white text-[10px] flex items-center justify-center hover:bg-teal-600 transition-colors"
-              title="View narrator"
-            >
-              ↗
-            </button>
-          )}
-          {hasChildren && (
-            <button
-              onClick={() => toggleExpand(treeNode.id)}
+              onMouseEnter={() => setHoveredNode(treeNode.id)}
+              onMouseLeave={() => setHoveredNode(null)}
               className={clsx(
-                'ml-1 w-5 h-5 rounded-full text-[10px] flex items-center justify-center transition-colors',
-                isExpanded ? 'bg-amber-400 text-zinc-900' : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+                'relative px-3 py-1.5 rounded-lg border transition-all duration-200 text-xs flex flex-col items-center min-w-[90px]',
+                isRoot
+                  ? 'bg-teal-500 text-white font-semibold shadow-lg'
+                  : isHovered
+                    ? 'ring-2 ring-amber-400 scale-105 bg-white dark:bg-zinc-800 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-zinc-700 shadow-md'
+                    : isInPath
+                      ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-700 shadow-sm'
+                      : darkMode
+                        ? 'bg-zinc-800 text-gray-100 border-zinc-700 hover:bg-zinc-700'
+                        : 'bg-white text-gray-900 border-gray-200 hover:bg-gray-50',
+                isDimmed && 'opacity-30',
               )}
             >
-              {isExpanded ? '▼' : '▶'}
+              <span dir="rtl" className={isRoot ? 'font-bold text-sm' : 'text-[11px]'}>
+                {n.name_ar}
+              </span>
+              <span className={clsx(
+                'text-[8px] opacity-70',
+                isRoot ? 'text-white/80' : darkMode ? 'text-gray-400' : 'text-gray-500'
+              )}>
+                {lang === 'bn' ? (n.name_bn ?? n.name_en) : (n.name_en ?? n.name_bn)}
+              </span>
             </button>
-          )}
+
+            {/* Expand toggle */}
+            {hasChildren && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleExpand(treeNode.id);
+                }}
+                className={clsx(
+                  'ml-1.5 w-5 h-5 rounded-full text-[10px] flex items-center justify-center transition-colors shrink-0',
+                  isExpanded
+                    ? 'bg-amber-400 text-zinc-900'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                )}
+              >
+                {isExpanded ? '▼' : '▶'}
+              </button>
+            )}
+          </div>
         </div>
-        {hasChildren && isExpanded && (
-          <div className="flex flex-col gap-1 mt-1">
+
+        {/* Children */}
+        {hasChildren && (
+          <div
+            className={clsx(
+              'overflow-hidden transition-all duration-200 ease-out',
+              isExpanded ? 'max-h-[2000px] opacity-100 mt-1' : 'max-h-0 opacity-0'
+            )}
+          >
             {childrenArray.map((child, idx) => {
               const childIsLast = idx === childrenArray.length - 1;
-              const newContinuations = [...continuations, !childIsLast];
               return (
                 <TreeNodeComponent
                   key={child.id}
                   treeNode={child}
                   depth={depth + 1}
                   isLast={childIsLast}
-                  continuations={newContinuations}
+                  path={currentPath}
                 />
               );
             })}
@@ -282,7 +345,7 @@ export default function NarratorGraph({
       'w-full p-4'
     )}>
       {treeRoot ? (
-        <TreeNodeComponent treeNode={treeRoot} depth={0} isLast={true} continuations={[]} />
+        <TreeNodeComponent treeNode={treeRoot} depth={0} isLast={true} path={[]} />
       ) : (
         <div className="text-center text-gray-500 dark:text-gray-400 py-8">
           No chains found

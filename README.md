@@ -211,6 +211,18 @@ Hadith authenticity is graded by sanad chain length (shorter = stronger):
 | `/about` | Data sources, privacy, links | All |
 | `/settings` | Appearance, layout, font size (web: minimal; desktop: DB stats, model status) | All |
 | `/chain` | Sanad chain explorer — search narrators, browse teachers/students, view hadith graphs | All |
+| `/chain/graph?id=X` | Interactive BFS layered sanad graph with per-node expansion | All |
+
+### Chain Visualization Components
+
+Three complementary views for exploring hadith sanad chains:
+
+| Component | File | Purpose |
+|---|---|---|
+| **ChainPreview** | `packages/ui/src/ChainPreview.tsx` | Minimal preview: 1 level teachers + center + 1 level students. Navigation-based, no edges. |
+| **SanadExplorer** | `packages/ui/src/SanadExplorer.tsx` | BFS layered graph with per-node expansion, SVG connection lines, hover feedback. |
+| **RadialSanad** | `packages/ui/src/RadialSanad.tsx` | Radial/circular layout with concentric rings, quadratic edge curves, hover highlighting. |
+| **NarratorGraph** | `packages/ui/src/NarratorGraph.tsx` | Recursive tree view with CSS connectors, hover path highlighting, smooth expansion. |
 | `/hadith` | Hadith vault — browse all 6 books with translations and grading | All |
 
 ## Docker Deploy (Web)
