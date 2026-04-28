@@ -58,6 +58,11 @@
   --color-accent-dark: #0D9488;
 }
 
+/* Font size scaling (controlled by Settings page via --font-scale) */
+:root {
+  font-size: calc(16px * var(--font-scale, 1));
+}
+
 /* Base styles */
 * {
   box-sizing: border-box;
@@ -98,6 +103,36 @@ body {
   background: linear-gradient(90deg, #F5F5F4 0%, #E5E7EB 50%, #F5F5F4 100%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
+}
+
+/* Minimal custom scrollbar */
+.scrollbar-minimal {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 0.2s;
+}
+.scrollbar-minimal:hover {
+  scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+}
+.scrollbar-minimal::-webkit-scrollbar {
+  width: 4px;
+}
+.scrollbar-minimal::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-minimal::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 9999px;
+  transition: background 0.2s;
+}
+.scrollbar-minimal:hover::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.5);
+}
+.dark .scrollbar-minimal:hover {
+  scrollbar-color: rgba(82, 82, 91, 0.6) transparent;
+}
+.dark .scrollbar-minimal:hover::-webkit-scrollbar-thumb {
+  background: rgba(82, 82, 91, 0.6);
 }
 
 /* Slide-up for audio player */

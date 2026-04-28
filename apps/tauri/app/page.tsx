@@ -42,6 +42,7 @@ export default function Home() {
   const [selectedTranslator, setSelectedTranslator] = useState<string>('');
   const [searchMode, setSearchMode] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [surahSearch, setSurahSearch] = useState('');
   const [darkMode, setDarkMode] = useState(false);
   const [searchDomain, setSearchDomain] = useState<'quran' | 'hadith'>('quran');
   const [hadithResults, setHadithResults] = useState<HadithResult[] | null>(null);
@@ -277,12 +278,40 @@ export default function Home() {
       {/* ─── Sidebar: Toggleable, Sticky, Scrollable ─── */}
       {sidebarOpen && (
         <aside className="w-64 bg-white dark:bg-zinc-900 border-r border-gray-200 dark:border-zinc-800 flex-shrink-0 flex flex-col h-screen sticky top-0">
-          <div className="p-4 border-b border-gray-100 dark:border-zinc-800">
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wider">Surahs</h2>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{surahs.length} chapters</p>
+          <div className="p-3 border-b border-gray-100 dark:border-zinc-800 space-y-2">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wider">Surahs</h2>
+              <span className="text-xs text-gray-400 dark:text-gray-500">{surahs.length}</span>
+            </div>
+            <div className="relative">
+              <input
+                type="text"
+                value={surahSearch}
+                onChange={e => setSurahSearch(e.target.value)}
+                placeholder={lang === 'bn' ? 'সূরা খুঁজুন...' : 'Search surah...'}
+                className="w-full pl-7 pr-3 py-1.5 text-xs bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg text-gray-800 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-teal-500"
+              />
+              <svg className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+              </svg>
+              {surahSearch && (
+                <button onClick={() => setSurahSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              )}
+            </div>
           </div>
-          <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
-            {surahs.map((s) => (
+          <nav className="flex-1 overflow-y-auto p-2 space-y-0.5 scrollbar-minimal">
+            {surahs.filter(s => {
+              if (!surahSearch.trim()) return true;
+              const q = surahSearch.toLowerCase();
+              return (
+                s.name_en.toLowerCase().includes(q) ||
+                s.name_bn.includes(surahSearch) ||
+                s.name_ar.includes(surahSearch) ||
+                String(s.id) === surahSearch.trim()
+              );
+            }).map((s) => (
               <button
                 key={s.id}
                 onClick={() => handleSurahClick(s.id)}
@@ -319,6 +348,8 @@ export default function Home() {
               langs={[{ code: 'en', label: 'EN' }, { code: 'bn', label: 'বাং' }]}
               darkMode={darkMode}
               onDarkModeToggle={() => setDarkMode((d) => !d)}
+              icon={<img src="/hujjah.png" alt="Hujjah" className="w-5 h-5" />}
+              hiddenRoutes={['/chat']}
             />
           </header>
 
@@ -432,8 +463,8 @@ export default function Home() {
             </div>
           )}
 
-          {/* AI Explanation Section */}
-          {query.trim() && !loading && searchMode && results && results.length > 0 && (
+          {/* AI Explanation Section — hidden for now */}
+          {false && query.trim() && !loading && searchMode && results && results.length > 0 && (
             <div className="mb-8">
               {!explanation && !aiLoading && !aiError && (
                 <button
@@ -915,7 +946,8 @@ export default function Home() {
         </div>
       </main>
 
-      <ChatWidget lang={lang} onNavigateToVerse={handleNavigateToVerse} />
+      {/* ChatWidget hidden for now — re-enable when chat feature is ready */}
+      {/* <ChatWidget lang={lang} onNavigateToVerse={handleNavigateToVerse} /> */}
 
       {/* ─── Floating Surahs Toggle ───
            When sidebar is open: sticks to right edge of sidebar

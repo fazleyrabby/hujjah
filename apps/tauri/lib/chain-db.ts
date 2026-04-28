@@ -117,10 +117,14 @@ export async function searchNarrators(query: string, limit: number = 20): Promis
     const ftsQuery = normalizedQuery.split(/\s+/).filter(Boolean).map(w => `${w}*`).join(' ');
 
     const ftsSql = `
-      SELECT n.id, n.name_ar, n.name_en, n.name_bn, n.birth_year, n.death_year, n.tabaqah, n.reliability, n.city, n.data_source
+      SELECT n.id, n.name_ar, n.name_en, n.name_bn, n.birth_year, n.death_year, n.tabaqah, n.reliability, n.city, n.data_source,
+             COUNT(hn.hadith_id) as hadith_count
       FROM narrator_search_idx
       JOIN narrators n ON n.id = narrator_search_idx.rowid
+      LEFT JOIN hadith_narrators hn ON hn.narrator_id = n.id
       WHERE narrator_search_idx MATCH ?
+      GROUP BY n.id
+      ORDER BY hadith_count DESC
       LIMIT ?
     `;
     const rows = await db.select<NarratorNode[]>(ftsSql, [ftsQuery, limit * 5]);
@@ -132,12 +136,15 @@ export async function searchNarrators(query: string, limit: number = 20): Promis
   // LIKE fallback with normalized Arabic (handles و/ى ambiguity)
   if (isArabic) {
     const normalSql = `
-      SELECT id, name_ar, name_en, name_bn, birth_year, death_year, tabaqah, reliability, city, data_source
-      FROM narrators
+      SELECT n.id, n.name_ar, n.name_en, n.name_bn, n.birth_year, n.death_year, n.tabaqah, n.reliability, n.city, n.data_source,
+             COUNT(hn.hadith_id) as hadith_count
+      FROM narrators n
+      LEFT JOIN hadith_narrators hn ON hn.narrator_id = n.id
       WHERE REPLACE(REPLACE(REPLACE(REPLACE(name_ar, CHAR(1571), 'ا'), CHAR(1573), 'ا'), CHAR(1570), 'ا'), CHAR(1575), 'ا') LIKE ?
          OR REPLACE(REPLACE(REPLACE(REPLACE(name_ar, CHAR(1571), 'ا'), CHAR(1573), 'ا'), CHAR(1570), 'ا'), CHAR(1575), 'ا') LIKE ?
          OR name_en LIKE ?
-      ORDER BY length(name_ar)
+      GROUP BY n.id
+      ORDER BY hadith_count DESC
       LIMIT ?
     `;
     const lQuery1 = `%${normalizedQuery}%`;
@@ -149,16 +156,19 @@ export async function searchNarrators(query: string, limit: number = 20): Promis
 
   // English search fallback
   const sql = `
-    SELECT id, name_ar, name_en, name_bn, birth_year, death_year, tabaqah, reliability, city, data_source
-    FROM narrators
+    SELECT n.id, n.name_ar, n.name_en, n.name_bn, n.birth_year, n.death_year, n.tabaqah, n.reliability, n.city, n.data_source,
+           COUNT(hn.hadith_id) as hadith_count
+    FROM narrators n
+    LEFT JOIN hadith_narrators hn ON hn.narrator_id = n.id
     WHERE name_en LIKE ? OR name_ar LIKE ? OR name_bn LIKE ?
+    GROUP BY n.id
     ORDER BY
       CASE
         WHEN name_en LIKE ? THEN 1
         WHEN name_ar LIKE ? THEN 2
         ELSE 3
       END,
-      length(name_ar)
+      hadith_count DESC
     LIMIT ?
   `;
   const lQuery = `%${normalizedQuery}%`;
@@ -376,8 +386,8 @@ export async function getNarratorGraph(
 
     // Outgoing edges: current → student
     const outSql = `
-      SELECT e.from_narrator_id, n.name_ar as from_name, n.name_en as from_name_en, n.name_bn as from_name_bn, n.tabaqah as from_tabaqah, n.reliability as from_reliability, n.city as from_city, n.data_source as from_data_source,
-        e.to_narrator_id, nn.name_ar as to_name, nn.name_en as to_name_en, nn.name_bn as to_name_bn, nn.tabaqah as to_tabaqah, nn.reliability as to_reliability, nn.city as to_city, nn.data_source as to_data_source, e.hadith_count
+      SELECT e.from_narrator_id, n.name_ar as from_name, n.name_en as from_name_en, n.name_bn as from_name_bn, n.tabaqah as from_tabaqah, n.reliability as from_reliability, n.city as from_city, n.data_source as from_data_source, n.death_year as from_death_year,
+        e.to_narrator_id, nn.name_ar as to_name, nn.name_en as to_name_en, nn.name_bn as to_name_bn, nn.tabaqah as to_tabaqah, nn.reliability as to_reliability, nn.city as to_city, nn.data_source as to_data_source, nn.death_year as to_death_year, e.hadith_count
       FROM narrator_edges e
       JOIN narrators n ON n.id = e.from_narrator_id
       JOIN narrators nn ON nn.id = e.to_narrator_id
@@ -389,8 +399,8 @@ export async function getNarratorGraph(
 
     // Incoming edges: teacher → current
     const inSql = `
-      SELECT e.from_narrator_id, n.name_ar as from_name, n.name_en as from_name_en, n.name_bn as from_name_bn, n.tabaqah as from_tabaqah, n.reliability as from_reliability, n.city as from_city, n.data_source as from_data_source,
-        e.to_narrator_id, nn.name_ar as to_name, nn.name_en as to_name_en, nn.name_bn as to_name_bn, nn.tabaqah as to_tabaqah, nn.reliability as to_reliability, nn.city as to_city, nn.data_source as to_data_source, e.hadith_count
+      SELECT e.from_narrator_id, n.name_ar as from_name, n.name_en as from_name_en, n.name_bn as from_name_bn, n.tabaqah as from_tabaqah, n.reliability as from_reliability, n.city as from_city, n.data_source as from_data_source, n.death_year as from_death_year,
+        e.to_narrator_id, nn.name_ar as to_name, nn.name_en as to_name_en, nn.name_bn as to_name_bn, nn.tabaqah as to_tabaqah, nn.reliability as to_reliability, nn.city as to_city, nn.data_source as to_data_source, nn.death_year as to_death_year, e.hadith_count
       FROM narrator_edges e
       JOIN narrators n ON n.id = e.from_narrator_id
       JOIN narrators nn ON nn.id = e.to_narrator_id
@@ -402,6 +412,11 @@ export async function getNarratorGraph(
 
     const nextIds: number[] = [];
     for (const e of [...outEdges, ...inEdges]) {
+      // Apply chronological filter (same as web API)
+      const student = { id: e.from_narrator_id, name_en: (e as any).from_name_en, name_ar: e.from_name, death_year: (e as any).from_death_year };
+      const teacher = { id: e.to_narrator_id, name_en: (e as any).to_name_en, name_ar: e.to_name, death_year: (e as any).to_death_year };
+      if (isChronologicallyImpossible(student, teacher)) continue;
+
       const key = `${e.from_narrator_id}-${e.to_narrator_id}`;
       if (!edges.has(key)) {
         edges.set(key, e);

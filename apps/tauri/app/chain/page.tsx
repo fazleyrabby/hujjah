@@ -1,12 +1,11 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import dynamic from 'next/dynamic';
+import { useRouter } from 'next/navigation';
 import {
   searchNarrators,
   getNarratorEdges,
   getHadithsForEdge,
-  getNarratorGraph,
   getHadithChain,
   type NarratorNode,
   type NarratorEdge,
@@ -14,8 +13,6 @@ import {
 } from '@/lib/chain-db';
 import { clsx } from 'clsx';
 import { AppNav } from '@hujjah/ui';
-
-const NarratorGraph = dynamic(() => import('@hujjah/ui').then(m => ({ default: m.NarratorGraph })), { ssr: false });
 
 // ─── i18n ─────────────────────────────────────────────────────────────────────
 
@@ -27,7 +24,7 @@ const CHAIN_I18N = {
     heading: 'Sanad Chain Explorer',
     subtitle: 'Search for a narrator to explore their transmission chains. Covers Kutub al-Sittah (36K hadith).',
     placeholder: 'Search narrator (Arabic or English)...',
-    showGraph: 'Show Graph (2-hop)',
+    showGraph: 'View Network (2-hop)',
     teachers: 'Teachers (narrated from)',
     students: 'Students (narrated to)',
     networkTitle: '2-Hop Network',
@@ -53,7 +50,7 @@ const CHAIN_I18N = {
     heading: 'সনদ চেইন এক্সপ্লোরার',
     subtitle: 'একজন রাবীর নাম খুঁজুন এবং তাদের বর্ণনা সূত্র দেখুন। কুতুব আল-সিত্তাহ (৩৬ হাজার হাদিস)।',
     placeholder: 'রাবীর নাম খুঁজুন (আরবি বা ইংরেজি)...',
-    showGraph: 'গ্রাফ দেখুন (২-স্তর)',
+    showGraph: 'নেটওয়ার্ক দেখুন (২-স্তর)',
     teachers: 'শায়খগণ (যাঁদের থেকে বর্ণনা করেছেন)',
     students: 'ছাত্রগণ (যাঁরা বর্ণনা করেছেন)',
     networkTitle: '২-স্তর নেটওয়ার্ক',
@@ -204,6 +201,7 @@ function cleanHadithText(text: string): string {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ChainPage() {
+  const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [lang, setLang] = useState<Lang>('en');
   const [query, setQuery] = useState('');
@@ -214,8 +212,6 @@ export default function ChainPage() {
   const [darkMode, setDarkMode] = useState(false);
   const [selectedEdge, setSelectedEdge] = useState<NarratorEdge | null>(null);
   const [edgeHadith, setEdgeHadith] = useState<HadithChain[]>([]);
-  const [graphMode, setGraphMode] = useState(false);
-  const [graphData, setGraphData] = useState<{ nodes: NarratorNode[]; edges: NarratorEdge[] } | null>(null);
   const [hadithChainData, setHadithChainData] = useState<{ hadith: any; chain: NarratorNode[] } | null>(null);
   const [selectedFullHadith, setSelectedFullHadith] = useState<any | null>(null);
   const [showAllTeachers, setShowAllTeachers] = useState(false);
@@ -244,9 +240,28 @@ export default function ChainPage() {
     const layout = localStorage.getItem('hujjah-layout');
     if (layout === 'compact') setContainerClass('max-w-3xl');
 
-    // Check for hadith param - only on initial load
+    // Check for URL params on initial load
     const params = new URLSearchParams(window.location.search);
+    const nId = params.get('id');
     const hId = params.get('hadith');
+
+    if (nId) {
+      setLoading(true);
+      import('@/lib/chain-db').then(({ getNarratorById, getNarratorEdges }) => {
+        getNarratorById(Number(nId))
+          .then(async (n) => {
+            if (n) {
+              setSelectedNarrator(n);
+              setQuery(n.name_ar ?? '');
+              const e = await getNarratorEdges(n.id);
+              setEdges(e);
+            }
+          })
+          .catch(console.error)
+          .finally(() => setLoading(false));
+      });
+    }
+
     if (hId && !hadithChainData) {
       setLoading(true);
       getHadithChain(Number(hId))
@@ -257,13 +272,11 @@ export default function ChainPage() {
 
     return () => {
       window.removeEventListener('pageshow', onPageshow);
-      setGraphData(null);
       setHadithChainData(null);
       setSelectedNarrator(null);
       setEdges(null);
       setSelectedEdge(null);
       setEdgeHadith([]);
-      setGraphMode(false);
       setResults([]);
       setLoading(false);
     };
@@ -310,10 +323,9 @@ export default function ChainPage() {
     setQuery(n.name_ar);
     setSelectedEdge(null);
     setEdgeHadith([]);
-    setGraphData(null);
-    setGraphMode(false);
     setShowAllTeachers(false);
     setShowAllStudents(false);
+    router.push(`/chain?id=${n.id}`);
     setLoading(true);
     try {
       const e = await getNarratorEdges(n.id);
@@ -341,16 +353,9 @@ export default function ChainPage() {
     }
   };
 
-  const handleShowGraph = async () => {
+  const handleShowGraph = () => {
     if (!selectedNarrator) return;
-    setGraphMode(true);
-    setLoading(true);
-    try {
-      const g = await getNarratorGraph(selectedNarrator.id, 2);
-      setGraphData(g);
-    } finally {
-      setLoading(false);
-    }
+    router.push(`/chain/graph?id=${selectedNarrator.id}`);
   };
 
   if (!mounted) return <div className="min-h-screen bg-white dark:bg-zinc-950" />;
@@ -366,6 +371,7 @@ export default function ChainPage() {
           darkMode={darkMode}
           onDarkModeToggle={() => setDarkMode((d) => !d)}
           containerClass={containerClass}
+          hiddenRoutes={['/chat']}
         />
       </header>
 
@@ -415,7 +421,7 @@ export default function ChainPage() {
                     <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 text-left">
                       {getNarratorName(n, lang)}
                       {n.death_year ? ` · ${t.died} ${n.death_year} ${t.ah}` : ''}
-                      {n.data_source ? ` · (${n.data_source})` : ''}
+                      {n.data_source === 'computed' ? ' · name only' : n.data_source ? ` · ${n.data_source}` : ''}
                     </div>
                   )}
                 </button>
@@ -613,11 +619,18 @@ export default function ChainPage() {
                       📍 {getCityLabel(selectedNarrator.city, lang)}
                     </span>
                   )}
-                  {selectedNarrator.data_source && (
+                  {selectedNarrator.data_source && selectedNarrator.data_source !== 'computed' && (
                     <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-zinc-800 text-gray-400 dark:text-gray-500">
                       ({selectedNarrator.data_source})
                     </span>
                   )}
+                </div>
+              )}
+
+              {selectedNarrator.data_source === 'computed' && (
+                <div className="mb-4 flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 text-xs text-amber-800 dark:text-amber-300">
+                  <span>⚠️</span>
+                  <span>No biographical data available — name-only record derived from hadith chains.</span>
                 </div>
               )}
 
@@ -632,28 +645,6 @@ export default function ChainPage() {
                 </div>
               </div>
             </div>
-
-            {/* Graph Mode */}
-            {graphMode && graphData && (
-              <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl overflow-auto">
-                <div className="px-6 py-4 border-b border-gray-100 dark:border-zinc-800 sticky top-0 bg-white dark:bg-zinc-900 z-10">
-                  <h4 className="text-sm font-semibold text-gray-900 dark:text-white">{t.networkTitle}</h4>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                    {t.networkMeta(graphData.nodes.length, graphData.edges.length)}
-                  </p>
-                </div>
-                <NarratorGraph
-                  nodes={graphData.nodes}
-                  edges={graphData.edges}
-                  centerId={selectedNarrator.id}
-                  darkMode={darkMode}
-                  lang={lang}
-                  onNodeClick={handleSelectNarrator}
-                  width={900}
-                  height={420}
-                />
-              </div>
-            )}
 
             {/* Teachers */}
             {edges.teachers.length > 0 && (

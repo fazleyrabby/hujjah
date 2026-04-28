@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "mobile",
+  "description": "Mobile capabilities for Android/iOS",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:allow-open",
+    "dialog:allow-open",
+    "fs:allow-appdata-read",
+    "fs:allow-appdata-write",
+    "sql:default"
+  ]
+}

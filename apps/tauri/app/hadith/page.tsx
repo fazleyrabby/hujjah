@@ -220,6 +220,8 @@ export default function HadithPage() {
           darkMode={darkMode}
           onDarkModeToggle={() => setDarkMode((d) => !d)}
           containerClass={containerClass}
+          icon={<img src="/hujjah.png" alt="Hujjah" className="w-5 h-5" />}
+          hiddenRoutes={['/chat']}
           extra={
             <div className="flex items-center bg-gray-100 dark:bg-zinc-800 rounded-md p-0.5">
               {TRANSLATORS.map((t) => (
@@ -420,7 +422,7 @@ export default function HadithPage() {
             </div>
 
             {/* ─── Hadith Listing ─── */}
-            {selectedBook !== null && hadithData !== null && (
+            {selectedBook && hadithData && (
               <>
                 {/* Book header */}
                 {(() => {
@@ -504,7 +506,7 @@ export default function HadithPage() {
               </>
             )}
           </>
-        )}
+        ) : null}
       </div>
 
       {/* Hadith Modal */}

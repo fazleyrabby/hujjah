@@ -173,11 +173,11 @@ if (action === 'narrator') {
       const limit = Math.min(Number(searchParams.get('limit') ?? '5'), 20);
       const offset = Number(searchParams.get('offset') ?? '0');
 
-      // Get center node death_year for filtering
+      // Get center node info for filtering
       const centerRows = await db.select<any[]>(
-        `SELECT death_year FROM narrators WHERE id = ?`, [id]
+        `SELECT name_ar, name_en, death_year FROM narrators WHERE id = ?`, [id]
       );
-      const centerDeathYear = centerRows[0]?.death_year;
+      const center = centerRows[0];
 
       const parentRows = await db.select<any[]>(
         `SELECT n.id, n.name_ar, n.name_en, n.name_bn,
@@ -192,7 +192,7 @@ if (action === 'narrator') {
       );
 
       const filteredParents = parentRows.filter(p => {
-        const student = { id, death_year: centerDeathYear, name_en: undefined, name_ar: undefined };
+        const student = { id, death_year: center?.death_year, name_en: center?.name_en, name_ar: center?.name_ar };
         const teacher = { id: p.id, death_year: p.death_year, name_en: p.name_en, name_ar: p.name_ar };
         return !isChronologicallyImpossible(student, teacher);
       }).slice(0, limit);
@@ -217,11 +217,11 @@ if (action === 'narrator') {
       const limit = Math.min(Number(searchParams.get('limit') ?? '5'), 20);
       const offset = Number(searchParams.get('offset') ?? '0');
 
-      // Get center node death_year for filtering
+      // Get center node info for filtering
       const centerRows = await db.select<any[]>(
-        `SELECT death_year FROM narrators WHERE id = ?`, [id]
+        `SELECT name_ar, name_en, death_year FROM narrators WHERE id = ?`, [id]
       );
-      const centerDeathYear = centerRows[0]?.death_year;
+      const center = centerRows[0];
 
       const childRows = await db.select<any[]>(
         `SELECT n.id, n.name_ar, n.name_en, n.name_bn,
@@ -237,7 +237,7 @@ if (action === 'narrator') {
 
       const filteredChildren = childRows.filter(c => {
         const student = { id: c.id, death_year: c.death_year, name_en: c.name_en, name_ar: c.name_ar };
-        const teacher = { id, death_year: centerDeathYear, name_en: undefined, name_ar: undefined };
+        const teacher = { id, death_year: center?.death_year, name_en: center?.name_en, name_ar: center?.name_ar };
         return !isChronologicallyImpossible(student, teacher);
       }).slice(0, limit);
 

@@ -8,7 +8,7 @@ import { AppNav, useTheme } from '@hujjah/ui';
 
 export default function SettingsPage() {
   const [mounted, setMounted] = useState(false);
-  const { darkMode, toggleDarkMode, fontSize: themeFontSize, setFontSize } = useTheme();
+  const { darkMode, toggleDarkMode, fontSize, setFontSize } = useTheme();
   const [lang, setLang] = useState<'en' | 'bn'>('en');
   const [layout, setLayout] = useState<'compact' | 'full'>('full');
   const [stats, setStats] = useState({ verses: 0, translations: 0, languages: 0 });
@@ -81,8 +81,9 @@ export default function SettingsPage() {
           onLangChange={(l) => setLang(l as 'en' | 'bn')}
           langs={[{ code: 'en', label: 'EN' }, { code: 'bn', label: 'বাং' }]}
           darkMode={darkMode}
-          onDarkModeToggle={() => setDarkMode((d) => !d)}
+          onDarkModeToggle={toggleDarkMode}
           containerClass={layout === 'compact' ? 'max-w-3xl' : 'max-w-5xl'}
+          hiddenRoutes={['/chat']}
         />
       </header>
 
