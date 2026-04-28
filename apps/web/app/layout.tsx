@@ -38,6 +38,18 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
       <body suppressHydrationWarning>
+        <div className="bg-amber-50 border-b border-amber-200 text-amber-800 text-xs px-4 py-2 text-center">
+          <span>⚠️ This app is under active development — some information may be inaccurate or incomplete.</span>
+          {' '}
+          <a
+            href="https://github.com/fazleyrabby/hujjah/issues"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-semibold underline underline-offset-2 hover:text-amber-900"
+          >
+            Report an issue →
+          </a>
+        </div>
         <ErrorBoundary>
           <ThemeProvider>
             <AudioProvider>

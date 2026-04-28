@@ -43,10 +43,15 @@ export async function GET(req: NextRequest) {
         const ftsQuery = cleanQuery.split(/\s+/).filter(Boolean).map(w => `${w}*`).join(' ');
         const rows = await db.select<any[]>(
           `SELECT n.id, n.name_ar, n.name_en, n.name_bn, n.birth_year, n.death_year,
-                  n.tabaqah, n.reliability, n.city, n.data_source
+                  n.tabaqah, n.reliability, n.city, n.data_source,
+                  COUNT(hn.hadith_id) as hadith_count
            FROM narrator_search_idx
            JOIN narrators n ON n.id = narrator_search_idx.rowid
-           WHERE narrator_search_idx MATCH ? LIMIT ?`,
+           LEFT JOIN hadith_narrators hn ON hn.narrator_id = n.id
+           WHERE narrator_search_idx MATCH ?
+           GROUP BY n.id
+           ORDER BY hadith_count DESC
+           LIMIT ?`,
           [ftsQuery, limit * 5]
         );
         if (rows.length > 0) {
@@ -56,10 +61,15 @@ export async function GET(req: NextRequest) {
 
       const lQuery = `%${cleanQuery}%`;
       const rows = await db.select<any[]>(
-        `SELECT id, name_ar, name_en, name_bn, birth_year, death_year, tabaqah, reliability, city, data_source
-         FROM narrators
-         WHERE name_ar LIKE ? OR name_en LIKE ? OR name_bn LIKE ?
-         ORDER BY CASE WHEN name_ar LIKE ? THEN 1 WHEN name_en LIKE ? THEN 2 ELSE 3 END, length(name_ar)
+        `SELECT n.id, n.name_ar, n.name_en, n.name_bn, n.birth_year, n.death_year,
+                n.tabaqah, n.reliability, n.city, n.data_source,
+                COUNT(hn.hadith_id) as hadith_count
+         FROM narrators n
+         LEFT JOIN hadith_narrators hn ON hn.narrator_id = n.id
+         WHERE n.name_ar LIKE ? OR n.name_en LIKE ? OR n.name_bn LIKE ?
+         GROUP BY n.id
+         ORDER BY CASE WHEN n.name_ar LIKE ? THEN 1 WHEN n.name_en LIKE ? THEN 2 ELSE 3 END,
+                  hadith_count DESC, length(n.name_ar)
          LIMIT ?`,
         [lQuery, lQuery, lQuery, lQuery, lQuery, limit * 5]
       );
@@ -112,6 +122,70 @@ if (action === 'narrator') {
       );
 
       return NextResponse.json({ teachers, students });
+    }
+
+    if (action === 'narratorParents') {
+      // Parents = teachers: narrators that `id` narrated FROM (from_narrator_id=id → to=teacher)
+      const id = Number(searchParams.get('id'));
+      const limit = Math.min(Number(searchParams.get('limit') ?? '5'), 20);
+      const offset = Number(searchParams.get('offset') ?? '0');
+
+      const parentRows = await db.select<any[]>(
+        `SELECT n.id, n.name_ar, n.name_en, n.name_bn,
+                n.birth_year, n.death_year, n.tabaqah, n.reliability, n.city, n.data_source,
+                e.hadith_count
+         FROM narrator_edges e
+         JOIN narrators n ON n.id = e.to_narrator_id
+         WHERE e.from_narrator_id = ?
+         ORDER BY e.hadith_count DESC
+         LIMIT ? OFFSET ?`,
+        [id, limit, offset]
+      );
+
+      const countRows = await db.select<any[]>(
+        `SELECT COUNT(DISTINCT e.to_narrator_id) as total
+         FROM narrator_edges e WHERE e.from_narrator_id = ?`,
+        [id]
+      );
+      const total = countRows[0]?.total ?? 0;
+
+      return NextResponse.json({
+        parents: parentRows.map(r => r.id),
+        nodes: parentRows,
+        total,
+      });
+    }
+
+    if (action === 'narratorChildren') {
+      // Children = students: narrators who narrated FROM `id` (to_narrator_id=id → from=student)
+      const id = Number(searchParams.get('id'));
+      const limit = Math.min(Number(searchParams.get('limit') ?? '5'), 20);
+      const offset = Number(searchParams.get('offset') ?? '0');
+
+      const childRows = await db.select<any[]>(
+        `SELECT n.id, n.name_ar, n.name_en, n.name_bn,
+                n.birth_year, n.death_year, n.tabaqah, n.reliability, n.city, n.data_source,
+                e.hadith_count
+         FROM narrator_edges e
+         JOIN narrators n ON n.id = e.from_narrator_id
+         WHERE e.to_narrator_id = ?
+         ORDER BY e.hadith_count DESC
+         LIMIT ? OFFSET ?`,
+        [id, limit, offset]
+      );
+
+      const countRows = await db.select<any[]>(
+        `SELECT COUNT(DISTINCT e.from_narrator_id) as total
+         FROM narrator_edges e WHERE e.to_narrator_id = ?`,
+        [id]
+      );
+      const total = countRows[0]?.total ?? 0;
+
+      return NextResponse.json({
+        children: childRows.map(r => r.id),
+        nodes: childRows,
+        total,
+      });
     }
 
     if (action === 'graph') {

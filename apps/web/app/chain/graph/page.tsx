@@ -3,38 +3,29 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { clsx } from 'clsx';
-import { AppNav, useTheme } from '@hujjah/ui';
+import { AppNav, useTheme, SanadExplorer } from '@hujjah/ui';
 import type { NarratorNode, NarratorEdge } from '@hujjah/ui';
-import dynamic from 'next/dynamic';
-
-const NarratorGraph = dynamic(() => import('@hujjah/ui').then(m => ({ default: m.NarratorGraph })), { ssr: false });
 
 type Lang = 'en' | 'bn' | 'ar';
 
 const GRAPH_I18N = {
   en: {
     back: '← Back to Chain Explorer',
-    loading: 'Loading network...',
+    loading: 'Loading sanad...',
     notFound: 'Narrator not found',
     notFoundDesc: 'Go back to search for a narrator.',
-    networkTitle: (name: string) => `${name} — 2-Hop Network`,
-    networkMeta: (n: number, e: number) => `${n} narrators · ${e} transmission links`,
   },
   bn: {
     back: '← চেইন এক্সপ্লোরারে ফিরুন',
-    loading: 'নেটওয়ার্ক লোড হচ্ছে...',
+    loading: 'সনদ লোড হচ্ছে...',
     notFound: 'রাবী পাওয়া যায়নি',
     notFoundDesc: 'ফিরে গিয়ে রাবী খুঁজুন।',
-    networkTitle: (name: string) => `${name} — ২-স্তর নেটওয়ার্ক`,
-    networkMeta: (n: number, e: number) => `${n} জন রাবী · ${e}টি সনদ সংযোগ`,
   },
   ar: {
     back: '← العودة إلى مستكشف الإسناد',
-    loading: 'جاري تحميل الشبكة...',
+    loading: 'جاري تحميل السند...',
     notFound: 'لم يتم العثور على الراوي',
     notFoundDesc: 'ارجع للبحث عن راوٍ.',
-    networkTitle: (name: string) => `${name} — شبكة درجتين`,
-    networkMeta: (n: number, e: number) => `${n} راوٍ · ${e} رابطاً في الإسناد`,
   },
 };
 
@@ -44,9 +35,9 @@ function GraphPage() {
   const [mounted, setMounted] = useState(false);
   const [lang, setLang] = useState<Lang>('en');
   const { darkMode, toggleDarkMode } = useTheme();
-  const [loading, setLoading] = useState(true);
-  const [narrator, setNarrator] = useState<NarratorNode | null>(null);
+  const [narratorId, setNarratorId] = useState<number | null>(null);
   const [graphData, setGraphData] = useState<{ nodes: NarratorNode[]; edges: NarratorEdge[] } | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const t = GRAPH_I18N[lang];
 
@@ -58,17 +49,13 @@ function GraphPage() {
 
   useEffect(() => {
     const id = searchParams.get('id');
-    if (!id) return;
-
+    if (!id) { setNarratorId(null); return; }
+    const numId = Number(id);
+    setNarratorId(numId);
     setLoading(true);
-    Promise.all([
-      fetch(`/api/chain?action=narrator&id=${id}`).then(r => r.json()),
-      fetch(`/api/chain?action=graph&id=${id}&depth=2`).then(r => r.json()),
-    ])
-      .then(([n, g]) => {
-        setNarrator(n);
-        setGraphData(g);
-      })
+    fetch(`/api/chain?action=graph&id=${numId}&depth=2`)
+      .then(r => r.json())
+      .then(setGraphData)
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [searchParams]);
@@ -84,12 +71,6 @@ function GraphPage() {
 
   if (!mounted) return null;
 
-  const displayName = narrator
-    ? (lang === 'bn' ? (narrator.name_bn ?? narrator.name_en ?? narrator.name_ar)
-      : lang === 'ar' ? narrator.name_ar
-      : (narrator.name_en ?? narrator.name_ar))
-    : '';
-
   return (
     <div className={clsx('min-h-screen bg-base', darkMode && 'dark')}>
       <header className="bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800 sticky top-0 z-50">
@@ -99,7 +80,6 @@ function GraphPage() {
           langs={[{ code: 'en', label: 'EN' }, { code: 'bn', label: 'বাং' }]}
           darkMode={darkMode}
           onDarkModeToggle={toggleDarkMode}
-          containerClass="max-w-none"
           hiddenRoutes={['/chat']}
         />
       </header>
@@ -112,54 +92,23 @@ function GraphPage() {
           >
             {t.back}
           </button>
-          <button
-            onClick={() => router.push('/about')}
-            className="text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
-          >
-            About
-          </button>
-          {displayName && (
-            <h1 className="text-sm font-semibold text-gray-900 dark:text-white truncate" dir="auto">
-              {t.networkTitle(displayName)}
-            </h1>
-          )}
-          {graphData && (
-            <span className="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">
-              {t.networkMeta(graphData.nodes.length, graphData.edges.length)}
-            </span>
-          )}
         </div>
       </div>
 
-      <div className="bg-gray-50 dark:bg-zinc-950 transition-all overflow-auto relative rounded-2xl border border-gray-200 dark:border-zinc-800 w-full" style={{ minHeight: 'calc(100vh - 9.5rem)' }}>
-        {loading && (
-          <div className="flex items-center justify-center flex-1">
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-8 h-8 border-3 border-teal-600 border-t-transparent rounded-full animate-spin" />
-              <span className="text-sm text-gray-500 dark:text-gray-400">{t.loading}</span>
-            </div>
+      <div className="p-4">
+        {loading ? (
+          <div className="flex items-center justify-center h-64">
+            <div className="w-8 h-8 border-3 border-teal-600 border-t-transparent rounded-full animate-spin" />
           </div>
-        )}
-
-        {!loading && !narrator && (
-          <div className="flex items-center justify-center flex-1">
-            <div className="text-center">
-              <p className="text-lg font-semibold text-gray-900 dark:text-white">{t.notFound}</p>
-              <button
-                onClick={() => router.push('/chain')}
-                className="mt-2 text-sm text-teal-600 dark:text-teal-400 hover:underline"
-              >
-                {t.notFoundDesc}
-              </button>
-            </div>
+        ) : !narratorId || !graphData ? (
+          <div className="flex items-center justify-center h-64">
+            <p className="text-gray-500 dark:text-gray-400">{t.notFound}</p>
           </div>
-        )}
-
-        {!loading && narrator && graphData && (
-          <NarratorGraph
+        ) : (
+          <SanadExplorer
             nodes={graphData.nodes}
             edges={graphData.edges}
-            centerId={narrator.id}
+            centerId={narratorId}
             darkMode={darkMode}
             lang={lang}
             onNodeClick={handleNodeClick}

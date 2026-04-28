@@ -36,6 +36,7 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchDomain, setSearchDomain] = useState<'quran' | 'hadith'>('quran');
   const [searchOpen, setSearchOpen] = useState(false);
+  const [surahSearch, setSurahSearch] = useState('');
   const [latency, setLatency] = useState<number | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const { play: playAudio, pause: pauseAudio, resume: resumeAudio, stop: stopAudio, isPlaying: isAudioPlaying, current: currentAudio, reciter, setReciter } = useQuranAudio();
@@ -178,22 +179,50 @@ export default function Home() {
             'left-0 top-0 h-full w-72 md:w-64 transform transition-transform duration-300',
             sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
           )}>
-            <div className="p-4 border-b border-gray-100 dark:border-zinc-800 flex items-center justify-between">
-              <div>
-                <h2 className="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wider">Surahs</h2>
-                <p className="text-xs text-gray-400 mt-1">{surahs.length} chapters</p>
+            <div className="p-3 border-b border-gray-100 dark:border-zinc-800 space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wider">Surahs</h2>
+                  <p className="text-xs text-gray-400">{surahs.length} chapters</p>
+                </div>
+                <button
+                  onClick={() => setSidebarOpen(false)}
+                  className="md:hidden p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
               </div>
-              <button 
-                onClick={() => setSidebarOpen(false)}
-                className="md:hidden p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <div className="relative">
+                <input
+                  type="text"
+                  value={surahSearch}
+                  onChange={e => setSurahSearch(e.target.value)}
+                  placeholder={lang === 'bn' ? 'সূরা খুঁজুন...' : 'Search surah...'}
+                  className="w-full pl-7 pr-3 py-1.5 text-xs bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg text-gray-800 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                />
+                <svg className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
                 </svg>
-              </button>
+                {surahSearch && (
+                  <button onClick={() => setSurahSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                )}
+              </div>
             </div>
             <nav className="flex-1 overflow-y-auto p-2 space-y-0.5 scrollbar-minimal">
-              {surahs.map(s => (
+              {surahs.filter(s => {
+                if (!surahSearch.trim()) return true;
+                const q = surahSearch.toLowerCase();
+                return (
+                  s.name_en.toLowerCase().includes(q) ||
+                  s.name_bn.includes(surahSearch) ||
+                  s.name_ar.includes(surahSearch) ||
+                  String(s.id) === surahSearch.trim()
+                );
+              }).map(s => (
                 <button key={s.id} onClick={() => { loadSurah(s.id, lang); setSidebarOpen(false); }}
                   className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
                     selectedSurah === s.id
@@ -476,9 +505,9 @@ export default function Home() {
             </div>
           )}
 
-          {/* Empty state */}
-          {!loading && results === null && hadithResults === null && surahVerses === null && (
-            <div className="text-center py-20">
+          {/* Empty state — only show if no featured hadiths are pending */}
+          {!loading && results === null && hadithResults === null && surahVerses === null && !randomHadiths && (
+            <div className="text-center py-10">
               <p className="text-gray-400 text-sm">{lang === 'bn' ? 'কুরআন বা হাদিস অনুসন্ধান করুন' : 'Search the Quran or Hadith above'}</p>
             </div>
           )}
