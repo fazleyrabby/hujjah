@@ -118,6 +118,12 @@ export default function Home() {
     }
   }, [query, selectedSurah, executeSearch, loadSurah, searchDomain]);
 
+  useEffect(() => {
+    if (!currentAudio) return;
+    const el = document.getElementById(`verse-${currentAudio.surah}-${currentAudio.ayah}`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [currentAudio]);
+
   const handleNavigateToVerse = useCallback(async (surah: number, ayah: number) => {
     await loadSurah(surah, lang);
     setTimeout(() => {
@@ -367,7 +373,11 @@ export default function Home() {
               <div className="space-y-6">
                 {surahVerses.map((v, i) => (
                   <div key={`${v.id}-${i}`} id={`verse-${v.surah}-${v.ayah}`}
-                    className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl p-5 transition-all">
+                    className={`bg-white dark:bg-zinc-900 border rounded-xl p-5 transition-all ${
+                      currentAudio?.surah === v.surah && currentAudio?.ayah === v.ayah
+                        ? 'border-teal-400 dark:border-teal-500 ring-2 ring-teal-400/40 bg-teal-50/50 dark:bg-teal-900/20'
+                        : 'border-gray-200 dark:border-zinc-800'
+                    }`}>
                     <div className="flex items-center gap-2 mb-3">
                       <span className="text-xs font-semibold text-teal-700 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/20 px-2 py-0.5 rounded-full">{v.surah}:{v.ayah}</span>
                       <span className="text-xs text-gray-400 capitalize">{v.translator_slug}</span>

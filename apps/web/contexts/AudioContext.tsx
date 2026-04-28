@@ -35,12 +35,8 @@ const AudioContext = createContext<AudioContextType | null>(null);
 
 let globalAudio: HTMLAudioElement | null = null;
 
-function pad3(n: number): string {
-  return n.toString().padStart(3, '0');
-}
-
 function buildAudioUrl(surah: number, ayah: number): string {
-  return `https://everyayah.com/data/Alafasy_128kbps/${pad3(surah)}${pad3(ayah)}.mp3`;
+  return `/api/audio?surah=${surah}&ayah=${ayah}`;
 }
 
 async function fetchSurahVerseCount(surah: number): Promise<number> {
