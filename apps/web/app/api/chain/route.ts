@@ -11,6 +11,33 @@ function normalizeArabicQuery(text: string): string {
     .replace(/ة/g, 'ه');
 }
 
+function isSameNarratorName(a: { name_en?: string; name_ar?: string }, b: { name_en?: string; name_ar?: string }): boolean {
+  if (a.name_en && b.name_en && a.name_en.toLowerCase().trim() === b.name_en.toLowerCase().trim()) return true;
+  const an = normalizeArabicQuery(a.name_ar || '');
+  const bn = normalizeArabicQuery(b.name_ar || '');
+  return an.length >= 3 && an === bn;
+}
+
+function isChronologicallyImpossible(
+  student: { id?: number; death_year?: number; name_en?: string; name_ar?: string },
+  teacher: { id?: number; death_year?: number; name_en?: string; name_ar?: string }
+): boolean {
+  if (student.id === teacher.id) return true;
+  if (isSameNarratorName(student, teacher)) return true;
+
+  const sd = student.death_year;
+  const td = teacher.death_year;
+  if (sd == null || td == null) return false;
+
+  // Teacher died more than 40 years AFTER student: impossible (e.g., student died 58, teacher died 248)
+  if (td > sd + 40) return true;
+  // Student died more than 40 years BEFORE teacher: student is actually teacher, not vice versa
+  // (allowed as some students outlived teachers, but not by >40 years)
+  if (sd < td - 40) return true;
+
+  return false;
+}
+
 function deduplicateNarrators(rows: any[]): any[] {
   const seen = new Set<string>();
   return rows.filter(r => {
@@ -101,7 +128,9 @@ if (action === 'narrator') {
 
       const teachers = await db.select<any[]>(
         `SELECT e.from_narrator_id, n.name_ar as from_name, n.name_en as from_name_en, n.name_bn as from_name_bn,
+                n.death_year as from_death_year,
                 e.to_narrator_id, nn.name_ar as to_name, nn.name_en as to_name_en, nn.name_bn as to_name_bn,
+                nn.death_year as to_death_year,
                 e.hadith_count
          FROM narrator_edges e
          JOIN narrators n ON n.id = e.from_narrator_id
@@ -112,7 +141,9 @@ if (action === 'narrator') {
 
       const students = await db.select<any[]>(
         `SELECT e.from_narrator_id, n.name_ar as from_name, n.name_en as from_name_en, n.name_bn as from_name_bn,
+                n.death_year as from_death_year,
                 e.to_narrator_id, nn.name_ar as to_name, nn.name_en as to_name_en, nn.name_bn as to_name_bn,
+                nn.death_year as to_death_year,
                 e.hadith_count
          FROM narrator_edges e
          JOIN narrators n ON n.id = e.from_narrator_id
@@ -121,7 +152,19 @@ if (action === 'narrator') {
         [id]
       );
 
-      return NextResponse.json({ teachers, students });
+      const filteredTeachers = teachers.filter(t => {
+        const student = { id: t.from_narrator_id, name_en: t.from_name_en, name_ar: t.from_name, death_year: t.from_death_year };
+        const teacher = { id: t.to_narrator_id, name_en: t.to_name_en, name_ar: t.to_name, death_year: t.to_death_year };
+        return !isChronologicallyImpossible(student, teacher);
+      });
+
+      const filteredStudents = students.filter(s => {
+        const student = { id: s.from_narrator_id, name_en: s.from_name_en, name_ar: s.from_name, death_year: s.from_death_year };
+        const teacher = { id: s.to_narrator_id, name_en: s.to_name_en, name_ar: s.to_name, death_year: s.to_death_year };
+        return !isChronologicallyImpossible(student, teacher);
+      });
+
+      return NextResponse.json({ teachers: filteredTeachers, students: filteredStudents });
     }
 
     if (action === 'narratorParents') {
@@ -129,6 +172,12 @@ if (action === 'narrator') {
       const id = Number(searchParams.get('id'));
       const limit = Math.min(Number(searchParams.get('limit') ?? '5'), 20);
       const offset = Number(searchParams.get('offset') ?? '0');
+
+      // Get center node death_year for filtering
+      const centerRows = await db.select<any[]>(
+        `SELECT death_year FROM narrators WHERE id = ?`, [id]
+      );
+      const centerDeathYear = centerRows[0]?.death_year;
 
       const parentRows = await db.select<any[]>(
         `SELECT n.id, n.name_ar, n.name_en, n.name_bn,
@@ -139,8 +188,14 @@ if (action === 'narrator') {
          WHERE e.from_narrator_id = ?
          ORDER BY e.hadith_count DESC
          LIMIT ? OFFSET ?`,
-        [id, limit, offset]
+        [id, limit * 3, offset]
       );
+
+      const filteredParents = parentRows.filter(p => {
+        const student = { id, death_year: centerDeathYear, name_en: undefined, name_ar: undefined };
+        const teacher = { id: p.id, death_year: p.death_year, name_en: p.name_en, name_ar: p.name_ar };
+        return !isChronologicallyImpossible(student, teacher);
+      }).slice(0, limit);
 
       const countRows = await db.select<any[]>(
         `SELECT COUNT(DISTINCT e.to_narrator_id) as total
@@ -150,8 +205,8 @@ if (action === 'narrator') {
       const total = countRows[0]?.total ?? 0;
 
       return NextResponse.json({
-        parents: parentRows.map(r => r.id),
-        nodes: parentRows,
+        parents: filteredParents.map(r => r.id),
+        nodes: filteredParents,
         total,
       });
     }
@@ -162,6 +217,12 @@ if (action === 'narrator') {
       const limit = Math.min(Number(searchParams.get('limit') ?? '5'), 20);
       const offset = Number(searchParams.get('offset') ?? '0');
 
+      // Get center node death_year for filtering
+      const centerRows = await db.select<any[]>(
+        `SELECT death_year FROM narrators WHERE id = ?`, [id]
+      );
+      const centerDeathYear = centerRows[0]?.death_year;
+
       const childRows = await db.select<any[]>(
         `SELECT n.id, n.name_ar, n.name_en, n.name_bn,
                 n.birth_year, n.death_year, n.tabaqah, n.reliability, n.city, n.data_source,
@@ -171,8 +232,14 @@ if (action === 'narrator') {
          WHERE e.to_narrator_id = ?
          ORDER BY e.hadith_count DESC
          LIMIT ? OFFSET ?`,
-        [id, limit, offset]
+        [id, limit * 3, offset]
       );
+
+      const filteredChildren = childRows.filter(c => {
+        const student = { id: c.id, death_year: c.death_year, name_en: c.name_en, name_ar: c.name_ar };
+        const teacher = { id, death_year: centerDeathYear, name_en: undefined, name_ar: undefined };
+        return !isChronologicallyImpossible(student, teacher);
+      }).slice(0, limit);
 
       const countRows = await db.select<any[]>(
         `SELECT COUNT(DISTINCT e.from_narrator_id) as total
@@ -182,8 +249,8 @@ if (action === 'narrator') {
       const total = countRows[0]?.total ?? 0;
 
       return NextResponse.json({
-        children: childRows.map(r => r.id),
-        nodes: childRows,
+        children: filteredChildren.map(r => r.id),
+        nodes: filteredChildren,
         total,
       });
     }
@@ -195,6 +262,13 @@ if (action === 'narrator') {
       const nodes = new Map<number, any>();
       const edges = new Map<string, any>();
 
+      // Get center node death_year upfront for filtering
+      const startRows = await db.select<any[]>(
+        `SELECT id, name_ar, name_en, name_bn, birth_year, death_year, tabaqah, reliability, city, data_source
+         FROM narrators WHERE id = ?`, [id]
+      );
+      const centerDeathYear = startRows[0]?.death_year;
+
       async function bfs(currentIds: number[], depth: number) {
         if (depth > maxDepth || currentIds.length === 0) return;
         const placeholders = currentIds.map(() => '?').join(',');
@@ -204,11 +278,12 @@ if (action === 'narrator') {
           `SELECT e.from_narrator_id, n.name_ar as from_name, n.name_en as from_name_en,
                   n.name_bn as from_name_bn, n.tabaqah as from_tabaqah,
                   n.reliability as from_reliability, n.city as from_city,
-                  n.data_source as from_data_source,
+                  n.data_source as from_data_source, n.death_year as from_death_year,
                   e.to_narrator_id, nn.name_ar as to_name, nn.name_en as to_name_en,
                   nn.name_bn as to_name_bn, nn.tabaqah as to_tabaqah,
                   nn.reliability as to_reliability, nn.city as to_city,
-                  nn.data_source as to_data_source, e.hadith_count
+                  nn.data_source as to_data_source, nn.death_year as to_death_year,
+                  e.hadith_count
            FROM narrator_edges e
            JOIN narrators n ON n.id = e.from_narrator_id
            JOIN narrators nn ON nn.id = e.to_narrator_id
@@ -222,11 +297,12 @@ if (action === 'narrator') {
           `SELECT e.from_narrator_id, n.name_ar as from_name, n.name_en as from_name_en,
                   n.name_bn as from_name_bn, n.tabaqah as from_tabaqah,
                   n.reliability as from_reliability, n.city as from_city,
-                  n.data_source as from_data_source,
+                  n.data_source as from_data_source, n.death_year as from_death_year,
                   e.to_narrator_id, nn.name_ar as to_name, nn.name_en as to_name_en,
                   nn.name_bn as to_name_bn, nn.tabaqah as to_tabaqah,
                   nn.reliability as to_reliability, nn.city as to_city,
-                  nn.data_source as to_data_source, e.hadith_count
+                  nn.data_source as to_data_source, nn.death_year as to_death_year,
+                  e.hadith_count
            FROM narrator_edges e
            JOIN narrators n ON n.id = e.from_narrator_id
            JOIN narrators nn ON nn.id = e.to_narrator_id
@@ -239,6 +315,12 @@ if (action === 'narrator') {
         for (const e of [...outEdges, ...inEdges]) {
           const key = `${e.from_narrator_id}-${e.to_narrator_id}`;
           if (edges.has(key)) continue;
+
+          // Chronological filter: skip impossible edges
+          const student = { id: e.from_narrator_id, name_en: e.from_name_en, name_ar: e.from_name, death_year: e.from_death_year };
+          const teacher = { id: e.to_narrator_id, name_en: e.to_name_en, name_ar: e.to_name, death_year: e.to_death_year };
+          if (isChronologicallyImpossible(student, teacher)) continue;
+
           edges.set(key, e);
           if (!nodes.has(e.from_narrator_id)) {
             nodes.set(e.from_narrator_id, {
@@ -260,10 +342,6 @@ if (action === 'narrator') {
         await bfs(nextIds, depth + 1);
       }
 
-      const startRows = await db.select<any[]>(
-        `SELECT id, name_ar, name_en, name_bn, birth_year, death_year, tabaqah, reliability, city, data_source
-         FROM narrators WHERE id = ?`, [id]
-      );
       if (startRows[0]) {
         nodes.set(id, { ...startRows[0], _hasDuplicates: false });
         await bfs([id], 1);

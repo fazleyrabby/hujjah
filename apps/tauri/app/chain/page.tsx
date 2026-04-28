@@ -370,6 +370,13 @@ export default function ChainPage() {
       </header>
 
       <div className={`${containerClass} mx-auto px-6 py-8`}>
+        {/* Data Quality Notice */}
+        <div className="mb-6 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/30 rounded-xl px-4 py-3">
+          <p className="text-xs text-amber-800 dark:text-amber-200">
+            <span className="font-medium">Note:</span> Chain data is extracted from hadith position sequences. Some connections may be inaccurate due to parallel chain storage or missing death years.
+          </p>
+        </div>
+
         {/* Search */}
         <div className="mb-8">
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2" dir={isRtl ? 'rtl' : 'ltr'}>

@@ -199,6 +199,7 @@ export default function HadithPage() {
       {/* ─── Header ─── */}
       <header className="sticky top-0 z-50 bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800">
         <AppNav
+          icon={<img src="/hujjah.png" alt="Hujjah" className="w-5 h-5" />}
           lang={lang}
           onLangChange={(l) => setLang(l as 'en' | 'bn')}
           langs={[{ code: 'en', label: 'EN' }, { code: 'bn', label: 'বাং' }]}

@@ -249,6 +249,7 @@ export default function Home() {
         <div className="sticky top-0 z-50 bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800">
           <header className="border-b border-gray-100 dark:border-zinc-800">
             <AppNav
+              icon={<img src="/hujjah.png" alt="Hujjah" className="w-5 h-5" />}
               lang={lang}
               onLangChange={handleLangChange}
               langs={[{ code: 'en', label: 'EN' }, { code: 'bn', label: 'বাং' }]}

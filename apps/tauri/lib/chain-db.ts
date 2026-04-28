@@ -56,6 +56,33 @@ function normalizeArabicForLike(text: string): string {
     .replace(/[ىو]/g, 'و');
 }
 
+function isSameNarratorName(
+  a: { name_en?: string | null; name_ar?: string | null },
+  b: { name_en?: string | null; name_ar?: string | null }
+): boolean {
+  if (a.name_en && b.name_en && a.name_en.toLowerCase().trim() === b.name_en.toLowerCase().trim()) return true;
+  const an = normalizeArabicQuery(a.name_ar || '');
+  const bn = normalizeArabicQuery(b.name_ar || '');
+  return an.length >= 3 && an === bn;
+}
+
+function isChronologicallyImpossible(
+  student: { id: number; death_year?: number | null; name_en?: string | null; name_ar?: string | null },
+  teacher: { id: number; death_year?: number | null; name_en?: string | null; name_ar?: string | null }
+): boolean {
+  if (student.id === teacher.id) return true;
+  if (isSameNarratorName(student, teacher)) return true;
+
+  const sd = student.death_year;
+  const td = teacher.death_year;
+  if (sd == null || td == null) return false;
+
+  if (td > sd + 40) return true;
+  if (sd < td - 40) return true;
+
+  return false;
+}
+
 // ─── Search Narrators ───
 
 /**
@@ -158,6 +185,12 @@ export async function getNarratorEdges(narratorId: number): Promise<{
 }> {
   const db = await getHadithDB();
 
+  // Get center node death_year for filtering
+  const centerRows = await db.select<{ death_year: number }[]>(
+    'SELECT death_year FROM narrators WHERE id = ?', [narratorId]
+  );
+  const centerDeathYear = centerRows[0]?.death_year;
+
   // Edge semantics: from_narrator_id = student (lower position, closer to collector)
   //                 to_narrator_id   = teacher (higher position, closer to Prophet)
   //
@@ -168,10 +201,12 @@ export async function getNarratorEdges(narratorId: number): Promise<{
       n.name_ar as from_name,
       n.name_en as from_name_en,
       n.name_bn as from_name_bn,
+      n.death_year as from_death_year,
       e.to_narrator_id,
       nn.name_ar as to_name,
       nn.name_en as to_name_en,
       nn.name_bn as to_name_bn,
+      nn.death_year as to_death_year,
       e.hadith_count
     FROM narrator_edges e
     JOIN narrators n ON n.id = e.from_narrator_id
@@ -187,10 +222,12 @@ export async function getNarratorEdges(narratorId: number): Promise<{
       n.name_ar as from_name,
       n.name_en as from_name_en,
       n.name_bn as from_name_bn,
+      n.death_year as from_death_year,
       e.to_narrator_id,
       nn.name_ar as to_name,
       nn.name_en as to_name_en,
       nn.name_bn as to_name_bn,
+      nn.death_year as to_death_year,
       e.hadith_count
     FROM narrator_edges e
     JOIN narrators n ON n.id = e.from_narrator_id
@@ -200,11 +237,20 @@ export async function getNarratorEdges(narratorId: number): Promise<{
   `;
 
   const [teachers, students] = await Promise.all([
-    db.select<NarratorEdge[]>(teachersSql, [narratorId]),
-    db.select<NarratorEdge[]>(studentsSql, [narratorId]),
+    db.select<any[]>(teachersSql, [narratorId]),
+    db.select<any[]>(studentsSql, [narratorId]),
   ]);
 
-  return { teachers, students };
+  const filterFn = (edge: any, isTeacher: boolean) => {
+    const student = { id: edge.from_narrator_id, name_en: edge.from_name_en, name_ar: edge.from_name, death_year: edge.from_death_year };
+    const teacher = { id: edge.to_narrator_id, name_en: edge.to_name_en, name_ar: edge.to_name, death_year: edge.to_death_year };
+    return !isChronologicallyImpossible(student, teacher);
+  };
+
+  const filteredTeachers = teachers.filter(t => filterFn(t, true));
+  const filteredStudents = students.filter(s => filterFn(s, false));
+
+  return { teachers: filteredTeachers, students: filteredStudents };
 }
 
 // ─── Get Hadiths for an Edge ───

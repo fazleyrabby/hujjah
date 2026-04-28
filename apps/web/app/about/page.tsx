@@ -23,6 +23,7 @@ export default function AboutPage() {
     <div className="min-h-screen bg-white dark:bg-zinc-950">
       <header className="bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800 sticky top-0 z-50">
         <AppNav
+          icon={<img src="/hujjah.png" alt="Hujjah" className="w-5 h-5" />}
           darkMode={darkMode}
           onDarkModeToggle={toggleDarkMode}
           hiddenRoutes={['/chat']}

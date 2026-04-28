@@ -520,6 +520,7 @@ function GraphPage() {
           darkMode={darkMode}
           onDarkModeToggle={toggleDarkMode}
           hiddenRoutes={['/chat']}
+          icon={<img src="/hujjah.png" alt="Hujjah" className="w-5 h-5" />}
         />
       </header>
 

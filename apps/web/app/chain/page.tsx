@@ -322,6 +322,7 @@ function ChainContent() {
       {/* Header */}
       <header className="bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800 sticky top-0 z-50">
         <AppNav
+          icon={<img src="/hujjah.png" alt="Hujjah" className="w-5 h-5" />}
           lang={lang}
           onLangChange={(l) => handleLangChange(l as Lang)}
           langs={[{ code: 'en', label: 'EN' }, { code: 'bn', label: 'বাং' }]}
@@ -333,6 +334,13 @@ function ChainContent() {
       </header>
 
       <div className={`${containerClass} mx-auto px-6 py-8`}>
+        {/* Data Quality Notice */}
+        <div className="mb-6 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/30 rounded-xl px-4 py-3">
+          <p className="text-xs text-amber-800 dark:text-amber-200">
+            <span className="font-medium">Note:</span> Chain data is extracted from hadith position sequences. Some connections may be inaccurate due to parallel chain storage or missing death years.
+          </p>
+        </div>
+
         {/* Search */}
         <div className="mb-8">
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2" dir={isRtl ? 'rtl' : 'ltr'}>
