@@ -230,8 +230,8 @@ export default function Home() {
                 const q = surahSearch.toLowerCase();
                 return (
                   s.name_en.toLowerCase().includes(q) ||
-                  s.name_bn.includes(surahSearch) ||
-                  s.name_ar.includes(surahSearch) ||
+                  (s.name_bn && s.name_bn.includes(surahSearch)) ||
+                  (s.name_ar && s.name_ar.includes(surahSearch)) ||
                   String(s.id) === surahSearch.trim()
                 );
               }).map(s => (
