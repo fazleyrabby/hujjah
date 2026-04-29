@@ -26,14 +26,14 @@ export interface HadithResult {
   num_in_book: number;
   hadith_ar: string;
   matn_ar: string;
-  matn_en: string | null;  // AI translation (null if not yet translated)
+  matn_en: string | null;
   sanad_length: number;
   rank: number;
   snippet?: string;
-  // Multiple translations
   translations?: {
-    qwen?: string | null;      // AI translation
-    github?: string | null;    // Classic translation from GitHub API
+    sunnah?: string | null;    // sunnah.com EN translation
+    hadith_api?: string | null; // fawazahmed0/hadith-api BN translation
+    qwen?: string | null;      // AI translation (legacy sanadset hadiths)
   };
 }
 
@@ -120,15 +120,15 @@ export async function searchHadithKeyword(
 }
 
 /**
- * AI Chatbot Hadith search — ONLY github-classic translations.
- * Excludes Qwen AI translations to ensure consistent, verified source.
+ * AI Chatbot Hadith search — ONLY sunnah.com translations.
+ * Excludes AI translations to ensure consistent, verified source.
  */
 export async function searchHadithForAI(
   query: string,
   limit: number = 3,
   lang: string = 'en'
 ): Promise<HadithResult[]> {
-  return _searchHadith(query, limit, lang, 'github-classic');
+  return _searchHadith(query, limit, lang, 'sunnah.com');
 }
 
 async function _searchHadith(
@@ -201,20 +201,18 @@ async function _searchHadith(
         h.num_in_book,
         h.hadith_ar,
         h.matn_ar,
-        ht_github.matn_text AS github_translation,
+        ht_sunnah.matn_text AS sunnah_translation,
+        ht_hadith_api.matn_text AS hadith_api_translation,
         h.sanad_length,
         bm25(hadith_search_idx) AS rank,
         snippet(hadith_search_idx, 0, '<mark>', '</mark>', '...', 32) AS snippet
       FROM hadith_search_idx
       JOIN hadiths h ON h.id = hadith_search_idx.rowid
       JOIN hadith_books b ON b.id = h.book_id
-      LEFT JOIN hadith_translations ht_github ON ht_github.hadith_id = h.id AND ht_github.lang_code = ? AND ht_github.translator = 'github-classic'
+      LEFT JOIN hadith_translations ht_sunnah ON ht_sunnah.hadith_id = h.id AND ht_sunnah.lang_code = 'en' AND ht_sunnah.translator = 'sunnah.com'
+      LEFT JOIN hadith_translations ht_hadith_api ON ht_hadith_api.hadith_id = h.id AND ht_hadith_api.lang_code = 'bn' AND ht_hadith_api.translator = 'hadith-api'
       WHERE hadith_search_idx MATCH ?
     `;
-
-    if (translatorFilter) {
-      sql += ` AND ht_github.translator = '${translatorFilter}'`;
-    }
 
     sql += `
       ORDER BY
@@ -225,7 +223,7 @@ async function _searchHadith(
       LIMIT ?
     `;
 
-    rows = await db.select<any[]>(sql, [lang, cleanQuery, cap]);
+    rows = await db.select<any[]>(sql, [cleanQuery, cap]);
   }
 
   // Deduplicate by hadith ID — same hadith can match multiple translator rows
@@ -244,13 +242,14 @@ async function _searchHadith(
     num_in_book: r.num_in_book,
     hadith_ar: r.hadith_ar,
     matn_ar: r.matn_ar,
-    matn_en: r.github_translation ?? r.matn_en ?? null,
+    matn_en: r.sunnah_translation ?? r.hadith_api_translation ?? r.matn_en ?? null,
     sanad_length: r.sanad_length,
     rank: r.rank,
     snippet: r.snippet ?? r.matn_ar.slice(0, 160) + '...',
     translations: {
+      sunnah: r.sunnah_translation ?? null,
+      hadith_api: r.hadith_api_translation ?? null,
       qwen: null,
-      github: r.github_translation ?? null,
     },
   }));
 }
@@ -272,20 +271,23 @@ export async function getHadithByRef(
       h.num_in_book,
       h.hadith_ar,
       h.matn_ar,
-      ht_qwen.matn_text AS matn_en,
-      ht_github.matn_text AS github_translation,
+      ht_sunnah.matn_text AS sunnah_translation,
+      ht_hadith_api.matn_text AS hadith_api_translation,
       h.sanad_length,
       0 AS rank
     FROM hadiths h
     JOIN hadith_books b ON b.id = h.book_id
-    LEFT JOIN hadith_translations ht_qwen ON ht_qwen.hadith_id = h.id AND ht_qwen.lang_code = ? AND ht_qwen.translator = 'qwen3.5-9b'
-    LEFT JOIN hadith_translations ht_github ON ht_github.hadith_id = h.id AND ht_github.lang_code = ? AND ht_github.translator = 'github-classic'
+    LEFT JOIN hadith_translations ht_sunnah ON ht_sunnah.hadith_id = h.id AND ht_sunnah.lang_code = 'en' AND ht_sunnah.translator = 'sunnah.com'
+    LEFT JOIN hadith_translations ht_hadith_api ON ht_hadith_api.hadith_id = h.id AND ht_hadith_api.lang_code = 'bn' AND ht_hadith_api.translator = 'hadith-api'
     WHERE h.book_id = ? AND h.num_in_book = ?
     LIMIT 1
   `;
-  const rows = await db.select<any[]>(sql, [lang, lang, bookId, numInBook]);
+  const rows = await db.select<any[]>(sql, [bookId, numInBook]);
   if (rows.length === 0) return null;
   const r = rows[0];
+  const matn_en = lang === 'bn'
+    ? (r.hadith_api_translation ?? r.sunnah_translation ?? null)
+    : (r.sunnah_translation ?? null);
   return {
     id: r.id,
     book_id: r.book_id,
@@ -294,13 +296,13 @@ export async function getHadithByRef(
     num_in_book: r.num_in_book,
     hadith_ar: r.hadith_ar,
     matn_ar: r.matn_ar,
-    matn_en: r.matn_en ?? r.github_translation ?? null,
+    matn_en,
     sanad_length: r.sanad_length,
     rank: 0,
     snippet: r.matn_ar,
     translations: {
-      qwen: r.matn_en ?? null,
-      github: r.github_translation ?? null,
+      sunnah: r.sunnah_translation ?? null,
+      hadith_api: r.hadith_api_translation ?? null,
     },
   };
 }
@@ -337,19 +339,19 @@ export async function getHadithsByBook(
       h.num_in_book,
       h.hadith_ar,
       h.matn_ar,
-      ht_qwen.matn_text AS matn_en,
-      ht_github.matn_text AS github_translation,
+      ht_sunnah.matn_text AS sunnah_translation,
+      ht_hadith_api.matn_text AS hadith_api_translation,
       h.sanad_length,
       0 AS rank
     FROM hadiths h
     JOIN hadith_books b ON b.id = h.book_id
-    LEFT JOIN hadith_translations ht_qwen ON ht_qwen.hadith_id = h.id AND ht_qwen.lang_code = ? AND ht_qwen.translator = 'qwen3.5-9b'
-    LEFT JOIN hadith_translations ht_github ON ht_github.hadith_id = h.id AND ht_github.lang_code = ? AND ht_github.translator = 'github-classic'
+    LEFT JOIN hadith_translations ht_sunnah ON ht_sunnah.hadith_id = h.id AND ht_sunnah.lang_code = 'en' AND ht_sunnah.translator = 'sunnah.com'
+    LEFT JOIN hadith_translations ht_hadith_api ON ht_hadith_api.hadith_id = h.id AND ht_hadith_api.lang_code = 'bn' AND ht_hadith_api.translator = 'hadith-api'
     WHERE h.book_id = ?
     ORDER BY h.num_in_book ASC
     LIMIT ? OFFSET ?
   `;
-  const rows = await db.select<any[]>(sql, [lang, lang, bookId, perPage, offset]);
+  const rows = await db.select<any[]>(sql, [bookId, perPage, offset]);
 
   return {
     hadiths: rows.map((r) => ({
@@ -360,13 +362,15 @@ export async function getHadithsByBook(
       num_in_book: r.num_in_book,
       hadith_ar: r.hadith_ar,
       matn_ar: r.matn_ar,
-      matn_en: r.matn_en ?? r.github_translation ?? null,
+      matn_en: lang === 'bn'
+        ? (r.hadith_api_translation ?? r.sunnah_translation ?? null)
+        : (r.sunnah_translation ?? null),
       sanad_length: r.sanad_length,
       rank: r.rank,
       snippet: r.matn_ar,
       translations: {
-        qwen: r.matn_en ?? null,
-        github: r.github_translation ?? null,
+        sunnah: r.sunnah_translation ?? null,
+        hadith_api: r.hadith_api_translation ?? null,
       },
     })),
     total,
@@ -395,21 +399,21 @@ export async function getRandomHadiths(
       h.num_in_book,
       h.hadith_ar,
       h.matn_ar,
-      ht_github.matn_text AS github_translation,
-      ht_qwen.matn_text AS qwen_translation,
+      ht_sunnah.matn_text AS sunnah_translation,
+      ht_hadith_api.matn_text AS hadith_api_translation,
       h.sanad_length,
       0 AS rank
     FROM hadiths h
     JOIN hadith_books b ON b.id = h.book_id
-    LEFT JOIN hadith_translations ht_github ON ht_github.hadith_id = h.id AND ht_github.lang_code = ? AND ht_github.translator = 'github-classic'
-    LEFT JOIN hadith_translations ht_qwen ON ht_qwen.hadith_id = h.id AND ht_qwen.lang_code = ? AND ht_qwen.translator = 'qwen3.5-9b'
+    LEFT JOIN hadith_translations ht_sunnah ON ht_sunnah.hadith_id = h.id AND ht_sunnah.lang_code = 'en' AND ht_sunnah.translator = 'sunnah.com'
+    LEFT JOIN hadith_translations ht_hadith_api ON ht_hadith_api.hadith_id = h.id AND ht_hadith_api.lang_code = 'bn' AND ht_hadith_api.translator = 'hadith-api'
     WHERE h.id IN (
       SELECT id FROM hadiths ORDER BY RANDOM() LIMIT ?
     )
     ORDER BY h.id
   `;
 
-  const rows = await db.select<any[]>(sql, [lang, lang, cap]);
+  const rows = await db.select<any[]>(sql, [cap]);
 
   return (rows ?? []).map((r) => ({
     id: r.id,
@@ -419,13 +423,15 @@ export async function getRandomHadiths(
     num_in_book: r.num_in_book,
     hadith_ar: r.hadith_ar,
     matn_ar: r.matn_ar,
-    matn_en: r.github_translation ?? r.qwen_translation ?? null,
+    matn_en: lang === 'bn'
+      ? (r.hadith_api_translation ?? r.sunnah_translation ?? null)
+      : (r.sunnah_translation ?? null),
     sanad_length: r.sanad_length,
     rank: 0,
     snippet: r.matn_ar,
     translations: {
-      qwen: r.qwen_translation ?? null,
-      github: r.github_translation ?? null,
+      sunnah: r.sunnah_translation ?? null,
+      hadith_api: r.hadith_api_translation ?? null,
     },
   }));
 }

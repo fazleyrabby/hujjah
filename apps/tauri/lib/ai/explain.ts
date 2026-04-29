@@ -50,7 +50,7 @@ async function retrieveHadithContext(query: string, limit = 3): Promise<HadithCo
       book_name_en: r.book_name_en,
       num_in_book: r.num_in_book,
       matn_ar: r.matn_ar,
-      matn_en: r.matn_en ?? r.translations?.github ?? null,
+      matn_en: r.matn_en ?? r.translations?.sunnah ?? null,
       sanad_length: r.sanad_length,
     }));
   } catch {
