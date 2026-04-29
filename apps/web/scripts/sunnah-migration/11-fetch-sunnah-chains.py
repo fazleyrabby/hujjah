@@ -26,7 +26,7 @@ import os
 SQLITE_DB = '/Users/rabbi/Desktop/Projects/hujjah/apps/tauri/src-tauri/resources/hujjah-hadith-core.db'
 API_BASE  = 'https://api.sunnah.com/v1'
 RATE_LIMIT = 4.5   # req/sec (stay under 5)
-DAILY_CAP  = 4900  # stay under 5,000/day
+DAILY_CAP  = 4700  # stay under 5,000/day
 
 # sunnah_collection slug → API collection name
 COLLECTION_MAP = {

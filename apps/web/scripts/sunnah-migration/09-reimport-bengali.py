@@ -19,8 +19,8 @@ BATCH_SIZE = 500
 
 # fawazahmed0 collection slug → (our sunnah_collection, CDN path)
 COLLECTIONS = {
-    'bukhari':      'ben-bukhari',
-    'muslim':       'ben-muslim',
+    # bukhari: skipped — fawazahmed0 ben-bukhari is Arabic text, not Bengali
+    # muslim: skipped — fawazahmed0 ben-muslim entries are all empty
     'abudawud':     'ben-abudawud',
     'ibnmajah':     'ben-ibnmajah',
     'tirmidhi':     'ben-tirmidhi',
