@@ -195,11 +195,11 @@ export default function AudioPlayer() {
             </button>
           )}
 
-          {/* Stop */}
+          {/* Next Ayah */}
           <button
-            onClick={stop}
-            className="w-8 h-8 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-colors"
-            title="Stop"
+            onClick={() => stop(true)}
+            className="w-8 h-8 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-teal-600 dark:hover:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/20 rounded-full transition-colors"
+            title="Next ayah"
           >
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h12v12H6z" /></svg>
           </button>

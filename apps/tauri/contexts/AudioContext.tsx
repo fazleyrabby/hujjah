@@ -321,10 +321,25 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       await globalAudio.play();
       setIsPlaying(true);
       startProgressTracking();
+    } else if (currentSurahRef.current && currentRef.current) {
+      await play({
+        surah: currentSurahRef.current,
+        ayah: currentRef.current.ayah,
+        autoPlay: true,
+      });
+    } else if (currentSurahRef.current) {
+      await play({
+        surah: currentSurahRef.current,
+        ayah: 1,
+        autoPlay: true,
+      });
     }
-  }, [startProgressTracking]);
+  }, [play, startProgressTracking]);
 
-  const stop = useCallback(() => {
+  const stop = useCallback(async (skipToNext: boolean = false) => {
+    const currentAyah = currentRef.current?.ayah;
+    const currentSurah = currentSurahRef.current;
+    const wasAutoPlay = autoPlayRef.current;
     clearProgressInterval();
     cleanupAudio();
     setIsPlaying(false);
@@ -337,7 +352,19 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     setSurahTotalDuration(0);
     currentSurahRef.current = null;
     autoPlayRef.current = false;
-  }, [clearProgressInterval]);
+
+    if (skipToNext && currentSurah && currentAyah) {
+      const nextAyah = currentAyah + 1;
+      if (nextAyah <= surahVerseCountRef.current) {
+        await play({ surah: currentSurah, ayah: nextAyah, autoPlay: true });
+      }
+    } else if (wasAutoPlay && currentSurah && currentAyah) {
+      const nextAyah = currentAyah + 1;
+      if (nextAyah <= surahVerseCountRef.current) {
+        await play({ surah: currentSurah, ayah: nextAyah, autoPlay: true });
+      }
+    }
+  }, [clearProgressInterval, play]);
 
   const seekTo = useCallback(async (ratio: number) => {
     const surah = currentRef.current?.surah ?? currentSurahRef.current;
