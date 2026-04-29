@@ -82,8 +82,9 @@ export default function Home() {
       setTafsirOpen({});
       setTafsirCache({});
       const tafsirSlugs = await fetch(`/api/quran?action=tafsir_slugs&lang=${activeLang}`).then(r => r.json()).catch(() => []);
-      setAvailableTafsirSlugs(tafsirSlugs);
-      setTafsirSlug(prev => tafsirSlugs.includes(prev) ? prev : (tafsirSlugs[0] ?? ''));
+      const slugs = Array.isArray(tafsirSlugs) ? tafsirSlugs : [];
+      setAvailableTafsirSlugs(slugs);
+      setTafsirSlug(prev => slugs.includes(prev) ? prev : (slugs[0] ?? ''));
     } catch (err: any) { setError(err.message); }
     finally { setLoading(false); }
   }, []);

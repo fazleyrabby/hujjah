@@ -230,11 +230,15 @@ export async function GET(req: NextRequest) {
 
     if (action === 'tafsir_slugs') {
       const lang = searchParams.get('lang') ?? 'en';
-      const rows = await db.select<any[]>(
-        'SELECT DISTINCT tafsir_slug FROM tafsir WHERE lang_code = ? ORDER BY tafsir_slug',
-        [lang]
-      );
-      return NextResponse.json(rows.map(r => r.tafsir_slug));
+      try {
+        const rows = await db.select<any[]>(
+          'SELECT DISTINCT tafsir_slug FROM tafsir WHERE lang_code = ? ORDER BY tafsir_slug',
+          [lang]
+        );
+        return NextResponse.json(rows.map(r => r.tafsir_slug));
+      } catch {
+        return NextResponse.json([]);
+      }
     }
 
     if (action === 'stats') {
