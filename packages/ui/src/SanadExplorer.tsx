@@ -8,6 +8,13 @@ const BASE_LIMIT = 5;
 const EXPANDED_MULTIPLIER = 2;
 const DEFAULT_DEPTH = 1;
 
+const TABAQAH_LABELS: Record<number, string> = {
+  1: 'Sahaba',
+  2: "Tabi'un",
+  3: "Tabi' al-Tabi'in",
+  4: 'Later Scholar',
+};
+
 /* ─── Types ─── */
 interface AdjacencyMaps {
   parents: Map<number, number[]>;
@@ -238,10 +245,19 @@ function NarratorNodeCard({
           </span>
         )}
         <span className={clsx('text-[8px] md:text-[9px] mt-1 font-medium', darkMode ? 'text-gray-100' : 'text-gray-500')}>
-          {totalParents > 0 && `${totalParents} teachers`}
+          {totalParents > 0 && `${totalParents}T`}
           {totalParents > 0 && totalChildren > 0 && ' · '}
-          {totalChildren > 0 && `${totalChildren} students`}
+          {totalChildren > 0 && `${totalChildren}S`}
         </span>
+        {node.tabaqah && TABAQAH_LABELS[node.tabaqah] && (
+          <span className={clsx('text-[8px] px-1.5 py-0.5 rounded-full mt-0.5 font-medium',
+            node.tabaqah === 1
+              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400'
+              : 'bg-gray-100 text-gray-600 dark:bg-zinc-700 dark:text-gray-300'
+          )}>
+            {TABAQAH_LABELS[node.tabaqah]}
+          </span>
+        )}
         {rel && (
           <span className={clsx('text-[8px] px-1.5 py-0.5 rounded-full mt-1 font-medium', relColor)}>
             {rel}

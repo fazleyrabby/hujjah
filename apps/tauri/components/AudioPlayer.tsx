@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuranAudio } from '@/contexts/AudioContext';
 import { getSurahById, type Surah } from '@/lib/db';
+import { RECITERS } from '@/lib/reciters';
 
 function fmtTime(sec: number): string {
   if (!isFinite(sec) || sec < 0) return '0:00';
@@ -14,7 +15,7 @@ function fmtTime(sec: number): string {
 export default function AudioPlayer() {
   const {
     isPlaying, current, surahProgress, surahCurrentTime, surahTotalDuration,
-    pause, resume, stop, seekTo
+    pause, resume, stop, seekTo, reciter, setReciter
   } = useQuranAudio();
 
   const [surahInfo, setSurahInfo] = useState<Surah | null>(null);
@@ -149,6 +150,20 @@ export default function AudioPlayer() {
             Ayah {current.ayah} · {fmtTime(surahCurrentTime)} / {fmtTime(surahTotalDuration)}
           </p>
         </a>
+
+        {/* Reciter selector */}
+        <select
+          value={reciter}
+          onChange={e => setReciter(e.target.value)}
+          className="text-xs bg-transparent border border-gray-200 dark:border-zinc-700 rounded px-1.5 py-1 text-gray-600 dark:text-gray-300 cursor-pointer hover:border-teal-400 dark:hover:border-teal-600 transition-colors outline-none"
+          title="Select reciter"
+        >
+          {RECITERS.map(r => (
+            <option key={r.id} value={r.id} className="text-gray-900 dark:text-gray-100 bg-white dark:bg-zinc-900">
+              {r.name}
+            </option>
+          ))}
+        </select>
 
         {/* Controls */}
         <div className="flex items-center gap-1.5">

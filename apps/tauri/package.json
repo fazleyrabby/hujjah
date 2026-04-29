@@ -17,8 +17,8 @@
     "test:run": "vitest run"
   },
   "dependencies": {
-    "@hujjah/ui": "workspace:*",
     "@huggingface/transformers": "^4.2.0",
+    "@hujjah/ui": "workspace:*",
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-dialog": "^2.0.0",
     "@tauri-apps/plugin-fs": "^2.0.0",
@@ -36,10 +36,12 @@
     "@tauri-apps/cli": "^2.0.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^6.0.1",
+    "better-sqlite3": "^11.10.0",
     "clsx": "^2.1.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",

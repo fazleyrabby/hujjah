@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { clsx } from 'clsx';
 import { AppNav, useTheme, SanadExplorer } from '@hujjah/ui';
@@ -423,9 +423,8 @@ function RadialView({ nodes, edges, centerId, darkMode, lang, onNodeClick }: {
 }
 
 /* ─── Main Page ─── */
-export default function GraphPage() {
+function GraphPageInner({ searchParams }: { searchParams: URLSearchParams }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [mounted, setMounted] = useState(false);
   const [lang, setLang] = useState<Lang>('en');
   const { darkMode, toggleDarkMode } = useTheme();
@@ -652,5 +651,13 @@ export default function GraphPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function GraphPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-white dark:bg-zinc-950" />}>
+      <GraphPageInner searchParams={new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '')} />
+    </Suspense>
   );
 }
