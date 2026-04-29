@@ -25,13 +25,13 @@ const BOOK_ABBREVIATIONS: Record<number, string> = {
 };
 
 interface TranslatorOption {
-  id: 'github' | 'qwen';
+  id: 'sunnah' | 'qwen';
   label: string;
   description: string;
 }
 
 const TRANSLATORS: TranslatorOption[] = [
-  { id: 'github', label: 'Classic', description: 'Traditional translations' },
+  { id: 'sunnah', label: 'Classic', description: 'Traditional translations' },
   { id: 'qwen', label: 'AI', description: 'Modern AI translations' },
 ];
 
@@ -69,7 +69,7 @@ export default function HadithPage() {
   const [mounted, setMounted] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [lang, setLang] = useState<'en' | 'bn'>('en');
-  const [translator, setTranslator] = useState<'github' | 'qwen'>('github');
+  const [translator, setTranslator] = useState<'sunnah' | 'qwen'>('sunnah');
   const [books, setBooks] = useState<HadithBook[]>([]);
   const [selectedBook, setSelectedBook] = useState<number | null>(null);
   const [hadithData, setHadithData] = useState<HadithPageResult | null>(null);
@@ -543,9 +543,9 @@ export default function HadithPage() {
                 {/* Translations */}
                 <div className="space-y-4 pt-4 border-t border-gray-100 dark:border-zinc-800">
                   {(() => {
-                    const trans = translator === 'github' 
-                      ? selectedFullHadith.translations?.github ?? selectedFullHadith.translations?.qwen
-                      : selectedFullHadith.translations?.qwen ?? selectedFullHadith.translations?.github;
+                    const trans = translator === 'sunnah'
+                      ? selectedFullHadith.translations?.sunnah ?? selectedFullHadith.translations?.qwen
+                      : selectedFullHadith.translations?.qwen ?? selectedFullHadith.translations?.sunnah;
                     
                     if (!trans) return null;
                     return (
@@ -584,15 +584,15 @@ function HadithCard({
 }: { 
   hadith: HadithResult; 
   lang: 'en' | 'bn'; 
-  translator: 'github' | 'qwen';
+  translator: 'sunnah' | 'qwen';
   onViewFull: (h: HadithResult) => void;
 }) {
   const grade = getHadithGrade(hadith.sanad_length);
   
   // Select translation based on user preference
-  const translation = translator === 'github' 
-    ? hadith.translations?.github ?? hadith.translations?.qwen
-    : hadith.translations?.qwen ?? hadith.translations?.github;
+  const translation = translator === 'sunnah'
+    ? hadith.translations?.sunnah ?? hadith.translations?.qwen
+    : hadith.translations?.qwen ?? hadith.translations?.sunnah;
 
   const isLong = hadith.matn_ar.length > 300 || (translation && translation.length > 400);
 
@@ -636,9 +636,9 @@ function HadithCard({
       )}
       
       {/* Show translator indicator if both available */}
-      {hadith.translations?.github && hadith.translations?.qwen && (
+      {hadith.translations?.sunnah && hadith.translations?.qwen && (
         <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">
-          Translation: {translator === 'github' ? 'Classic' : 'AI'} 
+          Translation: {translator === 'sunnah' ? 'Classic' : 'AI'}
         </p>
       )}
 

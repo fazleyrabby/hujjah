@@ -532,6 +532,48 @@ export async function purgeLegacyStorage(): Promise<string> {
   }
 }
 
+// ─── Tafsir ───
+export interface TafsirResult {
+  tafsir_slug: string;
+  lang_code: string;
+  text: string;
+}
+
+const DEFAULT_TAFSIR_SLUGS: Record<string, string[]> = {
+  en: ['en-ibn-kathir', 'en-maariful-quran'],
+  bn: ['bn-abu-bakr-zakaria', 'bn-ibn-kathir', 'bn-ahsanul-bayaan'],
+  ar: ['ar-ibn-kathir', 'ar-tabari', 'ar-muyassar'],
+};
+
+export async function getTafsirSlugs(lang: string): Promise<string[]> {
+  const db = await getDB();
+  const rows = await db.select<{ tafsir_slug: string }[]>(
+    'SELECT DISTINCT tafsir_slug FROM tafsir WHERE lang_code = ? ORDER BY tafsir_slug',
+    [lang]
+  );
+  return rows.map(r => r.tafsir_slug);
+}
+
+export async function getTafsir(verseId: number, lang: string, slug?: string): Promise<TafsirResult | null> {
+  const db = await getDB();
+  if (slug) {
+    const rows = await db.select<TafsirResult[]>(
+      'SELECT tafsir_slug, lang_code, text FROM tafsir WHERE verse_id = ? AND tafsir_slug = ?',
+      [verseId, slug]
+    );
+    return rows[0] ?? null;
+  }
+  const slugs = DEFAULT_TAFSIR_SLUGS[lang] ?? DEFAULT_TAFSIR_SLUGS['en'];
+  for (const s of slugs) {
+    const rows = await db.select<TafsirResult[]>(
+      'SELECT tafsir_slug, lang_code, text FROM tafsir WHERE verse_id = ? AND tafsir_slug = ?',
+      [verseId, s]
+    );
+    if (rows[0]) return rows[0];
+  }
+  return null;
+}
+
 // ─── Backwards compat: old searchQuranFTS ───
 export async function searchQuranFTS(
   query: string,

@@ -38,6 +38,10 @@ export default function Home() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [surahSearch, setSurahSearch] = useState('');
   const [latency, setLatency] = useState<number | null>(null);
+  const [tafsirOpen, setTafsirOpen] = useState<Record<number, boolean>>({});
+  const [tafsirCache, setTafsirCache] = useState<Record<number, { slug: string; text: string } | null>>({});
+  const [tafsirSlug, setTafsirSlug] = useState<string>('');
+  const [availableTafsirSlugs, setAvailableTafsirSlugs] = useState<string[]>([]);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const { play: playAudio, pause: pauseAudio, resume: resumeAudio, stop: stopAudio, isPlaying: isAudioPlaying, current: currentAudio, reciter, setReciter } = useQuranAudio();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -75,6 +79,12 @@ export default function Home() {
       setSelectedSurah(surahId);
       setAvailableTranslators((trans as any[]).map((t: any) => t.translator_slug));
       setSelectedTranslator(translatorSlug ?? verses[0]?.translator_slug ?? '');
+      setTafsirOpen({});
+      setTafsirCache({});
+      const tafsirSlugs = await fetch(`/api/quran?action=tafsir_slugs&lang=${activeLang}`).then(r => r.json()).catch(() => []);
+      const slugs = Array.isArray(tafsirSlugs) ? tafsirSlugs : [];
+      setAvailableTafsirSlugs(slugs);
+      setTafsirSlug(prev => slugs.includes(prev) ? prev : (slugs[0] ?? ''));
     } catch (err: any) { setError(err.message); }
     finally { setLoading(false); }
   }, []);
@@ -112,6 +122,9 @@ export default function Home() {
     setLang(newLang);
     localStorage.setItem('hujjah-lang', newLang);
     setSelectedTranslator('');
+    setTafsirOpen({});
+    setTafsirCache({});
+    setTafsirSlug('');
     if (query.trim()) {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => executeSearch(query, newLang), 150);
@@ -218,8 +231,8 @@ export default function Home() {
                 const q = surahSearch.toLowerCase();
                 return (
                   s.name_en.toLowerCase().includes(q) ||
-                  s.name_bn.includes(surahSearch) ||
-                  s.name_ar.includes(surahSearch) ||
+                  (s.name_bn && s.name_bn.includes(surahSearch)) ||
+                  (s.name_ar && s.name_ar.includes(surahSearch)) ||
                   String(s.id) === surahSearch.trim()
                 );
               }).map(s => (
@@ -487,6 +500,65 @@ export default function Home() {
                     </div>
                     <p className="text-lg font-arabic text-gray-900 dark:text-white leading-relaxed mb-3" dir="rtl">{v.text_ar}</p>
                     <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{v.text}</p>
+                    {/* Tafsir toggle */}
+                    {availableTafsirSlugs.length > 0 && (
+                      <div className="mt-3 border-t border-gray-100 dark:border-zinc-800 pt-2">
+                        <button
+                          onClick={async () => {
+                            const open = !tafsirOpen[v.id];
+                            setTafsirOpen(prev => ({ ...prev, [v.id]: open }));
+                            if (open && tafsirCache[v.id] === undefined) {
+                              setTafsirCache(prev => ({ ...prev, [v.id]: null }));
+                              const slug = tafsirSlug || availableTafsirSlugs[0];
+                              const params = new URLSearchParams({ action: 'tafsir', verse_id: String(v.id), lang, ...(slug ? { slug } : {}) });
+                              const data = await fetch(`/api/quran?${params}`).then(r => r.json()).catch(() => null);
+                              setTafsirCache(prev => ({ ...prev, [v.id]: data }));
+                            }
+                          }}
+                          className="flex items-center gap-1.5 text-xs text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 font-medium transition-colors"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+                          </svg>
+                          {tafsirOpen[v.id] ? (lang === 'bn' ? 'তাফসীর লুকান' : 'Hide Tafsir') : (lang === 'bn' ? 'তাফসীর দেখুন' : 'Tafsir')}
+                        </button>
+                        {tafsirOpen[v.id] && (
+                          <div className="mt-2">
+                            {!(v.id in tafsirCache) ? null :
+                             tafsirCache[v.id] === null ? (
+                              <div className="flex items-center gap-2 py-2">
+                                <div className="w-3 h-3 border border-teal-500 border-t-transparent rounded-full animate-spin" />
+                                <span className="text-xs text-gray-400">{lang === 'bn' ? 'লোড হচ্ছে...' : 'Loading...'}</span>
+                              </div>
+                            ) : (
+                              <div className="bg-teal-50/60 dark:bg-teal-900/10 border border-teal-100 dark:border-teal-800/30 rounded-lg p-3">
+                                <div className="flex items-center justify-between mb-1.5">
+                                  <span className="text-[10px] font-medium text-teal-600 dark:text-teal-400 uppercase tracking-wider">{tafsirCache[v.id]?.slug ?? tafsirSlug}</span>
+                                  {availableTafsirSlugs.length > 1 && (
+                                    <select
+                                      value={tafsirSlug || availableTafsirSlugs[0]}
+                                      onChange={async e => {
+                                        const newSlug = e.target.value;
+                                        setTafsirSlug(newSlug);
+                                        setTafsirCache(prev => ({ ...prev, [v.id]: null }));
+                                        const params = new URLSearchParams({ action: 'tafsir', verse_id: String(v.id), lang, slug: newSlug });
+                                        const data = await fetch(`/api/quran?${params}`).then(r => r.json()).catch(() => null);
+                                        setTafsirCache(prev => ({ ...prev, [v.id]: data }));
+                                      }}
+                                      className="text-[10px] bg-transparent border border-teal-200 dark:border-teal-800 rounded px-1 py-0.5 text-teal-700 dark:text-teal-400 focus:outline-none"
+                                      onClick={e => e.stopPropagation()}
+                                    >
+                                      {availableTafsirSlugs.map(s => <option key={s} value={s}>{s}</option>)}
+                                    </select>
+                                  )}
+                                </div>
+                                <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{tafsirCache[v.id]?.text}</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

@@ -195,6 +195,52 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ count: rows[0]?.count ?? 0 });
     }
 
+    if (action === 'tafsir') {
+      const verseId = Number(searchParams.get('verse_id'));
+      const slug = searchParams.get('slug');
+      const lang = searchParams.get('lang') ?? 'en';
+
+      if (!verseId) return NextResponse.json({ error: 'verse_id required' }, { status: 400 });
+
+      if (slug) {
+        const rows = await db.select<any[]>(
+          'SELECT tafsir_slug, lang_code, text FROM tafsir WHERE verse_id = ? AND tafsir_slug = ?',
+          [verseId, slug]
+        );
+        return NextResponse.json(rows[0] ?? null);
+      }
+
+      // Default slug per lang
+      const defaultSlugs: Record<string, string[]> = {
+        en: ['en-ibn-kathir', 'en-maariful-quran'],
+        bn: ['bn-abu-bakr-zakaria', 'bn-ibn-kathir', 'bn-ahsanul-bayaan'],
+        ar: ['ar-ibn-kathir', 'ar-tabari', 'ar-muyassar'],
+      };
+      const slugs = defaultSlugs[lang] ?? defaultSlugs['en'];
+      const placeholders = slugs.map(() => '?').join(',');
+      const rows = await db.select<any[]>(
+        `SELECT tafsir_slug, lang_code, text FROM tafsir
+         WHERE verse_id = ? AND tafsir_slug IN (${placeholders})
+         ORDER BY CASE tafsir_slug ${slugs.map((s, i) => `WHEN '${s}' THEN ${i}`).join(' ')} ELSE 99 END
+         LIMIT 1`,
+        [verseId, ...slugs]
+      );
+      return NextResponse.json(rows[0] ?? null);
+    }
+
+    if (action === 'tafsir_slugs') {
+      const lang = searchParams.get('lang') ?? 'en';
+      try {
+        const rows = await db.select<any[]>(
+          'SELECT DISTINCT tafsir_slug FROM tafsir WHERE lang_code = ? ORDER BY tafsir_slug',
+          [lang]
+        );
+        return NextResponse.json(rows.map(r => r.tafsir_slug));
+      } catch {
+        return NextResponse.json([]);
+      }
+    }
+
     if (action === 'stats') {
       const rows = await db.select<any[]>(
         `SELECT (SELECT count(*) FROM verses) AS verses,

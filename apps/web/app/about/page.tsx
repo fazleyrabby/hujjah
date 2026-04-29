@@ -79,7 +79,7 @@ export default function AboutPage() {
               </div>
             </div>
 
-            {/* Translations */}
+            {/* Quran Translations */}
             <div className="flex items-start gap-4 p-4 bg-gray-50 dark:bg-zinc-800 rounded-lg">
               <div className="w-10 h-10 bg-amber-100 dark:bg-amber-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
                 <svg className="w-5 h-5 text-amber-700 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -88,11 +88,38 @@ export default function AboutPage() {
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Translations</h3>
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Quran Translations</h3>
                   <span className="text-[10px] font-bold text-green-700 dark:text-green-400 bg-green-100 dark:bg-green-900/30 px-2 py-0.5 rounded-full">VERIFIED</span>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">English (9 translators) & Bengali (2 translators) from <a href="https://tanzil.net" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-700 dark:hover:text-gray-200">Tanzil.net</a> — 68,596 rows</p>
                 <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">License: verbatim redistribution permitted with credit to Tanzil — <a href="https://tanzil.net/download/" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600 dark:hover:text-gray-300">terms of use</a></p>
+              </div>
+            </div>
+
+            {/* Tafsir */}
+            <div className="flex items-start gap-4 p-4 bg-gray-50 dark:bg-zinc-800 rounded-lg">
+              <div className="w-10 h-10 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5 text-orange-700 dark:text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 10-7.517 0c.85.493 1.509 1.333 1.509 2.316V18" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Tafsir (Quran Commentary)</h3>
+                  <span className="text-[10px] font-bold text-green-700 dark:text-green-400 bg-green-100 dark:bg-green-900/30 px-2 py-0.5 rounded-full">VERIFIED</span>
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">18,689 entries via <a href="https://quran.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-700 dark:hover:text-gray-200">quran.com</a> API — classical scholarship, public domain content</p>
+                <div className="mt-2 space-y-1">
+                  <div className="flex items-center gap-2 text-[10px] text-gray-400 dark:text-gray-500">
+                    <span className="w-2 h-2 rounded-full bg-teal-400 flex-shrink-0" />
+                    <span>Ibn Kathir (English & Bengali) — Abridged Tafsir</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[10px] text-gray-400 dark:text-gray-500">
+                    <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
+                    <span>Abu Bakr Zakaria (Bengali) — Tafsir AsSa'di translation</span>
+                  </div>
+                </div>
+                <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-2">Source: <a href="https://quran.com/api" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600 dark:hover:text-gray-300">quran.com Public API</a> · Content: classical Islamic scholarship (public domain)</p>
               </div>
             </div>
 
@@ -108,11 +135,16 @@ export default function AboutPage() {
                   <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Hadith Corpus</h3>
                   <span className="text-[10px] font-bold text-green-700 dark:text-green-400 bg-green-100 dark:bg-green-900/30 px-2 py-0.5 rounded-full">VERIFIED</span>
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Kutub al-Sittah (6 books) — 36,327 hadiths with sanad chains</p>
-                <div className="flex items-center flex-wrap gap-x-2 mt-1">
-                  <p className="text-[10px] text-gray-400 dark:text-gray-500"><a href="https://data.mendeley.com/datasets/5xth87zwb5/5" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600 dark:hover:text-gray-300">Sanadset 650K</a>: <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">CC BY 4.0</a></p>
-                  <span className="text-[10px] text-gray-300 dark:text-gray-600">·</span>
-                  <p className="text-[10px] text-gray-400 dark:text-gray-500"><a href="https://github.com/fawazahmed0/hadith-api" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600 dark:hover:text-gray-300">fawazahmed0/hadith-api</a>: The Unlicense (public domain)</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">15 collections — 53,986 hadiths</p>
+                <div className="mt-2 space-y-1">
+                  <div className="flex items-center gap-2 text-[10px] text-gray-400 dark:text-gray-500">
+                    <span className="w-2 h-2 rounded-full bg-teal-400 flex-shrink-0" />
+                    <span><span className="font-medium text-gray-600 dark:text-gray-300">42,694 hadiths</span> — <a href="https://sunnah.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600 dark:hover:text-gray-300">sunnah.com</a> API (Bukhari, Muslim, Abu Dawud, Tirmidhi, Nasa'i, Ibn Majah, Ahmad, Mishkat, Riyad, Adab, Shamail, Bulugh, Hisn, Forty)</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[10px] text-gray-400 dark:text-gray-500">
+                    <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
+                    <span><span className="font-medium text-gray-600 dark:text-gray-300">11,292 hadiths</span> — <a href="https://data.mendeley.com/datasets/5xth87zwb5/5" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600 dark:hover:text-gray-300">Sanadset</a> (Sunan al-Kubra al-Nasa'i) · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">CC BY 4.0</a></span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -129,8 +161,20 @@ export default function AboutPage() {
                   <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Hadith Translations</h3>
                   <span className="text-[10px] font-bold text-green-700 dark:text-green-400 bg-green-100 dark:bg-green-900/30 px-2 py-0.5 rounded-full">VERIFIED</span>
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">English: 36,324 | Bengali: 30,750</p>
-                <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">Sources: Classic (GitHub API) + AI (Qwen3.5-9B)</p>
+                <div className="mt-2 space-y-1">
+                  <div className="flex items-center gap-2 text-[10px] text-gray-400 dark:text-gray-500">
+                    <span className="w-2 h-2 rounded-full bg-teal-400 flex-shrink-0" />
+                    <span><span className="font-medium text-gray-600 dark:text-gray-300">English — 42,512</span> · <a href="https://sunnah.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600 dark:hover:text-gray-300">sunnah.com</a> (scholarly translations)</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[10px] text-gray-400 dark:text-gray-500">
+                    <span className="w-2 h-2 rounded-full bg-blue-400 flex-shrink-0" />
+                    <span><span className="font-medium text-gray-600 dark:text-gray-300">Bengali — 24,655</span> · <a href="https://github.com/fawazahmed0/hadith-api" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600 dark:hover:text-gray-300">fawazahmed0/hadith-api</a> · The Unlicense (public domain)</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[10px] text-gray-400 dark:text-gray-500">
+                    <span className="w-2 h-2 rounded-full bg-indigo-400 flex-shrink-0" />
+                    <span><span className="font-medium text-gray-600 dark:text-gray-300">English AI — 11,597</span> · Qwen3.5-9B (supplemental, hadiths without sunnah.com EN)</span>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -178,10 +222,19 @@ export default function AboutPage() {
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Narrator Chains (Sanad)</h3>
-                  <span className="text-[10px] font-bold text-green-700 dark:text-green-400 bg-green-100 dark:bg-green-900/30 px-2 py-0.5 rounded-full">VERIFIED</span>
+                  <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 rounded-full">IMPORTING</span>
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1"><a href="https://data.mendeley.com/datasets/5xth87zwb5/5" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-700 dark:hover:text-gray-200">Sanadset 650K</a> hadith corpus — 24,184 narrators · 94,188 transmission edges</p>
-                <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">Narrator names stored as-is from sanad text; honorifics (RA) omitted · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">CC BY 4.0</a> · <a href="https://www.sciencedirect.com/science/article/pii/S2352340922007478" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600 dark:hover:text-gray-300">paper</a></p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">24,184 narrators — chains being imported from sunnah.com API (~4,700/day)</p>
+                <div className="mt-2 space-y-1">
+                  <div className="flex items-center gap-2 text-[10px] text-gray-400 dark:text-gray-500">
+                    <span className="w-2 h-2 rounded-full bg-teal-400 flex-shrink-0" />
+                    <span><a href="https://sunnah.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600 dark:hover:text-gray-300">sunnah.com</a> — structured narrator chains from Arabic hadith text (primary source)</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[10px] text-gray-400 dark:text-gray-500">
+                    <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
+                    <span><a href="https://data.mendeley.com/datasets/5xth87zwb5/5" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600 dark:hover:text-gray-300">Sanadset</a> (Sunan al-Kubra al-Nasa'i only) · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">CC BY 4.0</a> · <a href="https://www.sciencedirect.com/science/article/pii/S2352340922007478" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600 dark:hover:text-gray-300">paper</a></span>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -208,12 +261,8 @@ export default function AboutPage() {
                     <span><span className="font-medium text-gray-600 dark:text-gray-300">837 narrators</span> — <a href="https://www.wikidata.org" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600 dark:hover:text-gray-300">Wikidata</a> (<a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">CC0</a>)</span>
                   </div>
                   <div className="flex items-center gap-2 text-[10px] text-gray-400 dark:text-gray-500">
-                    <span className="w-2 h-2 rounded-full bg-indigo-400 flex-shrink-0" />
-                    <span><span className="font-medium text-gray-600 dark:text-gray-300">50 narrators</span> — Wikidata (<a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">CC0</a>) + Wikipedia (<a href="https://creativecommons.org/licenses/by-sa/3.0/" target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">CC BY-SA 3.0</a>) cross-referenced</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-[10px] text-gray-400 dark:text-gray-500">
                     <span className="w-2 h-2 rounded-full bg-gray-300 dark:bg-gray-600 flex-shrink-0" />
-                    <span><span className="font-medium text-gray-600 dark:text-gray-300">22,769 narrators</span> — name only (extracted from sanad text, no biographical data yet)</span>
+                    <span><span className="font-medium text-gray-600 dark:text-gray-300">22,819 narrators</span> — name only (no biographical data yet)</span>
                   </div>
                 </div>
               </div>

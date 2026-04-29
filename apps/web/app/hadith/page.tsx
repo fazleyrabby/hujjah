@@ -7,23 +7,15 @@ import { AppNav, useTheme } from '@hujjah/ui';
 
 const ITEMS_PER_PAGE = 20;
 
-const BOOK_ABBREVIATIONS: Record<number, string> = {
-  1688: 'Bukhari',
-  1689: 'Muslim',
-  1648: 'Abu Dawud',
-  1444: 'Tirmidhi',
-  1140: "Nasa'i",
-  1652: 'Ibn Majah',
-};
 
 interface TranslatorOption {
-  id: 'github' | 'qwen';
+  id: 'sunnah' | 'qwen';
   label: string;
   description: string;
 }
 
 const TRANSLATORS: TranslatorOption[] = [
-  { id: 'github', label: 'Classic', description: 'Traditional translations' },
+  { id: 'sunnah', label: 'Classic', description: 'Traditional translations' },
   { id: 'qwen', label: 'AI', description: 'Modern AI translations' },
 ];
 
@@ -48,7 +40,8 @@ interface HadithResult {
   snippet?: string;
   translations?: {
     qwen?: string | null;
-    github?: string | null;
+    sunnah?: string | null;
+    hadith_api?: string | null;
   };
 }
 
@@ -94,7 +87,7 @@ export default function HadithPage() {
   const [mounted, setMounted] = useState(false);
   const { darkMode, toggleDarkMode } = useTheme();
   const [lang, setLang] = useState<'en' | 'bn'>('en');
-  const [translator, setTranslator] = useState<'github' | 'qwen'>('github');
+  const [translator, setTranslator] = useState<'sunnah' | 'qwen'>('sunnah');
   const [books, setBooks] = useState<HadithBook[]>([]);
   const [selectedBook, setSelectedBook] = useState<number | null>(null);
   const [hadithData, setHadithData] = useState<HadithPageResult | null>(null);
@@ -115,7 +108,15 @@ export default function HadithPage() {
     document.documentElement.style.setProperty('--font-scale', scale);
     fetch('/api/hadith?action=books')
       .then(r => r.json())
-      .then(setBooks)
+      .then((data: HadithBook[]) => {
+        const SITTAH = new Set([1688, 1689, 1648, 2014, 1652, 1444]);
+        setBooks(data.sort((a, b) => {
+          const aSittah = SITTAH.has(a.id) ? 0 : 1;
+          const bSittah = SITTAH.has(b.id) ? 0 : 1;
+          if (aSittah !== bSittah) return aSittah - bSittah;
+          return b.hadith_count - a.hadith_count;
+        }));
+      })
       .catch(console.error);
     const layout = localStorage.getItem('hujjah-layout');
     if (layout === 'compact') setContainerClass('max-w-3xl');
@@ -280,36 +281,38 @@ export default function HadithPage() {
         {/* ─── Book Selector ─── */}
         {searchResults === null && (
           <>
-            <div className="mb-6">
-              <h2 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
-                {lang === 'bn' ? 'কিতাব নির্বাচন করুন' : 'Select Book'}
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="mb-5">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  {lang === 'bn' ? 'কিতাব' : 'Book'}
+                </span>
+                {selectedBook !== null && (
+                  <span className="text-xs text-gray-400 dark:text-gray-500">
+                    — {books.find(b => b.id === selectedBook)?.name_en ?? ''}
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
                 {books.map((book) => {
-                  const abbrev = BOOK_ABBREVIATIONS[book.id] ?? book.name_en ?? book.name_ar;
+                  const short = book.name_en ?? book.name_ar;
+                  const isSelected = selectedBook === book.id;
+                  const isSittah = [1688, 1689, 1648, 2014, 1652, 1444].includes(book.id);
                   return (
                     <button
                       key={book.id}
                       onClick={() => setSelectedBook(book.id)}
-                      className={`p-3 rounded-xl border text-left transition-all ${
-                        selectedBook === book.id
-                          ? 'bg-teal-50 dark:bg-teal-900/20 border-teal-300 dark:border-teal-700'
-                          : 'bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-700 hover:border-gray-300 dark:hover:border-zinc-600'
+                      className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1 text-xs sm:px-4 sm:py-2 sm:text-sm rounded-full border font-medium transition-all whitespace-nowrap ${
+                        isSelected
+                          ? 'bg-teal-600 dark:bg-teal-500 border-teal-600 dark:border-teal-500 text-white'
+                          : isSittah
+                          ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 hover:border-amber-400 dark:hover:border-amber-500'
+                          : 'bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-700 text-gray-700 dark:text-gray-300 hover:border-teal-400 dark:hover:border-teal-600'
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
-                            {book.name_en ?? book.name_ar}
-                          </p>
-                          <p className="text-xs text-gray-500 dark:text-gray-300" dir="rtl">
-                            {book.name_ar}
-                          </p>
-                        </div>
-                        <span className="flex-shrink-0 text-[11px] font-mono px-2 py-0.5 bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-gray-400 rounded-full">
-                          {book.hadith_count.toLocaleString()}
-                        </span>
-                      </div>
+                      {short}
+                      <span className={`text-[10px] font-mono ${isSelected ? 'text-teal-100' : isSittah ? 'text-amber-500 dark:text-amber-500' : 'text-gray-400 dark:text-gray-500'}`}>
+                        {book.hadith_count >= 1000 ? `${(book.hadith_count / 1000).toFixed(1)}k` : book.hadith_count}
+                      </span>
                     </button>
                   );
                 })}
@@ -438,9 +441,11 @@ export default function HadithPage() {
                 {/* Translations */}
                 <div className="space-y-4 pt-4 border-t border-gray-100 dark:border-zinc-800">
                   {(() => {
-                    const trans = translator === 'github' 
-                      ? selectedFullHadith.translations?.github ?? selectedFullHadith.translations?.qwen
-                      : selectedFullHadith.translations?.qwen ?? selectedFullHadith.translations?.github;
+                    const trans = translator === 'sunnah'
+                      ? (lang === 'bn'
+                          ? selectedFullHadith.translations?.hadith_api ?? selectedFullHadith.translations?.sunnah ?? selectedFullHadith.translations?.qwen
+                          : selectedFullHadith.translations?.sunnah ?? selectedFullHadith.translations?.qwen)
+                      : selectedFullHadith.translations?.qwen ?? (lang === 'bn' ? selectedFullHadith.translations?.hadith_api : selectedFullHadith.translations?.sunnah);
                     
                     if (!trans) return null;
                     return (
@@ -479,16 +484,19 @@ function HadithCard({
 }: { 
   hadith: HadithResult; 
   lang: 'en' | 'bn'; 
-  translator: 'github' | 'qwen';
+  translator: 'sunnah' | 'qwen';
   onViewFull: (h: HadithResult) => void;
 }) {
   const grade = getHadithGrade(hadith.sanad_length);
-  
-  const translation = translator === 'github' 
-    ? hadith.translations?.github ?? hadith.translations?.qwen
-    : hadith.translations?.qwen ?? hadith.translations?.github;
 
-  const isLong = hadith.matn_ar.length > 300 || (translation && translation.length > 400);
+  const translation = translator === 'sunnah'
+    ? (lang === 'bn'
+        ? hadith.translations?.hadith_api ?? hadith.translations?.sunnah ?? hadith.translations?.qwen
+        : hadith.translations?.sunnah ?? hadith.translations?.qwen)
+    : hadith.translations?.qwen ?? (lang === 'bn' ? hadith.translations?.hadith_api : hadith.translations?.sunnah);
+
+  const arabicText = hadith.matn_ar || hadith.hadith_ar;
+  const isLong = arabicText.length > 300 || (translation && translation.length > 400);
 
   return (
     <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-xl p-4 shadow-sm">
@@ -516,7 +524,7 @@ function HadithCard({
         )}
         dir="rtl"
       >
-        {hadith.matn_ar}
+        {arabicText}
       </p>
 
       {translation && (
@@ -528,9 +536,9 @@ function HadithCard({
         </p>
       )}
       
-      {hadith.translations?.github && hadith.translations?.qwen && (
+      {hadith.translations?.sunnah && hadith.translations?.qwen && (
         <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">
-          Translation: {translator === 'github' ? 'Classic' : 'AI'} 
+          Translation: {translator === 'sunnah' ? 'Classic' : 'AI'}
         </p>
       )}
 

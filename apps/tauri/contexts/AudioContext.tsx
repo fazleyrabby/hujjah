@@ -9,6 +9,7 @@ import {
   useEffect,
 } from 'react';
 import { getDB, getSurahVerseCount } from '@/lib/db';
+import { RECITERS, DEFAULT_RECITER_ID, findReciter, type Reciter } from '@/lib/reciters';
 
 export interface PlayOptions {
   surah: number;
@@ -19,12 +20,14 @@ export interface PlayOptions {
 interface AudioContextType {
   isPlaying: boolean;
   current: { surah: number; ayah: number } | null;
-  progress: number;           // current verse progress 0-1
-  currentTime: number;        // current verse time (s)
-  duration: number;           // current verse duration (s)
-  surahProgress: number;      // full surah progress 0-1
-  surahCurrentTime: number;   // seconds into full surah
-  surahTotalDuration: number; // estimated total surah seconds
+  progress: number;
+  currentTime: number;
+  duration: number;
+  surahProgress: number;
+  surahCurrentTime: number;
+  surahTotalDuration: number;
+  reciter: string;
+  setReciter: (id: string) => void;
   play: (opts: PlayOptions) => Promise<void>;
   pause: () => void;
   resume: () => Promise<void>;
@@ -40,8 +43,36 @@ function pad3(n: number): string {
   return n.toString().padStart(3, '0');
 }
 
-function buildAudioUrl(surah: number, ayah: number): string {
-  return `https://everyayah.com/data/Alhusary_128kbps/${pad3(surah)}${pad3(ayah)}.mp3`;
+function buildEveryayahUrl(surah: number, ayah: number, folder: string): string {
+  return `https://everyayah.com/data/${folder}/${pad3(surah)}${pad3(ayah)}.mp3`;
+}
+
+function buildVersesQuranUrl(surah: number, ayah: number, path: string): string {
+  return `https://verses.quran.com/${path}/${pad3(surah)}${pad3(ayah)}.mp3`;
+}
+
+function buildIslamicNetworkUrl(surah: number, ayah: number, id: string): string {
+  return `https://cdn.islamic.network/quran/audio/128/${id}/${surah.toString().padStart(3, '0')}${ayah.toString().padStart(3, '0')}.mp3`;
+}
+
+async function resolveAudioUrl(surah: number, ayah: number, reciter: Reciter): Promise<string> {
+  const folders = reciter.everyayahFolder ? [`everyayah:${reciter.everyayahFolder}`] : [];
+  const cdns = [
+    ...folders.map(f => {
+      const [, folder] = f.split(':');
+      return buildEveryayahUrl(surah, ayah, folder!);
+    }),
+    reciter.versesQuranPath ? buildVersesQuranUrl(surah, ayah, reciter.versesQuranPath) : null,
+    reciter.islamicNetworkId ? buildIslamicNetworkUrl(surah, ayah, reciter.islamicNetworkId) : null,
+  ].filter(Boolean) as string[];
+
+  for (const url of cdns) {
+    try {
+      const resp = await fetch(url, { method: 'HEAD' });
+      if (resp.ok) return url;
+    } catch { /* try next */ }
+  }
+  return cdns[0];
 }
 
 async function resolveLocalPath(surah: number, ayah: number): Promise<string | null> {
@@ -58,10 +89,9 @@ async function resolveLocalPath(surah: number, ayah: number): Promise<string | n
   }
 }
 
-async function downloadAndCache(surah: number, ayah: number): Promise<string> {
-  const audioUrl = buildAudioUrl(surah, ayah);
+async function downloadAndCache(surah: number, ayah: number, url: string): Promise<string> {
   try {
-    const audioResp = await fetch(audioUrl);
+    const audioResp = await fetch(url);
     if (!audioResp.ok) throw new Error(`HTTP ${audioResp.status}`);
     const blob = await audioResp.blob();
     const arrayBuffer = await blob.arrayBuffer();
@@ -76,14 +106,15 @@ async function downloadAndCache(surah: number, ayah: number): Promise<string> {
     return `${dir}/audio/${surah}_${ayah}.mp3`;
   } catch (err) {
     console.warn('[Audio] Cache failed, using streamed URL:', err);
-    return audioUrl;
+    return url;
   }
 }
 
-async function resolveAudioPath(surah: number, ayah: number): Promise<string> {
+async function resolveAudioPath(surah: number, ayah: number, reciter: Reciter): Promise<string> {
   const local = await resolveLocalPath(surah, ayah);
   if (local) return local;
-  return downloadAndCache(surah, ayah);
+  const url = await resolveAudioUrl(surah, ayah, reciter);
+  return downloadAndCache(surah, ayah, url);
 }
 
 async function getNextAyah(surah: number, ayah: number): Promise<PlayOptions | null> {
@@ -120,6 +151,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   const [surahProgress, setSurahProgress] = useState(0);
   const [surahCurrentTime, setSurahCurrentTime] = useState(0);
   const [surahTotalDuration, setSurahTotalDuration] = useState(0);
+  const [reciter, setReciterState] = useState(DEFAULT_RECITER_ID);
 
   const autoPlayRef = useRef(false);
   const loadingRef = useRef(false);
@@ -129,13 +161,26 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   const currentSurahRef = useRef<number | null>(null);
   const currentRef = useRef(current);
   const surahTotalDurationRef = useRef(0);
+  const reciterRef = useRef(DEFAULT_RECITER_ID);
 
-  // Keep refs in sync with state so callbacks always see latest values
   useEffect(() => { currentRef.current = current; }, [current]);
   useEffect(() => { surahTotalDurationRef.current = surahTotalDuration; }, [surahTotalDuration]);
 
-  // Stable ref for play — lets onended always call the latest play without deps
   const playRef = useRef<(opts: PlayOptions) => Promise<void>>(async () => {});
+
+  const setReciter = useCallback((id: string) => {
+    reciterRef.current = id;
+    setReciterState(id);
+    localStorage.setItem('hujjah-reciter', id);
+  }, []);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('hujjah-reciter');
+    if (saved && RECITERS.find(r => r.id === saved)) {
+      reciterRef.current = saved;
+      setReciterState(saved);
+    }
+  }, []);
 
   const clearProgressInterval = useCallback(() => {
     if (progressIntervalRef.current) {
@@ -145,10 +190,9 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const estimateDuration = useCallback((key: string) => {
-    return verseDurationsRef.current.get(key) ?? 10; // default 10s estimate
+    return verseDurationsRef.current.get(key) ?? 10;
   }, []);
 
-  // Stable: reads only refs, no state deps
   const computeSurahCumulative = useCallback((surah: number, ayah: number, verseTime: number) => {
     const count = surahVerseCountRef.current;
     if (count === 0) return { current: 0, total: 0 };
@@ -166,7 +210,6 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     return { current: previous + verseTime, total };
   }, []);
 
-  // Stable: reads only refs + computeSurahCumulative (also stable)
   const startProgressTracking = useCallback(() => {
     clearProgressInterval();
     progressIntervalRef.current = setInterval(() => {
@@ -196,22 +239,20 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     const { surah, ayah, autoPlay = false } = opts;
     autoPlayRef.current = autoPlay;
 
-    // Only reset per-verse state; keep surah-level state for continuity
     setProgress(0);
     setCurrentTime(0);
     setDuration(0);
 
-    // Load surah verse count if changed (new surah)
     if (currentSurahRef.current !== surah) {
       currentSurahRef.current = surah;
       surahVerseCountRef.current = await getSurahVerseCount(surah);
-      // Reset surah state for new surah
       setSurahProgress(0);
       setSurahCurrentTime(0);
     }
 
     try {
-      const path = await resolveAudioPath(surah, ayah);
+      const rec = findReciter(reciterRef.current);
+      const path = await resolveAudioPath(surah, ayah, rec);
       const audio = new Audio(path);
       audio.preload = 'auto';
       globalAudio = audio;
@@ -265,7 +306,6 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     }
   }, [clearProgressInterval, startProgressTracking]);
 
-  // Keep playRef always pointing to latest play
   useEffect(() => { playRef.current = play; }, [play]);
 
   const pause = useCallback(() => {
@@ -305,7 +345,6 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
 
     const targetTime = ratio * surahTotalDurationRef.current;
 
-    // Find which verse contains this time
     let accumulated = 0;
     let targetAyah = 1;
     let ayahOffset = 0;
@@ -319,7 +358,6 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       accumulated += dur;
     }
 
-    // If we're already on the right verse, just seek within it
     if (currentRef.current?.ayah === targetAyah && globalAudio) {
       globalAudio.currentTime = Math.max(0, Math.min(globalAudio.duration || 0, ayahOffset));
       setProgress(globalAudio.duration > 0 ? ayahOffset / globalAudio.duration : 0);
@@ -330,11 +368,11 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // Otherwise load the target verse and seek
     try {
       cleanupAudio();
       clearProgressInterval();
-      const path = await resolveAudioPath(surah, targetAyah);
+      const rec = findReciter(reciterRef.current);
+      const path = await resolveAudioPath(surah, targetAyah, rec);
       const audio = new Audio(path);
       audio.preload = 'auto';
       globalAudio = audio;
@@ -384,7 +422,6 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     }
   }, [clearProgressInterval, computeSurahCumulative, estimateDuration, startProgressTracking]);
 
-  // Keyboard shortcuts (ignore when typing in inputs)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.code === 'Space' && current) {
@@ -401,7 +438,6 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('keydown', handler);
   }, [current, isPlaying, pause, resume]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => clearProgressInterval();
   }, [clearProgressInterval]);
@@ -410,6 +446,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     <AudioContext.Provider value={{
       isPlaying, current, progress, currentTime, duration,
       surahProgress, surahCurrentTime, surahTotalDuration,
+      reciter, setReciter,
       play, pause, resume, stop, seekTo
     }}>
       {children}
