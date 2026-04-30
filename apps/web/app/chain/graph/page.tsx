@@ -185,7 +185,12 @@ function TreeView({ nodes, edges, centerId, darkMode, lang, onNodeClick }: {
   const { parents, children } = getAdj(edges);
   const t = GRAPH_I18N[lang];
 
+  const visited = new Set<number>();
+
   const buildTree = (id: number, depth: number): { node: NarratorNode; children: any[] } | null => {
+    if (visited.has(id)) return null;
+    visited.add(id);
+    if (depth > 3) return null;
     const node = nodeMap.get(id);
     if (!node) return null;
     const childIds = children.get(id) || [];
