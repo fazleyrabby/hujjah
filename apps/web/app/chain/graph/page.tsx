@@ -678,7 +678,7 @@ function GraphPage() {
             />
           )}
           {view === 'tree' && (
-            <TreeView
+            <SanadExplorer
               nodes={graphData.nodes}
               edges={graphData.edges}
               centerId={narratorId!}
