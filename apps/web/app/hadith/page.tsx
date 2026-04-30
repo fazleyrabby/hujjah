@@ -232,7 +232,7 @@ export default function HadithPage() {
             onLangChange={(l) => setLang(l as 'en' | 'bn')}
             fontSize={fontSize}
             onFontSizeChange={(size) => {
-              setFontSize(size);
+              setFontSize(size as 'small' | 'medium' | 'large');
               localStorage.setItem('hujjah-font-size', size);
               document.documentElement.style.setProperty('--font-scale', size === 'small' ? '0.875' : size === 'large' ? '1.125' : '1');
             }}

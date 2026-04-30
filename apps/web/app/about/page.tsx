@@ -57,7 +57,7 @@ export default function AboutPage() {
             lang={lang}
             onLangChange={(l) => setLang(l as 'en' | 'bn')}
             fontSize={fontSize}
-            onFontSizeChange={(size: 'small' | 'medium' | 'large') => setFontSize(size)}
+            onFontSizeChange={(size) => setFontSize(size as 'small' | 'medium' | 'large')}
             arabicFont={arabicFont}
             onArabicFontChange={(font) => setArabicFont(font)}
             darkMode={darkMode}

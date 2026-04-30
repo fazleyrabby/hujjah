@@ -25,7 +25,7 @@ import os
 
 SQLITE_DB = '/Users/rabbi/Desktop/Projects/hujjah/apps/tauri/src-tauri/resources/hujjah-hadith-core.db'
 API_BASE  = 'https://api.sunnah.com/v1'
-RATE_LIMIT = 4.5   # req/sec (stay under 5)
+RATE_LIMIT = 3.0   # req/sec
 DAILY_CAP  = 4700  # stay under 5,000/day
 
 # sunnah_collection slug → API collection name
@@ -180,6 +180,7 @@ def main():
     parser.add_argument('--dry-run', action='store_true')
     parser.add_argument('--limit', type=int, default=0, help='Max hadiths to fetch this run')
     parser.add_argument('--clear', action='store_true', help='Clear sanadset data before starting')
+    parser.add_argument('--debug-limit', type=int, default=0, help='Debug: fetch N hadiths non-dry-run')
     args = parser.parse_args()
 
     api_key = get_api_key()
@@ -219,13 +220,17 @@ def main():
         db.close()
         return
 
+    fetch_count = args.debug_limit if args.debug_limit else len(pending)
+    pending = pending[:fetch_count]
+    dry_label = ' (debug)' if args.debug_limit else ''
+
     interval = 1.0 / RATE_LIMIT
     fetched = 0
     chains_stored = 0
     errors = 0
     batch_size = 100
 
-    print(f'\n[Fetching] Starting at {RATE_LIMIT} req/sec...\n')
+    print(f'\n[Fetching{ dry_label}] Starting at {RATE_LIMIT} req/sec...\n')
     t_start = time.time()
 
     for i, (hadith_id, collection, hadith_num) in enumerate(pending):
@@ -239,6 +244,13 @@ def main():
             errors += 1
             time.sleep(1)
             continue
+
+        if chain is None:
+            print(f'  404 {collection}/{hadith_num}')
+        elif not chain:
+            print(f'  EMPTY {collection}/{hadith_num}')
+        else:
+            print(f'  OK len={len(chain)} first=({chain[0][0]}, {chain[0][1][:30]})')
 
         if chain is not None:
             store_chain(db, hadith_id, chain)

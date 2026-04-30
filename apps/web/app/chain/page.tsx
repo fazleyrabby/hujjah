@@ -346,7 +346,7 @@ function ChainContent() {
             lang={lang}
             onLangChange={(l) => handleLangChange(l as Lang)}
             fontSize={fontSize}
-            onFontSizeChange={(size: 'small' | 'medium' | 'large') => setFontSize(size)}
+            onFontSizeChange={(size) => setFontSize(size as 'small' | 'medium' | 'large')}
             arabicFont={arabicFont}
             onArabicFontChange={(font) => setArabicFont(font)}
             darkMode={darkMode}

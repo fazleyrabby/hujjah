@@ -76,7 +76,7 @@ export default function SettingsPage() {
             lang={lang}
             onLangChange={(l) => setLang(l as 'en' | 'bn')}
             fontSize={fontSize}
-            onFontSizeChange={(size) => setFontSize(size)}
+            onFontSizeChange={(size) => setFontSize(size as 'small' | 'medium' | 'large')}
             arabicFont={arabicFont}
             onArabicFontChange={(font) => setArabicFont(font)}
             darkMode={darkMode}
@@ -178,7 +178,7 @@ export default function SettingsPage() {
                 {LANG_OPTIONS.map((l) => (
                   <button
                     key={l.code}
-                    onClick={() => setLang(l.code)}
+                    onClick={() => setLang(l.code as 'en' | 'bn')}
                     className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
                       lang === l.code
                         ? 'bg-white dark:bg-zinc-700 text-gray-900 dark:text-white shadow-sm'
