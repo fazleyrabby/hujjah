@@ -172,6 +172,73 @@ function ChainView({ nodes, edges, centerId, darkMode, lang, onNodeClick }: {
   );
 }
 
+/* ─── Tree View ─── */
+function TreeView({ nodes, edges, centerId, darkMode, lang, onNodeClick }: {
+  nodes: NarratorNode[];
+  edges: NarratorEdge[];
+  centerId: number;
+  darkMode: boolean;
+  lang: Lang;
+  onNodeClick: (n: NarratorNode) => void;
+}) {
+  const nodeMap = new Map(nodes.map(n => [Number(n.id), n]));
+  const { parents, children } = getAdj(edges);
+  const t = GRAPH_I18N[lang];
+
+  const buildTree = (id: number, depth: number): { node: NarratorNode; children: any[] } | null => {
+    const node = nodeMap.get(id);
+    if (!node) return null;
+    const childIds = children.get(id) || [];
+    const kids = childIds.slice(0, 5).map(cid => buildTree(cid, depth + 1)).filter(Boolean);
+    return { node, children: kids };
+  };
+
+  const tree = buildTree(centerId, 0);
+  if (!tree) return null;
+
+  function renderNode(item: { node: NarratorNode; children: any[] } | null, depth: number) {
+    if (!item) return null;
+    const { node, children: kids } = item;
+    const localName = getLocalName(node, lang);
+
+    return (
+      <div key={node.id} className="py-1">
+        <button
+          onClick={() => onNodeClick(node)}
+          className={clsx(
+            'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-right transition-colors',
+            node.id === centerId
+              ? 'bg-teal-100 dark:bg-teal-900/30 border border-teal-300 dark:border-teal-700'
+              : 'hover:bg-gray-50 dark:hover:bg-zinc-800',
+            darkMode ? 'text-white' : 'text-gray-900'
+          )}
+          style={{ paddingLeft: `${depth * 20 + 12}px` }}
+        >
+          <span className={clsx(
+            'text-xs px-1.5 py-0.5 rounded font-mono',
+            darkMode ? 'bg-zinc-700 text-gray-400' : 'bg-gray-200 text-gray-500'
+          )}>
+            {node.death_year ? `${node.death_year}` : '?'}
+          </span>
+          <span className="flex-1 text-sm font-medium" dir="rtl">
+            {node.name_ar}
+          </span>
+          {localName && (
+            <span className="text-xs text-gray-500">{localName}</span>
+          )}
+        </button>
+        {kids.map(kid => renderNode(kid, depth + 1))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-md mx-auto py-6 px-4">
+      {renderNode(tree, 0)}
+    </div>
+  );
+}
+
 /* ─── Radial View ─── */
 function RadialView({ nodes, edges, centerId, darkMode, lang, onNodeClick }: {
   nodes: NarratorNode[];
@@ -575,25 +642,61 @@ function GraphPage() {
       </div>
 
 
-      {/* ── Under Maintenance ───────────────────────────────────────── */}
-      <div className="flex flex-col items-center justify-center min-h-[65vh] px-6 text-center">
-        <div className="w-16 h-16 mb-6 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-          <svg className="w-8 h-8 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437l1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008z" />
-          </svg>
+      {/* ── Graph Content ─────────────────────────────────────────── */}
+      {loading && (
+        <div className="flex flex-col items-center justify-center min-h-[65vh]">
+          <div className="w-8 h-8 border-2 border-teal-600 border-t-transparent rounded-full animate-spin mb-4" />
+          <p className="text-gray-500 dark:text-gray-400 text-sm">{t.loading}</p>
         </div>
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">
-          {lang === 'bn' ? 'রক্ষণাবেক্ষণ চলছে' : 'Under Maintenance'}
-        </h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md leading-relaxed">
-          {lang === 'bn'
-            ? 'সনদ গ্রাফ ডেটা আমদানি চলছে। সম্পূর্ণ হলেই এই ভিউ পুনরায় চালু হবে।'
-            : 'Sanad graph data is being rebuilt. The graph and tree views will be re-enabled once the narrator chain import is complete.'}
-        </p>
-        <p className="mt-4 text-xs text-gray-400 dark:text-gray-500">
-          {lang === 'bn' ? 'আনুমানিক সম্পূর্ণ: ৯ দিন' : 'Estimated completion: ~9 days'}
-        </p>
-      </div>
+      )}
+
+      {!loading && graphData && (
+        <div ref={containerRef} className="overflow-auto">
+          {view === 'chain' && (
+            <ChainView
+              nodes={graphData.nodes}
+              edges={graphData.edges}
+              centerId={narratorId!}
+              darkMode={darkMode}
+              lang={lang}
+              onNodeClick={handleNodeClick}
+            />
+          )}
+          {view === 'radial' && (
+            <RadialView
+              nodes={graphData.nodes}
+              edges={graphData.edges}
+              centerId={narratorId!}
+              darkMode={darkMode}
+              lang={lang}
+              onNodeClick={handleNodeClick}
+            />
+          )}
+          {view === 'tree' && (
+            <TreeView
+              nodes={graphData.nodes}
+              edges={graphData.edges}
+              centerId={narratorId!}
+              darkMode={darkMode}
+              lang={lang}
+              onNodeClick={handleNodeClick}
+            />
+          )}
+        </div>
+      )}
+
+      {!loading && !graphData && (
+        <div className="flex flex-col items-center justify-center min-h-[65vh] text-center px-6">
+          <p className="text-gray-500 dark:text-gray-400">{t.notFound}</p>
+          <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">{t.notFoundDesc}</p>
+          <button
+            onClick={() => router.push('/chain')}
+            className="mt-4 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            {lang === 'bn' ? 'চেইন এক্সপ্লোরারে যান' : 'Go to Chain Explorer'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

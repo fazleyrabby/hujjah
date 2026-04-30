@@ -357,27 +357,317 @@ function ChainContent() {
         </div>
       </header>
 
-      {/* ── Under Maintenance ────────────────────────────────────────── */}
-      <div className="flex flex-col items-center justify-center min-h-[70vh] px-6 text-center">
-        <div className="w-16 h-16 mb-6 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-          <svg className="w-8 h-8 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437l1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008z" />
-          </svg>
-        </div>
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">
-          {lang === 'bn' ? 'রক্ষণাবেক্ষণ চলছে' : 'Under Maintenance'}
-        </h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md leading-relaxed">
-          {lang === 'bn'
-            ? 'সনদ চেইন ডেটা আমদানি চলছে। sunnah.com API থেকে প্রতিদিন ৪,৭০০টি হাদিসের সনদ সংগ্রহ করা হচ্ছে। শীঘ্রই পুনরায় উপলব্ধ হবে।'
-            : 'Narrator chain data is being imported from the sunnah.com API (4,700 hadiths/day). The Chain Explorer will be available again once the import is complete.'}
-        </p>
-        <p className="mt-4 text-xs text-gray-400 dark:text-gray-500">
-          {lang === 'bn' ? 'আনুমানিক সম্পূর্ণ: ৯ দিন' : 'Estimated completion: ~9 days'}
-        </p>
-      </div>
+      {/* ── Hadith Chain View ─────────────────── */}
+      {hadithChainData && hadithChainData.hadith && (
+        <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+          {/* Hadith header */}
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-800/50">
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-bold text-white bg-teal-600 px-2 py-0.5 rounded">
+                  {hadithChainData.hadith.book_name_en || hadithChainData.hadith.book_name_ar}
+                </span>
+                <span className="text-sm text-gray-500 font-mono">
+                  #{hadithChainData.hadith.num_in_book}
+                </span>
+                {hadithChainData.hadith.matn_en && (
+                  <span className="ml-auto text-xs text-gray-400">
+                    {lang === 'bn' ? 'AI অনুবাদ উপলব্ধ' : 'AI translation available'}
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              {/* Arabic text */}
+              <p className="font-arabic text-xl leading-loose text-gray-900 dark:text-white text-right" dir="rtl">
+                {cleanHadithText(hadithChainData.hadith.hadith_ar || hadithChainData.hadith.matn_ar)}
+              </p>
+              {/* Translation */}
+              {(hadithChainData.hadith.matn_en || hadithChainData.hadith.matn_bn) && (
+                <div className="bg-teal-50/30 dark:bg-teal-900/10 p-4 rounded-xl border border-teal-100/50 dark:border-teal-900/20">
+                  <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                    {lang === 'bn' ? (hadithChainData.hadith.matn_bn || hadithChainData.hadith.matn_en) : (hadithChainData.hadith.matn_en || hadithChainData.hadith.matn_bn)}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
 
-      {/* original content below — re-enable when chain data ready */}
+          {/* Chain */}
+          {hadithChainData.chain.length > 0 && (
+            <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-800/50">
+                <h2 className="font-bold text-gray-900 dark:text-white">
+                  {lang === 'bn' ? 'সনদ শৃঙ্খল' : 'Sanad Chain'}
+                </h2>
+              </div>
+              <div className="p-6">
+                <div className="space-y-2">
+                  {hadithChainData.chain.map((n: NarratorNode, i: number) => (
+                    <div key={n.id} className="flex items-center gap-3">
+                      <span className="text-xs font-mono text-gray-400 w-6 text-right">{i + 1}</span>
+                      <div className="flex-1 flex items-center gap-3 p-3 rounded-xl bg-gray-50 dark:bg-zinc-800/50 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors">
+                        <div className="flex-1">
+                          <p className="font-medium text-gray-900 dark:text-white">
+                            {getNarratorName(n, lang)}
+                          </p>
+                          {getNarratorLocalName(n, lang) && (
+                            <p className="text-xs text-gray-500">{getNarratorLocalName(n, lang)}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-gray-500">
+                          {n.death_year && (
+                            <span className="font-mono">{n.death_year} {t.ah}</span>
+                          )}
+                          {n.city && (
+                            <span className="px-2 py-0.5 bg-gray-200 dark:bg-zinc-700 rounded text-xs">
+                              {getCityLabel(n.city, lang)}
+                            </span>
+                          )}
+                          <a
+                            href={`/chain?id=${n.id}`}
+                            className="text-teal-600 hover:text-teal-700 font-medium text-xs"
+                          >
+                            →
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {/* Prophet */}
+                  <div className="flex items-center gap-3 mt-4 pt-4 border-t border-gray-200 dark:border-zinc-700">
+                    <span className="text-xs font-mono text-gray-400 w-6 text-right">{hadithChainData.chain.length + 1}</span>
+                    <div className="flex-1 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
+                      <p className="font-medium text-emerald-800 dark:text-emerald-300">
+                        {lang === 'bn' ? 'রাসূলুল্লাহ সাল্লাল্লাহু আলাইহি ওয়াসাল্লাম' : 'Prophet Muhammad ﷺ'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {hadithChainData.chain.length === 0 && (
+            <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-xl p-6 text-center">
+              <p className="text-amber-800 dark:text-amber-300">
+                {lang === 'bn' ? 'এই হাদিসের সনদ তথ্য পাওয়া যায়নি।' : 'No chain data available for this hadith.'}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Narrator Explorer ───────────────── */}
+      {!hadithChainData && selectedNarrator && (
+        <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+          {/* Narrator profile */}
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 dark:border-zinc-800">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                {getNarratorName(selectedNarrator, lang)}
+              </h2>
+              {getNarratorLocalName(selectedNarrator, lang) && (
+                <p className="text-sm text-gray-500 mt-1">{getNarratorLocalName(selectedNarrator, lang)}</p>
+              )}
+            </div>
+            <div className="p-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+              {selectedNarrator.death_year && (
+                <div>
+                  <p className="text-xs text-gray-500 uppercase">{t.died}</p>
+                  <p className="font-mono font-medium text-gray-900 dark:text-white">{selectedNarrator.death_year} {t.ah}</p>
+                </div>
+              )}
+              {selectedNarrator.birth_year && (
+                <div>
+                  <p className="text-xs text-gray-500 uppercase">{t.born}</p>
+                  <p className="font-mono font-medium text-gray-900 dark:text-white">{selectedNarrator.birth_year} {t.ah}</p>
+                </div>
+              )}
+              {selectedNarrator.city && (
+                <div>
+                  <p className="text-xs text-gray-500 uppercase">City</p>
+                  <p className="font-medium text-gray-900 dark:text-white">{getCityLabel(selectedNarrator.city, lang)}</p>
+                </div>
+              )}
+              {effectiveReliability(selectedNarrator) && (
+                <div>
+                  <p className="text-xs text-gray-500 uppercase">Status</p>
+                  <span className={clsx('inline-block px-2 py-0.5 rounded text-xs font-medium', RELIABILITY_COLORS[effectiveReliability(selectedNarrator)!])}>
+                    {t.reliability[effectiveReliability(selectedNarrator)!] || effectiveReliability(selectedNarrator)}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Teachers & Students */}
+          {edges && (
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* Teachers */}
+              <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-100 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-800/50">
+                  <h3 className="font-bold text-gray-900 dark:text-white">{t.teachers}</h3>
+                </div>
+                <div className="divide-y divide-gray-100 dark:divide-zinc-800">
+                  {(showAllTeachers ? edges.teachers : edges.teachers.slice(0, 5)).map((e) => (
+                    <button
+                      key={`${e.from_narrator_id}-${e.to_narrator_id}`}
+                      onClick={() => handleSelectEdge(e)}
+                      className="w-full px-6 py-3 text-left hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors flex items-center justify-between"
+                    >
+                      <div>
+                        <p className="font-medium text-gray-900 dark:text-white text-sm">
+                          {getEdgeNarratorName(e, 'to', lang)}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {t.hadithCount(e.hadith_count)}
+                        </p>
+                      </div>
+                      <span className="text-gray-400">→</span>
+                    </button>
+                  ))}
+                  {edges.teachers.length > 5 && !showAllTeachers && (
+                    <button
+                      onClick={() => setShowAllTeachers(true)}
+                      className="w-full px-6 py-3 text-center text-teal-600 text-sm font-medium hover:bg-gray-50 dark:hover:bg-zinc-800/50"
+                    >
+                      {lang === 'bn' ? `আরো ${edges.teachers.length - 5} জন দেখুন` : `Show ${edges.teachers.length - 5} more`}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Students */}
+              <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-100 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-800/50">
+                  <h3 className="font-bold text-gray-900 dark:text-white">{t.students}</h3>
+                </div>
+                <div className="divide-y divide-gray-100 dark:divide-zinc-800">
+                  {(showAllStudents ? edges.students : edges.students.slice(0, 5)).map((e) => (
+                    <button
+                      key={`${e.from_narrator_id}-${e.to_narrator_id}`}
+                      onClick={() => handleSelectEdge(e)}
+                      className="w-full px-6 py-3 text-left hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors flex items-center justify-between"
+                    >
+                      <div>
+                        <p className="font-medium text-gray-900 dark:text-white text-sm">
+                          {getEdgeNarratorName(e, 'from', lang)}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {t.hadithCount(e.hadith_count)}
+                        </p>
+                      </div>
+                      <span className="text-gray-400">←</span>
+                    </button>
+                  ))}
+                  {edges.students.length > 5 && !showAllStudents && (
+                    <button
+                      onClick={() => setShowAllStudents(true)}
+                      className="w-full px-6 py-3 text-center text-teal-600 text-sm font-medium hover:bg-gray-50 dark:hover:bg-zinc-800/50"
+                    >
+                      {lang === 'bn' ? `আরো ${edges.students.length - 5} জন দেখুন` : `Show ${edges.students.length - 5} more`}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Hadiths for selected edge */}
+          {edgeHadith.length > 0 && (
+            <div ref={hadithListRef} className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-800/50">
+                <h3 className="font-bold text-gray-900 dark:text-white">
+                  {t.hadithLabel(
+                    getNarratorName({ id: selectedEdge?.from_narrator_id, name_ar: selectedEdge?.from_name, name_en: selectedEdge?.from_name_en } as NarratorNode, lang),
+                    getNarratorName({ id: selectedEdge?.to_narrator_id, name_ar: selectedEdge?.to_name, name_en: selectedEdge?.to_name_en } as NarratorNode, lang)
+                  )}
+                </h3>
+              </div>
+              <div className="divide-y divide-gray-100 dark:divide-zinc-800">
+                {edgeHadith.map((h, i) => (
+                  <button
+                    key={`${h.hadith_id}-${i}`}
+                    onClick={() => setSelectedFullHadith(h)}
+                    className="w-full px-6 py-4 text-left hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors"
+                  >
+                    <div className="flex items-start gap-3">
+                      <span className="text-xs font-bold text-teal-600 bg-teal-50 dark:bg-teal-900/20 px-2 py-0.5 rounded whitespace-nowrap">
+                        {h.book_name_en || h.book_name_ar} #{h.num_in_book}
+                      </span>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 flex-1">
+                        {cleanHadithText(h.matn_en || h.matn_bn || h.matn_ar)}
+                      </p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Graph button */}
+          <div className="flex justify-center">
+            <button
+              onClick={handleShowGraph}
+              className="px-6 py-3 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl transition-colors"
+            >
+              {t.showGraph}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Empty / Search state ── */}
+      {!hadithChainData && !selectedNarrator && !loading && (
+        <div className="max-w-2xl mx-auto px-4 py-16 text-center">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">{t.heading}</h2>
+          <p className="text-gray-500 dark:text-gray-400 mb-8">{t.subtitle}</p>
+          {/* Search */}
+          <div className="relative">
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => handleSearch(e.target.value)}
+              placeholder={t.placeholder}
+              className="w-full px-4 py-3 pl-12 rounded-xl border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+            />
+            <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
+          {/* Results */}
+          {results.length > 0 && (
+            <div className="mt-4 bg-white dark:bg-zinc-900 rounded-xl border border-gray-200 dark:border-zinc-800 overflow-hidden shadow-xl">
+              {results.map((n) => (
+                <button
+                  key={n.id}
+                  onClick={() => handleSelectNarrator(n)}
+                  className="w-full px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors border-b border-gray-100 dark:border-zinc-800 last:border-0"
+                >
+                  <p className="font-medium text-gray-900 dark:text-white">{n.name_ar}</p>
+                  {n.name_en && <p className="text-xs text-gray-500">{n.name_en}</p>}
+                </button>
+              ))}
+            </div>
+          )}
+          {/* Examples */}
+          <div className="mt-12">
+            <p className="text-xs text-gray-400 uppercase mb-4">{t.tryTitle}</p>
+            <div className="flex flex-wrap justify-center gap-2">
+              {EXAMPLE_NARRATORS.slice(0, 4).map((n) => (
+                <button
+                  key={n.en}
+                  onClick={() => { setQuery(n.en); handleSearch(n.en); }}
+                  className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-zinc-700 transition-colors"
+                >
+                  {lang === 'bn' ? n.bn : lang === 'ar' ? n.ar : n.en}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Hadith Modal */}
       {selectedFullHadith && (
