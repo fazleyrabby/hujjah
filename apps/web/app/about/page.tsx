@@ -260,9 +260,9 @@ export default function AboutPage() {
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Narrator Chains (Sanad)</h3>
-                  <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 rounded-full">IMPORTING</span>
+                  <span className="text-[10px] font-bold text-green-700 dark:text-green-400 bg-green-100 dark:bg-green-900/30 px-2 py-0.5 rounded-full">RESTORED</span>
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">24,184 narrators — chains being imported from sunnah.com API (~4,700/day)</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">24,190 narrators, 173,985 links — 25,510 hadiths with chains (~92.9% of Kutub al-Sittah)</p>
                 <div className="mt-2 space-y-1">
                   <div className="flex items-center gap-2 text-[10px] text-gray-400 dark:text-gray-500">
                     <span className="w-2 h-2 rounded-full bg-teal-400 flex-shrink-0" />

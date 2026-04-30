@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { clsx } from 'clsx';
 import { AppNav, useTheme, SanadExplorer } from '@hujjah/ui';
 import type { NarratorNode, NarratorEdge } from '@hujjah/ui';
+import SettingsDropdown from '@/components/SettingsDropdown';
 
 type Lang = 'en' | 'bn' | 'ar';
 type ViewMode = 'tree' | 'chain' | 'radial';
@@ -501,7 +502,9 @@ function GraphPage() {
   const searchParams = useSearchParams();
   const [mounted, setMounted] = useState(false);
   const [lang, setLang] = useState<Lang>('en');
-  const { darkMode, toggleDarkMode } = useTheme();
+  const { darkMode, toggleDarkMode, fontSize, setFontSize } = useTheme();
+  const [arabicFont, setArabicFont] = useState('uthmani');
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [narratorId, setNarratorId] = useState<number | null>(null);
   const [graphData, setGraphData] = useState<{ nodes: NarratorNode[]; edges: NarratorEdge[] } | null>(null);
   const [centerNarrator, setCenterNarrator] = useState<NarratorNode | null>(null);
@@ -593,6 +596,27 @@ function GraphPage() {
           onDarkModeToggle={toggleDarkMode}
           hiddenRoutes={['/chat']}
           icon={<img src="/hujjah.png" alt="Hujjah" className="w-5 h-5" />}
+        />
+        <SettingsDropdown
+          isOpen={settingsOpen}
+          onToggle={() => setSettingsOpen(!settingsOpen)}
+          lang={lang}
+          onLangChange={(l) => handleLangChange(l as Lang)}
+          fontSize={fontSize}
+          onFontSizeChange={(size) => {
+            setFontSize(size as 'small' | 'medium' | 'large');
+            localStorage.setItem('hujjah-font-size', size);
+            document.documentElement.style.setProperty('--font-scale', size === 'small' ? '0.875' : size === 'large' ? '1.125' : '1');
+          }}
+          arabicFont={arabicFont}
+          onArabicFontChange={(font) => {
+            setArabicFont(font);
+            localStorage.setItem('hujjah-arabic-font', font);
+          }}
+          darkMode={darkMode}
+          onDarkModeToggle={toggleDarkMode}
+          setIsOpen={setSettingsOpen}
+          onMoreSettingsClick={() => setSettingsOpen(false)}
         />
       </header>
 
