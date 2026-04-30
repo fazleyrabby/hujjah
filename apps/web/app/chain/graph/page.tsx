@@ -588,16 +588,17 @@ function GraphPage() {
   return (
     <div className={clsx('min-h-screen bg-base', darkMode && 'dark')}>
       <header className="bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800 sticky top-0 z-50 overflow-visible">
-        <AppNav
-          lang={lang}
-          onLangChange={(l) => handleLangChange(l as Lang)}
-          langs={[{ code: 'en', label: 'EN' }, { code: 'bn', label: 'বাং' }]}
-          darkMode={darkMode}
-          onDarkModeToggle={toggleDarkMode}
-          hiddenRoutes={['/chat']}
-          icon={<img src="/hujjah.png" alt="Hujjah" className="w-5 h-5" />}
-        />
-        <SettingsDropdown
+        <div className="max-w-5xl mx-auto px-3 py-2 flex items-center justify-between">
+          <AppNav
+            lang={lang}
+            onLangChange={(l) => handleLangChange(l as Lang)}
+            langs={[{ code: 'en', label: 'EN' }, { code: 'bn', label: 'বাং' }]}
+            darkMode={darkMode}
+            onDarkModeToggle={toggleDarkMode}
+            hiddenRoutes={['/chat']}
+            icon={<img src="/hujjah.png" alt="Hujjah" className="w-5 h-5" />}
+          />
+          <SettingsDropdown
           isOpen={settingsOpen}
           onToggle={() => setSettingsOpen(!settingsOpen)}
           lang={lang}
@@ -618,6 +619,7 @@ function GraphPage() {
           setIsOpen={setSettingsOpen}
           onMoreSettingsClick={() => setSettingsOpen(false)}
         />
+        </div>
       </header>
 
       {/* Sub-nav: back link + narrator info + view switcher */}
