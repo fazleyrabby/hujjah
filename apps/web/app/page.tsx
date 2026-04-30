@@ -5,6 +5,7 @@ import { AppNav, LinkedVerseText, useTheme } from "@hujjah/ui";
 import { useQuranAudio } from "@/contexts/AudioContext";
 import { RECITERS } from "@/lib/reciters";
 import { clsx } from "clsx";
+import SettingsDropdown from "@/components/SettingsDropdown";
 
 interface Surah {
   id: number;
@@ -64,6 +65,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [surahs, setSurahs] = useState<Surah[]>([]);
   const [selectedSurah, setSelectedSurah] = useState<number | null>(null);
+  const [lastSelectedSurah, setLastSelectedSurah] = useState<number | null>(null);
   const [surahVerses, setSurahVerses] = useState<SurahVerse[] | null>(null);
   const [availableTranslators, setAvailableTranslators] = useState<string[]>(
     [],
@@ -126,7 +128,12 @@ export default function Home() {
       .then((r) => r.json())
       .then(setSurahs)
       .catch(console.error);
-    loadSurah(1, savedLang || "en");
+
+    // Restore last selected surah or default to Al-Fatiha
+    const savedSurah = localStorage.getItem("hujjah-surah");
+    const surahToLoad = savedSurah ? parseInt(savedSurah, 10) : 1;
+    setLastSelectedSurah(surahToLoad);
+    loadSurah(surahToLoad, savedLang || "en");
 
     const onPageshow = (e: PageTransitionEvent) => {
       if (e.persisted) setMounted(true);
@@ -140,11 +147,10 @@ export default function Home() {
 
   // Apply Arabic font when changed
   useEffect(() => {
-    document.documentElement.style.setProperty('--font-arabic', 
-      arabicFont === 'indopak' 
-        ? 'var(--font-arabic-indopak)' 
-        : 'var(--font-arabic-uthmani)'
-    );
+    const fontFamily = arabicFont === 'indopak'
+      ? "'KFGQPC Uthmani Script HAFS', 'Noto Naskh Arabic', serif"
+      : "'Scheherazade New', 'Amiri', 'Noto Naskh Arabic', serif";
+    document.documentElement.style.setProperty('--font-arabic', fontFamily);
   }, [arabicFont]);
 
   const loadSurah = useCallback(
@@ -169,6 +175,8 @@ export default function Home() {
         ]);
         setSurahVerses(verses);
         setSelectedSurah(surahId);
+        setLastSelectedSurah(surahId);
+        localStorage.setItem("hujjah-surah", String(surahId));
         setAvailableTranslators(
           Array.isArray(trans) ? (trans as any[]).map((t: any) => t.translator_slug) : [],
         );
@@ -495,123 +503,38 @@ const handleLangChange = useCallback(
       {/* Main */}
       <main className="flex-1 min-w-0">
         <div className="sticky top-0 z-50 bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800">
-<header className="border-b border-gray-100 dark:border-zinc-800">
+          <header className="border-b border-gray-100 dark:border-zinc-800">
             <div className="max-w-5xl mx-auto px-3 py-2 flex items-center justify-between">
               <AppNav
+                icon={<img src="/hujjah.png" alt="Hujjah" className="w-5 h-5" />}
                 lang={lang}
                 onLangChange={handleLangChange}
                 langs={[]}
                 darkMode={darkMode}
                 onDarkModeToggle={toggleDarkMode}
                 hiddenRoutes={["/chat", "/settings"]}
-                hideDarkMode
               />
-              {/* Settings Dropdown */}
-              <div className="relative">
-                <button
-                  onClick={() => setSettingsOpen(!settingsOpen)}
-                  className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-500 dark:text-gray-400"
-                  title={lang === 'bn' ? 'সেটিংস' : 'Settings'}
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                </button>
-                {settingsOpen && (
-                  <>
-                    <div className="absolute right-0 top-full mt-1 w-56 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-xl shadow-lg z-[60] overflow-hidden">
-                      <div className="py-2">
-                        <div className="px-3 py-2 border-b border-gray-100 dark:border-zinc-800">
-                          <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                            {lang === 'bn' ? 'সেটিংস' : 'Settings'}
-                          </span>
-                        </div>
-                        {/* Language Switcher */}
-                        <div className="px-3 py-2">
-                          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                            {lang === 'bn' ? 'ভাষা' : 'Language'}
-                          </label>
-                          <select
-                            value={lang}
-                            onChange={e => handleLangChange(e.target.value)}
-                            className="w-full text-sm bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg px-2 py-1.5"
-                          >
-                            <option value="en">English</option>
-                            <option value="bn">বাংলা</option>
-                          </select>
-                        </div>
-                        {/* Font Size */}
-                        <div className="px-3 py-2">
-                          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                            {lang === 'bn' ? 'ফন্ট সাইজ' : 'Font Size'}
-                          </label>
-                          <select
-                            value={fontSize}
-                            onChange={e => {
-                              setFontSize(e.target.value);
-                              localStorage.setItem('hujjah-font-size', e.target.value);
-                              document.documentElement.style.setProperty('--font-scale', e.target.value === 'small' ? '0.875' : e.target.value === 'large' ? '1.125' : '1');
-                            }}
-                            className="w-full text-sm bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg px-2 py-1.5"
-                          >
-                            <option value="small">{lang === 'bn' ? 'ছোট' : 'Small'}</option>
-                            <option value="medium">{lang === 'bn' ? 'মাঝারি' : 'Medium'}</option>
-                            <option value="large">{lang === 'bn' ? 'বড়' : 'Large'}</option>
-                          </select>
-                        </div>
-                        {/* Arabic Font */}
-                        <div className="px-3 py-2">
-                          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                            {lang === 'bn' ? 'আরবি ফন্ট' : 'Arabic Font'}
-                          </label>
-                          <select
-                            value={arabicFont}
-                            onChange={e => {
-                              setArabicFont(e.target.value);
-                              localStorage.setItem('hujjah-arabic-font', e.target.value);
-                            }}
-                            className="w-full text-sm bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg px-2 py-1.5"
-                          >
-                            <option value="uthmani">Scheherazade New</option>
-                            <option value="indopak">KFGQPC Uthmani Script HAFS</option>
-                          </select>
-                        </div>
-                        {/* Dark Mode Toggle */}
-                        <div className="px-3 py-2 flex items-center justify-between">
-                          <span className="text-xs text-gray-500 dark:text-gray-400">
-                            {lang === 'bn' ? 'ডার্ক মোড' : 'Dark Mode'}
-                          </span>
-                          <button
-                            onClick={toggleDarkMode}
-                            className={`w-10 h-5 rounded-full transition-colors ${
-                              darkMode ? 'bg-teal-600' : 'bg-gray-300 dark:bg-zinc-600'
-                            }`}
-                          >
-                            <span
-                              className={`block w-4 h-4 bg-white rounded-full shadow transform transition-transform ${
-                                darkMode ? 'translate-x-5' : 'translate-x-0.5'
-                              }`}
-                            />
-                          </button>
-                        </div>
-                        {/* More Settings Link */}
-                        <a
-                          href="/settings"
-                          onClick={() => setSettingsOpen(false)}
-                          className="flex items-center gap-2 px-3 py-2 text-sm text-teal-600 dark:text-teal-400 hover:bg-gray-50 dark:hover:bg-zinc-800"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </svg>
-                          {lang === 'bn' ? 'আরও সেটিংস' : 'More Settings'}
-                        </a>
-                      </div>
-                    </div>
-                    <div className="fixed inset-0" onClick={() => setSettingsOpen(false)} />
-                  </>
-                )}
-              </div>
+              <SettingsDropdown
+                isOpen={settingsOpen}
+                onToggle={() => setSettingsOpen(!settingsOpen)}
+                lang={lang}
+                onLangChange={handleLangChange}
+                fontSize={fontSize}
+                onFontSizeChange={(size) => {
+                  setFontSize(size);
+                  localStorage.setItem('hujjah-font-size', size);
+                  document.documentElement.style.setProperty('--font-scale', size === 'small' ? '0.875' : size === 'large' ? '1.125' : '1');
+                }}
+                arabicFont={arabicFont}
+                onArabicFontChange={(font) => {
+                  setArabicFont(font);
+                  localStorage.setItem('hujjah-arabic-font', font);
+                }}
+                darkMode={darkMode}
+                onDarkModeToggle={toggleDarkMode}
+                setIsOpen={setSettingsOpen}
+                onMoreSettingsClick={() => setSettingsOpen(false)}
+              />
             </div>
           </header>
 
@@ -630,12 +553,19 @@ const handleLangChange = useCallback(
                           setResults(null);
                           setSurahVerses(null);
                           setSelectedSurah(null);
+                          setRandomHadiths(null);
                           if (!query.trim())
                             fetch(`/api/hadith?action=random&lang=${lang}`)
                               .then((r) => r.json())
                               .then(setRandomHadiths)
                               .catch(console.error);
-                        } else setRandomHadiths(null);
+                        } else {
+                          setRandomHadiths(null);
+                          // Restore last selected surah if none selected
+                          if (!selectedSurah && lastSelectedSurah) {
+                            loadSurah(lastSelectedSurah, lang);
+                          }
+                        }
                       }}
                       className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
                         searchDomain === d

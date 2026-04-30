@@ -20,6 +20,9 @@ const THEME_SCRIPT = `
       var f=localStorage.getItem('hujjah-font-size');
       var s=f==='small'?'0.875':f==='large'?'1.125':'1';
       d.style.setProperty('--font-scale',s);
+      var af=localStorage.getItem('hujjah-arabic-font');
+      var arabicFont=af==='indopak' ? "'KFGQPC Uthmani Script HAFS', 'Noto Naskh Arabic', serif" : "'Scheherazade New', 'Amiri', 'Noto Naskh Arabic', serif";
+      d.style.setProperty('--font-arabic',arabicFont);
     }catch(e){}
   }
   sync();
@@ -35,6 +38,12 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Scheherazade+New:wght@400;700&display=swap"
+          rel="stylesheet"
+        />
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
       <body suppressHydrationWarning>

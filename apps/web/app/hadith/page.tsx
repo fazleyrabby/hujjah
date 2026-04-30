@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { clsx } from 'clsx';
 import { AppNav, useTheme } from '@hujjah/ui';
+import SettingsDropdown from '@/components/SettingsDropdown';
 
 const ITEMS_PER_PAGE = 20;
 
@@ -85,7 +86,7 @@ function cleanHadithText(text: string): string {
 
 export default function HadithPage() {
   const [mounted, setMounted] = useState(false);
-  const { darkMode, toggleDarkMode } = useTheme();
+  const { darkMode, toggleDarkMode, fontSize, setFontSize } = useTheme();
   const [lang, setLang] = useState<'en' | 'bn'>('en');
   const [translator, setTranslator] = useState<'sunnah' | 'qwen'>('sunnah');
   const [books, setBooks] = useState<HadithBook[]>([]);
@@ -98,14 +99,21 @@ export default function HadithPage() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [selectedFullHadith, setSelectedFullHadith] = useState<HadithResult | null>(null);
   const [containerClass, setContainerClass] = useState('max-w-5xl');
+  const [arabicFont, setArabicFont] = useState('uthmani');
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
+    const saved = localStorage.getItem('hujjah-arabic-font');
+    if (saved) setArabicFont(saved);
     const savedLang = localStorage.getItem('hujjah-lang');
     if (savedLang && ['en', 'bn'].includes(savedLang)) setLang(savedLang as 'en' | 'bn');
     const savedFont = localStorage.getItem('hujjah-font-size');
     const scale = savedFont === 'small' ? '0.875' : savedFont === 'large' ? '1.125' : '1';
     document.documentElement.style.setProperty('--font-scale', scale);
+  }, []);
+
+  useEffect(() => {
+    setMounted(true);
     fetch('/api/hadith?action=books')
       .then(r => r.json())
       .then((data: HadithBook[]) => {
@@ -125,6 +133,14 @@ export default function HadithPage() {
     window.addEventListener('pageshow', onPageshow);
     return () => window.removeEventListener('pageshow', onPageshow);
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem('hujjah-lang', lang);
+  }, [lang]);
+
+  useEffect(() => {
+    localStorage.setItem('hujjah-arabic-font', arabicFont);
+  }, [arabicFont]);
 
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -199,16 +215,38 @@ export default function HadithPage() {
     <div className="min-h-screen bg-base dark:bg-[#0a0a0a]">
       {/* ─── Header ─── */}
       <header className="sticky top-0 z-50 bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800">
-        <AppNav
-          icon={<img src="/hujjah.png" alt="Hujjah" className="w-5 h-5" />}
-          lang={lang}
-          onLangChange={(l) => setLang(l as 'en' | 'bn')}
-          langs={[{ code: 'en', label: 'EN' }, { code: 'bn', label: 'বাং' }]}
-          darkMode={darkMode}
-          onDarkModeToggle={toggleDarkMode}
-          containerClass={containerClass}
-          hiddenRoutes={['/chat']}
-        />
+        <div className="max-w-5xl mx-auto px-3 py-2 flex items-center justify-between">
+          <AppNav
+            icon={<img src="/hujjah.png" alt="Hujjah" className="w-5 h-5" />}
+            lang={lang}
+            onLangChange={(l) => setLang(l as 'en' | 'bn')}
+            langs={[{ code: 'en', label: 'EN' }, { code: 'bn', label: 'বাং' }]}
+            darkMode={darkMode}
+            onDarkModeToggle={toggleDarkMode}
+            hiddenRoutes={['/chat']}
+          />
+          <SettingsDropdown
+            isOpen={settingsOpen}
+            onToggle={() => setSettingsOpen(!settingsOpen)}
+            lang={lang}
+            onLangChange={(l) => setLang(l as 'en' | 'bn')}
+            fontSize={fontSize}
+            onFontSizeChange={(size) => {
+              setFontSize(size);
+              localStorage.setItem('hujjah-font-size', size);
+              document.documentElement.style.setProperty('--font-scale', size === 'small' ? '0.875' : size === 'large' ? '1.125' : '1');
+            }}
+            arabicFont={arabicFont}
+            onArabicFontChange={(font) => {
+              setArabicFont(font);
+              localStorage.setItem('hujjah-arabic-font', font);
+            }}
+            darkMode={darkMode}
+            onDarkModeToggle={toggleDarkMode}
+            setIsOpen={setSettingsOpen}
+            onMoreSettingsClick={() => setSettingsOpen(false)}
+          />
+        </div>
       </header>
 
       <div className={`${containerClass} mx-auto px-6 py-6`}>

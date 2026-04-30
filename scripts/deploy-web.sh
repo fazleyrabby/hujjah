@@ -14,6 +14,10 @@ DOMAIN="hujjah.fazleyrabbi.xyz"
 
 docker buildx build --platform linux/amd64 --load -t "${IMAGE_NAME}:latest" -f apps/web/Dockerfile .
 
+echo "=== Transferring image to VPS ==="
+docker save "${IMAGE_NAME}:latest" | ssh "${HOST}" "docker load"
+ssh "${HOST}" "docker image prune -f" || true
+
 echo "=== Stopping old container ==="
 ssh "${HOST}" "docker stop hujjah-web 2>/dev/null || true"
 

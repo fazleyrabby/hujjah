@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: 'KFGQPC Uthmani Script HAFS';
+  src: url('/fonts/KFGQPC-Uthmani-Script-HAFS.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
@@ -21,7 +29,7 @@
   
   /* Custom fonts */
   --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-arabic: 'Amiri', 'Noto Naskh Arabic', 'Scheherazade New', serif;
+  --font-arabic: 'Scheherazade New', 'KFGQPC Uthmani Script HAFS', serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
   
   /* Custom shadows */
@@ -42,7 +50,7 @@
   --leading-normal: 1.5;
   --leading-relaxed: 1.625;
   --leading-loose: 1.75;
-  --leading-arabic: 2.0;
+  --leading-arabic: 2.2;
 }
 
 .dark {
@@ -79,8 +87,12 @@ body {
 /* Arabic text optimization */
 .arabic {
   font-family: var(--font-arabic);
+  font-size: 1.2em;
   line-height: var(--leading-arabic);
   direction: rtl;
+  text-rendering: optimizeLegibility;
+  font-optical-sizing: auto;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* Smooth fade-in animation */

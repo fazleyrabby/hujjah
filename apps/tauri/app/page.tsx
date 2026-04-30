@@ -542,7 +542,7 @@ export default function Home() {
                 darkMode={darkMode}
                 onDarkModeToggle={() => setDarkMode((d) => !d)}
                 icon={<img src="/hujjah.png" alt="Hujjah" className="w-5 h-5" />}
-                hiddenRoutes={["/chat", "/settings"]}
+                hiddenRoutes={["/chat"]}
                 hideDarkMode
               />
               {/* Settings Dropdown */}

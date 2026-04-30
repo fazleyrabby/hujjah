@@ -8,8 +8,22 @@
  * - Semantic fallback via vector embeddings + RRF merging
  */
 
-import { classifyQuery, buildFTS5Queries, detectLang, normalizeQuery } from './search-utils';
-import { IS_MOCK_MODE, mockGetSurahList, mockGetSurahVerses, mockGetQuranStats, mockSearchKeyword, mockSearchReference, mockMatchSurahName, mockGetSurahTranslators } from './mocks';
+import {
+  classifyQuery,
+  buildFTS5Queries,
+  detectLang,
+  normalizeQuery,
+} from "./search-utils";
+import {
+  IS_MOCK_MODE,
+  mockGetSurahList,
+  mockGetSurahVerses,
+  mockGetQuranStats,
+  mockSearchKeyword,
+  mockSearchReference,
+  mockMatchSurahName,
+  mockGetSurahTranslators,
+} from "./mocks";
 
 // ─── Types ───
 export interface QuranFTSResult {
@@ -39,7 +53,7 @@ export interface SurahVerse {
 }
 
 export interface SearchResult {
-  type: 'ref' | 'surah' | 'verse' | 'command';
+  type: "ref" | "surah" | "verse" | "command";
   surah: number;
   surah_name: string;
   ayah: number;
@@ -75,12 +89,12 @@ export async function getDB(): Promise<DBLike> {
 
   dbPromise = (async () => {
     try {
-      const mod = await import('@tauri-apps/plugin-sql');
+      const mod = await import("@tauri-apps/plugin-sql");
       const Database = mod.default;
-      const db = await Database.load('sqlite:hujjah-quran.db');
+      const db = await Database.load("sqlite:hujjah-quran.db");
       return db as DBLike;
     } catch (err) {
-      console.warn('[DB] Tauri SQL plugin unavailable — using mock DB', err);
+      console.warn("[DB] Tauri SQL plugin unavailable — using mock DB", err);
       return createMockDB();
     }
   })();
@@ -99,25 +113,28 @@ function createMockDB(): DBLike {
 export async function getSurahList(): Promise<Surah[]> {
   if (IS_MOCK_MODE) return mockGetSurahList();
   const db = await getDB();
-  const sql = 'SELECT id, name_ar, name_en, name_bn FROM surahs ORDER BY id';
+  const sql = "SELECT id, name_ar, name_en, name_bn FROM surahs ORDER BY id";
   return db.select<Surah[]>(sql);
 }
 
 export async function getSurahById(id: number): Promise<Surah | null> {
   const db = await getDB();
-  const sql = 'SELECT id, name_ar, name_en, name_bn FROM surahs WHERE id = ?';
+  const sql = "SELECT id, name_ar, name_en, name_bn FROM surahs WHERE id = ?";
   const rows = await db.select<Surah[]>(sql, [id]);
   return rows[0] || null;
 }
 
 export async function getSurahVerseCount(surah: number): Promise<number> {
   const db = await getDB();
-  const sql = 'SELECT COUNT(*) as count FROM verses WHERE surah = ?';
+  const sql = "SELECT COUNT(*) as count FROM verses WHERE surah = ?";
   const rows = await db.select<{ count: number }[]>(sql, [surah]);
   return rows[0]?.count ?? 0;
 }
 
-export async function getSurahTranslators(surah: number, lang: string = 'en'): Promise<{ translator_slug: string; count: number }[]> {
+export async function getSurahTranslators(
+  surah: number,
+  lang: string = "en",
+): Promise<{ translator_slug: string; count: number }[]> {
   if (IS_MOCK_MODE) return mockGetSurahTranslators(surah, lang);
   const db = await getDB();
   const sql = `
@@ -128,18 +145,21 @@ export async function getSurahTranslators(surah: number, lang: string = 'en'): P
     GROUP BY t.translator_slug
     ORDER BY t.translator_slug
   `;
-  return db.select<{ translator_slug: string; count: number }[]>(sql, [surah, lang]);
+  return db.select<{ translator_slug: string; count: number }[]>(sql, [
+    surah,
+    lang,
+  ]);
 }
 
 export async function getSurahVerses(
   surah: number,
-  lang: string = 'en',
-  translatorSlug?: string
+  lang: string = "en",
+  translatorSlug?: string,
 ): Promise<SurahVerse[]> {
   if (IS_MOCK_MODE) return mockGetSurahVerses(surah, lang);
   const db = await getDB();
 
-  if (lang === 'ar') {
+  if (lang === "ar") {
     const sql = `
       SELECT id, surah, ayah, text_ar, text_ar as text, 'arabic' as translator_slug
       FROM verses
@@ -193,29 +213,39 @@ export async function getSurahVerses(
 // ─── Query Dispatcher ───
 export async function processQuery(
   query: string,
-  lang: string = 'en',
-  limit: number = 20
+  lang: string = "en",
+  limit: number = 20,
 ): Promise<SearchResult[]> {
   if (IS_MOCK_MODE) {
     const classification = classifyQuery(query);
-    if (classification.type === 'reference' && classification.surah && classification.ayah) {
-      return mockSearchReference(classification.surah, classification.ayah, lang);
+    if (
+      classification.type === "reference" &&
+      classification.surah &&
+      classification.ayah
+    ) {
+      return mockSearchReference(
+        classification.surah,
+        classification.ayah,
+        lang,
+      );
     }
-    if (classification.type === 'surah') {
+    if (classification.type === "surah") {
       const match = mockMatchSurahName(classification.raw, lang);
       if (match) {
-        return [{
-          type: 'surah',
-          surah: match.id,
-          surah_name: lang === 'bn' ? match.name_bn : match.name_en,
-          ayah: 1,
-          text_ar: '',
-          text: `${match.name_en} (${match.name_ar})`,
-          translator_slug: '',
-          rank: 0,
-          label: 'SURAH',
-          snippet: `Jump to Surah ${match.id}`,
-        }];
+        return [
+          {
+            type: "surah",
+            surah: match.id,
+            surah_name: lang === "bn" ? match.name_bn : match.name_en,
+            ayah: 1,
+            text_ar: "",
+            text: `${match.name_en} (${match.name_ar})`,
+            translator_slug: "",
+            rank: 0,
+            label: "SURAH",
+            snippet: `Jump to Surah ${match.id}`,
+          },
+        ];
       }
     }
     return mockSearchKeyword(query, lang).slice(0, limit);
@@ -224,35 +254,40 @@ export async function processQuery(
 
   // Auto-detect language from query content — overrides explicit lang for BN/AR
   const queryLang = detectLang(query);
-  const searchLang = queryLang === 'en' ? lang : queryLang;
+  const searchLang = queryLang === "en" ? lang : queryLang;
 
   switch (classification.type) {
-    case 'reference':
+    case "reference":
       if (classification.surah && classification.ayah) {
-        return searchReference(classification.surah, classification.ayah, searchLang);
+        return searchReference(
+          classification.surah,
+          classification.ayah,
+          searchLang,
+        );
       }
       return [];
 
-    case 'command':
-      if (classification.command === 'quran' && classification.subQuery) {
+    case "command":
+      if (classification.command === "quran" && classification.subQuery) {
         return searchKeyword(classification.subQuery, searchLang, limit);
       }
       return [];
 
-    case 'surah': {
+    case "surah": {
       const surahMatch = await matchSurahName(classification.raw, searchLang);
       if (surahMatch) {
         return [
           {
-            type: 'surah',
+            type: "surah",
             surah: surahMatch.id,
-            surah_name: searchLang === 'bn' ? surahMatch.name_bn : surahMatch.name_en,
+            surah_name:
+              searchLang === "bn" ? surahMatch.name_bn : surahMatch.name_en,
             ayah: 1,
-            text_ar: '',
+            text_ar: "",
             text: `${surahMatch.name_en} (${surahMatch.name_ar})`,
-            translator_slug: '',
+            translator_slug: "",
             rank: 0,
-            label: 'SURAH',
+            label: "SURAH",
             snippet: `Jump to Surah ${surahMatch.id}`,
           },
         ];
@@ -261,7 +296,7 @@ export async function processQuery(
       break;
     }
 
-    case 'keyword':
+    case "keyword":
     default:
       break;
   }
@@ -275,7 +310,11 @@ export async function processQuery(
   return rrfMerge(keywordResults, semanticResults, limit);
 }
 
-async function searchReference(surah: number, ayah: number, lang: string): Promise<SearchResult[]> {
+async function searchReference(
+  surah: number,
+  ayah: number,
+  lang: string,
+): Promise<SearchResult[]> {
   if (IS_MOCK_MODE) return mockSearchReference(surah, ayah, lang);
   const db = await getDB();
   const sql = `
@@ -292,19 +331,21 @@ async function searchReference(surah: number, ayah: number, lang: string): Promi
   const r = rows[0];
 
   // If lang is Arabic, we don't need translations
-  if (lang === 'ar') {
-    return [{
-      type: 'ref' as const,
-      surah: r.surah,
-      surah_name: r.name_en,
-      ayah: r.ayah,
-      text_ar: r.text_ar,
-      text: r.text_ar,
-      translator_slug: 'arabic',
-      rank: 0,
-      label: 'REF',
-      snippet: r.text_ar,
-    }];
+  if (lang === "ar") {
+    return [
+      {
+        type: "ref" as const,
+        surah: r.surah,
+        surah_name: r.name_en,
+        ayah: r.ayah,
+        text_ar: r.text_ar,
+        text: r.text_ar,
+        translator_slug: "arabic",
+        rank: 0,
+        label: "REF",
+        snippet: r.text_ar,
+      },
+    ];
   }
 
   // Otherwise find the translation
@@ -315,23 +356,28 @@ async function searchReference(surah: number, ayah: number, lang: string): Promi
     LIMIT 1
   `;
   const trans = await db.select<any[]>(transSql, [surah, ayah, lang]);
-  const t = trans[0] || { text: r.text_ar, translator_slug: 'original' };
+  const t = trans[0] || { text: r.text_ar, translator_slug: "original" };
 
-  return [{
-    type: 'ref' as const,
-    surah: r.surah,
-    surah_name: lang === 'bn' ? r.name_bn : r.name_en,
-    ayah: r.ayah,
-    text_ar: r.text_ar,
-    text: t.text,
-    translator_slug: t.translator_slug,
-    rank: 0,
-    label: 'REF',
-    snippet: t.text,
-  }];
+  return [
+    {
+      type: "ref" as const,
+      surah: r.surah,
+      surah_name: lang === "bn" ? r.name_bn : r.name_en,
+      ayah: r.ayah,
+      text_ar: r.text_ar,
+      text: t.text,
+      translator_slug: t.translator_slug,
+      rank: 0,
+      label: "REF",
+      snippet: t.text,
+    },
+  ];
 }
 
-async function matchSurahName(query: string, lang: string): Promise<Surah | null> {
+async function matchSurahName(
+  query: string,
+  lang: string,
+): Promise<Surah | null> {
   if (IS_MOCK_MODE) return mockMatchSurahName(query, lang);
   const db = await getDB();
   const sql = `
@@ -353,14 +399,18 @@ async function matchSurahName(query: string, lang: string): Promise<Surah | null
 }
 
 // ─── Keyword Search (FTS5) ───
-async function searchKeyword(query: string, lang: string, limit: number): Promise<SearchResult[]> {
+async function searchKeyword(
+  query: string,
+  lang: string,
+  limit: number,
+): Promise<SearchResult[]> {
   if (IS_MOCK_MODE) return mockSearchKeyword(query, lang).slice(0, limit);
   const db = await getDB();
   const cap = Math.min(limit, 20);
 
   // Arabic: search directly on verses.text_ar with LIKE (FTS5 not indexed for Arabic)
-  if (lang === 'ar') {
-    const normalized = normalizeQuery(query, 'ar');
+  if (lang === "ar") {
+    const normalized = normalizeQuery(query, "ar");
     const sql = `
       SELECT
         v.surah,
@@ -378,16 +428,18 @@ async function searchKeyword(query: string, lang: string, limit: number): Promis
     `;
     const rows = await db.select<any[]>(sql, [`%${normalized}%`, cap]);
     return rows.map((r) => ({
-      type: 'verse' as const,
+      type: "verse" as const,
       surah: r.surah,
       surah_name: r.name_en,
       ayah: r.ayah,
       text_ar: r.text_ar,
       text: r.text_ar,
-      translator_slug: 'arabic',
+      translator_slug: "arabic",
       rank: r.rank,
-      label: 'VERSE',
-      snippet: r.snippet ? r.snippet.slice(0, 120) + '...' : r.text_ar.slice(0, 120) + '...',
+      label: "VERSE",
+      snippet: r.snippet
+        ? r.snippet.slice(0, 120) + "..."
+        : r.text_ar.slice(0, 120) + "...",
     }));
   }
 
@@ -420,16 +472,16 @@ async function searchKeyword(query: string, lang: string, limit: number): Promis
       const rows = await db.select<any[]>(sql, [ftsQuery, lang, cap]);
       if (rows && rows.length > 0) {
         return rows.map((r) => ({
-          type: 'verse' as const,
+          type: "verse" as const,
           surah: r.surah,
-          surah_name: lang === 'bn' ? r.name_bn : r.name_en,
+          surah_name: lang === "bn" ? r.name_bn : r.name_en,
           ayah: r.ayah,
           text_ar: r.text_ar,
           text: r.text,
           translator_slug: r.translator_slug,
           rank: r.rank,
-          label: 'VERSE',
-          snippet: r.snippet ?? r.text.slice(0, 120) + '...',
+          label: "VERSE",
+          snippet: r.snippet ?? r.text.slice(0, 120) + "...",
         }));
       }
     } catch {
@@ -442,25 +494,29 @@ async function searchKeyword(query: string, lang: string, limit: number): Promis
 }
 
 // ─── Semantic Search (Vector Search) ───
-async function searchSemantic(query: string, lang: string, limit: number): Promise<SearchResult[]> {
+async function searchSemantic(
+  query: string,
+  lang: string,
+  limit: number,
+): Promise<SearchResult[]> {
   try {
-    const { retrieveHybrid } = await import('./ai/retrieve');
+    const { retrieveHybrid } = await import("./ai/retrieve");
     const results = await retrieveHybrid(query, lang, limit);
 
-    return results.map(r => ({
-      type: 'verse' as const,
+    return results.map((r) => ({
+      type: "verse" as const,
       surah: r.surah,
-      surah_name: lang === 'bn' ? r.surah_name_bn : r.surah_name_en,
+      surah_name: lang === "bn" ? r.surah_name_bn : r.surah_name_en,
       ayah: r.ayah,
       text_ar: r.text_ar,
       text: r.text,
       translator_slug: r.translator_slug,
       rank: r.similarity,
-      label: 'SEMANTIC',
-      snippet: r.text.slice(0, 160) + '...'
+      label: "SEMANTIC",
+      snippet: r.text.slice(0, 160) + "...",
     }));
   } catch (err) {
-    console.error('[Search] Semantic search failed:', err);
+    console.error("[Search] Semantic search failed:", err);
     return [];
   }
 }
@@ -470,7 +526,7 @@ function rrfMerge(
   keywordResults: SearchResult[],
   semanticResults: SearchResult[],
   limit: number,
-  k: number = 60
+  k: number = 60,
 ): SearchResult[] {
   const scores = new Map<string, number>();
   const items = new Map<string, SearchResult>();
@@ -510,7 +566,7 @@ export async function getQuranStats(): Promise<QuranStats> {
 
 // ─── Legacy Purge ───
 export async function purgeLegacyStorage(): Promise<string> {
-  const legacyDbNames = ['hujjah-minimal', 'hujjah-vault'];
+  const legacyDbNames = ["hujjah-minimal", "hujjah-vault"];
   for (const name of legacyDbNames) {
     try {
       await window.indexedDB.deleteDatabase(name);
@@ -521,14 +577,14 @@ export async function purgeLegacyStorage(): Promise<string> {
   }
 
   localStorage.clear();
-  console.log('[Purge] Cleared localStorage');
+  console.log("[Purge] Cleared localStorage");
 
   try {
-    const { invoke } = await import('@tauri-apps/api/core');
-    const result = await invoke<string>('purge_legacy_storage');
+    const { invoke } = await import("@tauri-apps/api/core");
+    const result = await invoke<string>("purge_legacy_storage");
     return result;
   } catch {
-    return 'Mock: legacy purged';
+    return "Mock: legacy purged";
   }
 }
 
@@ -540,34 +596,46 @@ export interface TafsirResult {
 }
 
 const DEFAULT_TAFSIR_SLUGS: Record<string, string[]> = {
-  en: ['en-ibn-kathir', 'en-maariful-quran'],
-  bn: ['bn-abu-bakr-zakaria', 'bn-ibn-kathir', 'bn-ahsanul-bayaan'],
-  ar: ['ar-ibn-kathir', 'ar-tabari', 'ar-muyassar'],
+  en: ["en-ibn-kathir", "en-maariful-quran"],
+  bn: ["bn-abu-bakr-zakaria", "bn-ibn-kathir", "bn-ahsanul-bayaan"],
+  ar: ["ar-ibn-kathir", "ar-tabari", "ar-muyassar"],
 };
 
 export async function getTafsirSlugs(lang: string): Promise<string[]> {
   const db = await getDB();
   const rows = await db.select<{ tafsir_slug: string }[]>(
-    'SELECT DISTINCT tafsir_slug FROM tafsir WHERE lang_code = ? ORDER BY tafsir_slug',
-    [lang]
+    "SELECT DISTINCT tafsir_slug FROM tafsir WHERE lang_code = ? ORDER BY tafsir_slug",
+    [lang],
   );
-  return rows.map(r => r.tafsir_slug);
+  return rows.map((r) => r.tafsir_slug);
 }
 
-export async function getTafsir(verseId: number, lang: string, slug?: string): Promise<TafsirResult | null> {
+export async function getTafsirLangs(): Promise<string[]> {
+  const db = await getDB();
+  const rows = await db.select<{ lang_code: string }[]>(
+    "SELECT DISTINCT lang_code FROM tafsir ORDER BY lang_code",
+  );
+  return rows.map((r) => r.lang_code);
+}
+
+export async function getTafsir(
+  verseId: number,
+  lang: string,
+  slug?: string,
+): Promise<TafsirResult | null> {
   const db = await getDB();
   if (slug) {
     const rows = await db.select<TafsirResult[]>(
-      'SELECT tafsir_slug, lang_code, text FROM tafsir WHERE verse_id = ? AND tafsir_slug = ?',
-      [verseId, slug]
+      "SELECT tafsir_slug, lang_code, text FROM tafsir WHERE verse_id = ? AND tafsir_slug = ?",
+      [verseId, slug],
     );
     return rows[0] ?? null;
   }
-  const slugs = DEFAULT_TAFSIR_SLUGS[lang] ?? DEFAULT_TAFSIR_SLUGS['en'];
+  const slugs = DEFAULT_TAFSIR_SLUGS[lang] ?? DEFAULT_TAFSIR_SLUGS["en"];
   for (const s of slugs) {
     const rows = await db.select<TafsirResult[]>(
-      'SELECT tafsir_slug, lang_code, text FROM tafsir WHERE verse_id = ? AND tafsir_slug = ?',
-      [verseId, s]
+      "SELECT tafsir_slug, lang_code, text FROM tafsir WHERE verse_id = ? AND tafsir_slug = ?",
+      [verseId, s],
     );
     if (rows[0]) return rows[0];
   }
@@ -577,8 +645,8 @@ export async function getTafsir(verseId: number, lang: string, slug?: string): P
 // ─── Backwards compat: old searchQuranFTS ───
 export async function searchQuranFTS(
   query: string,
-  lang: string = 'en',
-  limit: number = 20
+  lang: string = "en",
+  limit: number = 20,
 ): Promise<QuranFTSResult[]> {
   if (!query.trim()) return [];
   const db = await getDB();
@@ -603,7 +671,11 @@ export async function searchQuranFTS(
   const cap = Math.min(limit, 20);
   for (const ftsQuery of ftsQueries) {
     try {
-      const rows = await db.select<QuranFTSResult[]>(sql, [ftsQuery, lang, cap]);
+      const rows = await db.select<QuranFTSResult[]>(sql, [
+        ftsQuery,
+        lang,
+        cap,
+      ]);
       if (rows && rows.length > 0) return rows;
     } catch {
       continue;

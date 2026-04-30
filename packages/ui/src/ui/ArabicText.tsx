@@ -35,10 +35,8 @@ export function ArabicText({
       <motion.p
         className={`
           arabic
-          font-amiri
-          text-gray-900
-          leading-[2.0]
-          tracking-wide
+                    text-gray-900
+                   tracking-wide
           ${sizes[size]}
         `.trim()}
         dir="rtl"
@@ -80,7 +78,7 @@ export function ArabicVerse({ text, verseNumber, translation, className = '' }: 
         <span className="flex-shrink-0 w-8 h-8 rounded-full bg-teal-50 text-teal-700 text-sm font-medium flex items-center justify-center">
           {verseNumber}
         </span>
-        <p className="arabic font-amiri text-2xl md:text-3xl text-gray-900 leading-[2.0] flex-1">
+        <p className="arabic text-2xl md:text-3xl text-gray-900 leading-[2.0] flex-1">
           {text}
         </p>
       </div>
@@ -114,7 +112,7 @@ export function ArabicHadith({ sanad, matn, translation, reference, className = 
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
             Sanad (Chain)
           </p>
-          <p className="arabic font-amiri text-lg text-gray-700 leading-[2.0]">
+          <p className="arabic text-lg text-gray-700 leading-[2.0]">
             {sanad}
           </p>
         </div>
@@ -125,7 +123,7 @@ export function ArabicHadith({ sanad, matn, translation, reference, className = 
         <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
           Matn (Text)
         </p>
-        <p className="arabic font-amiri text-2xl md:text-3xl text-gray-900 leading-[2.0]">
+        <p className="arabic text-2xl md:text-3xl text-gray-900 leading-[2.0]">
           {matn}
         </p>
       </div>

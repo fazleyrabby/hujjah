@@ -512,7 +512,7 @@ function GraphPage() {
 
   return (
     <div className={clsx('min-h-screen bg-base', darkMode && 'dark')}>
-      <header className="bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800 sticky top-0 z-50">
+      <header className="bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800 sticky top-0 z-50 overflow-visible">
         <AppNav
           lang={lang}
           onLangChange={(l) => handleLangChange(l as Lang)}

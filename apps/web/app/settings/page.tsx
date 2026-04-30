@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { AppNav, useTheme } from '@hujjah/ui';
+import SettingsDropdown from '@/components/SettingsDropdown';
 
 const LANG_OPTIONS = [
   { code: 'en', label: 'English', native: 'English' },
@@ -12,14 +13,21 @@ export default function SettingsPage() {
   const [mounted, setMounted] = useState(false);
   const { darkMode, toggleDarkMode, fontSize, setFontSize } = useTheme();
   const [layoutWidth, setLayoutWidth] = useState<'compact' | 'full'>('full');
-  const [lang, setLang] = useState('en');
+  const [lang, setLang] = useState<'en' | 'bn'>('en');
+  const [arabicFont, setArabicFont] = useState('uthmani');
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     setMounted(true);
     const savedLayout = localStorage.getItem('hujjah-layout');
     if (savedLayout) setLayoutWidth(savedLayout as 'compact' | 'full');
     const savedLang = localStorage.getItem('hujjah-lang');
-    if (savedLang && ['en', 'bn'].includes(savedLang)) setLang(savedLang);
+    if (savedLang && ['en', 'bn'].includes(savedLang)) setLang(savedLang as 'en' | 'bn');
+    const savedArabicFont = localStorage.getItem('hujjah-arabic-font');
+    if (savedArabicFont) setArabicFont(savedArabicFont);
+    const savedFont = localStorage.getItem('hujjah-font-size');
+    const scale = savedFont === 'small' ? '0.875' : savedFont === 'large' ? '1.125' : '1';
+    document.documentElement.style.setProperty('--font-scale', scale);
 
     const onPageshow = (e: PageTransitionEvent) => { if (e.persisted) setMounted(true); };
     window.addEventListener('pageshow', onPageshow);
@@ -34,6 +42,10 @@ export default function SettingsPage() {
     localStorage.setItem('hujjah-lang', lang);
   }, [lang]);
 
+  useEffect(() => {
+    localStorage.setItem('hujjah-arabic-font', arabicFont);
+  }, [arabicFont]);
+
   const containerClass = layoutWidth === 'compact' ? 'max-w-3xl' : 'max-w-5xl';
 
   if (!mounted) {
@@ -46,14 +58,33 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-zinc-950">
-      <header className="bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800 sticky top-0 z-50">
+      <header className="bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800 sticky top-0 z-50 overflow-visible">
+        <div className="max-w-5xl mx-auto px-3 py-2 flex items-center justify-between">
           <AppNav
             icon={<img src="/hujjah.png" alt="Hujjah" className="w-5 h-5" />}
+            lang={lang}
+            onLangChange={(l) => setLang(l as 'en' | 'bn')}
+            langs={[{ code: 'en', label: 'EN' }, { code: 'bn', label: 'বাং' }]}
             darkMode={darkMode}
             onDarkModeToggle={toggleDarkMode}
             hiddenRoutes={['/chat']}
             containerClass={containerClass}
           />
+          <SettingsDropdown
+            isOpen={settingsOpen}
+            onToggle={() => setSettingsOpen(!settingsOpen)}
+            lang={lang}
+            onLangChange={(l) => setLang(l as 'en' | 'bn')}
+            fontSize={fontSize}
+            onFontSizeChange={(size) => setFontSize(size)}
+            arabicFont={arabicFont}
+            onArabicFontChange={(font) => setArabicFont(font)}
+            darkMode={darkMode}
+            onDarkModeToggle={toggleDarkMode}
+            setIsOpen={setSettingsOpen}
+            onMoreSettingsClick={() => setSettingsOpen(false)}
+          />
+        </div>
       </header>
 
       <div className={`${containerClass} mx-auto px-6 py-10`}>

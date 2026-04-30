@@ -241,6 +241,17 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    if (action === 'tafsir_langs') {
+      try {
+        const rows = await db.select<any[]>(
+          'SELECT DISTINCT lang_code FROM tafsir ORDER BY lang_code'
+        );
+        return NextResponse.json(rows.map(r => r.lang_code));
+      } catch {
+        return NextResponse.json([]);
+      }
+    }
+
     if (action === 'stats') {
       const rows = await db.select<any[]>(
         `SELECT (SELECT count(*) FROM verses) AS verses,

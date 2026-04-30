@@ -30,7 +30,7 @@ interface AudioContextType {
   play: (opts: PlayOptions) => Promise<void>;
   pause: () => void;
   resume: () => Promise<void>;
-  stop: () => void;
+  stop: (skipToNext?: boolean) => Promise<void>;
   seekTo: (ratio: number) => void;
 }
 

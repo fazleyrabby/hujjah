@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { clsx } from 'clsx';
 import { AppNav, useTheme } from '@hujjah/ui';
 import type { NarratorNode, NarratorEdge } from '@hujjah/ui';
+import SettingsDropdown from '@/components/SettingsDropdown';
 
 type Lang = 'en' | 'bn' | 'ar';
 
@@ -198,7 +199,7 @@ function ChainContent() {
   const [selectedNarrator, setSelectedNarrator] = useState<NarratorNode | null>(null);
   const [edges, setEdges] = useState<{ teachers: NarratorEdge[]; students: NarratorEdge[] } | null>(null);
   const [loading, setLoading] = useState(false);
-  const { darkMode, toggleDarkMode } = useTheme();
+  const { darkMode, toggleDarkMode, fontSize, setFontSize } = useTheme();
   const [selectedEdge, setSelectedEdge] = useState<NarratorEdge | null>(null);
   const [edgeHadith, setEdgeHadith] = useState<HadithChain[]>([]);
   const [hadithChainData, setHadithChainData] = useState<{ hadith: any; chain: NarratorNode[] } | null>(null);
@@ -206,6 +207,8 @@ function ChainContent() {
   const [showAllTeachers, setShowAllTeachers] = useState(false);
   const [showAllStudents, setShowAllStudents] = useState(false);
   const [containerClass, setContainerClass] = useState('max-w-5xl');
+  const [arabicFont, setArabicFont] = useState('uthmani');
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const hadithListRef = useRef<HTMLDivElement>(null);
 
   const t = CHAIN_I18N[lang];
@@ -249,6 +252,11 @@ function ChainContent() {
         .catch(console.error)
         .finally(() => setLoading(false));
     }
+
+    const savedArabicFont = localStorage.getItem('hujjah-arabic-font');
+    if (savedArabicFont) setArabicFont(savedArabicFont);
+    const savedLang2 = localStorage.getItem('hujjah-lang');
+    if (savedLang2) setLang(savedLang2 as Lang);
   }, []);
 
   useEffect(() => {
@@ -321,16 +329,32 @@ function ChainContent() {
     <div className={clsx('min-h-screen bg-base', darkMode && 'dark')}>
       {/* Header */}
       <header className="bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800 sticky top-0 z-50">
-        <AppNav
-          icon={<img src="/hujjah.png" alt="Hujjah" className="w-5 h-5" />}
-          lang={lang}
-          onLangChange={(l) => handleLangChange(l as Lang)}
-          langs={[{ code: 'en', label: 'EN' }, { code: 'bn', label: 'বাং' }]}
-          darkMode={darkMode}
-          onDarkModeToggle={toggleDarkMode}
-          containerClass={containerClass}
-          hiddenRoutes={['/chat']}
-        />
+        <div className="max-w-5xl mx-auto px-3 py-2 flex items-center justify-between">
+          <AppNav
+            icon={<img src="/hujjah.png" alt="Hujjah" className="w-5 h-5" />}
+            lang={lang}
+            onLangChange={(l) => handleLangChange(l as Lang)}
+            langs={[{ code: 'en', label: 'EN' }, { code: 'bn', label: 'বাং' }]}
+            darkMode={darkMode}
+            onDarkModeToggle={toggleDarkMode}
+            containerClass=""
+            hiddenRoutes={['/chat']}
+          />
+          <SettingsDropdown
+            isOpen={settingsOpen}
+            onToggle={() => setSettingsOpen(!settingsOpen)}
+            lang={lang}
+            onLangChange={(l) => handleLangChange(l as Lang)}
+            fontSize={fontSize}
+            onFontSizeChange={(size: 'small' | 'medium' | 'large') => setFontSize(size)}
+            arabicFont={arabicFont}
+            onArabicFontChange={(font) => setArabicFont(font)}
+            darkMode={darkMode}
+            onDarkModeToggle={toggleDarkMode}
+            setIsOpen={setSettingsOpen}
+            onMoreSettingsClick={() => setSettingsOpen(false)}
+          />
+        </div>
       </header>
 
       {/* ── Under Maintenance ────────────────────────────────────────── */}

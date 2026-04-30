@@ -204,6 +204,8 @@ export default function ChainPage() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [lang, setLang] = useState<Lang>('en');
+  const [fontSize, setFontSize] = useState('medium');
+  const [arabicFont, setArabicFont] = useState('uthmani');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<NarratorNode[]>([]);
   const [selectedNarrator, setSelectedNarrator] = useState<NarratorNode | null>(null);
@@ -233,8 +235,11 @@ export default function ChainPage() {
     const saved = localStorage.getItem('hujjah-dark');
     if (saved) setDarkMode(saved === 'true');
     const savedFont = localStorage.getItem('hujjah-font-size');
+    if (savedFont) setFontSize(savedFont);
     const scale = savedFont === 'small' ? '0.875' : savedFont === 'large' ? '1.125' : '1';
     document.documentElement.style.setProperty('--font-scale', scale);
+    const savedArabicFont = localStorage.getItem('hujjah-arabic-font');
+    if (savedArabicFont) setArabicFont(savedArabicFont);
     const savedLang = localStorage.getItem('hujjah-chain-lang') as Lang | null;
     if (savedLang && ['en', 'bn', 'ar'].includes(savedLang)) setLang(savedLang);
     const layout = localStorage.getItem('hujjah-layout');
@@ -371,7 +376,22 @@ export default function ChainPage() {
           darkMode={darkMode}
           onDarkModeToggle={() => setDarkMode((d) => !d)}
           containerClass={containerClass}
-          hiddenRoutes={['/chat']}
+          hiddenRoutes={['/chat', '/settings']}
+          hideDarkMode
+          showSettingsDropdown
+          fontSize={fontSize}
+          onFontSizeChange={(size) => {
+            setFontSize(size);
+            localStorage.setItem('hujjah-font-size', size);
+            document.documentElement.style.setProperty('--font-scale', size === 'small' ? '0.875' : size === 'large' ? '1.125' : '1');
+          }}
+          arabicFont={arabicFont}
+          onArabicFontChange={(font) => {
+            setArabicFont(font);
+            localStorage.setItem('hujjah-arabic-font', font);
+          }}
+          appLang={lang as string}
+          onAppLangChange={(l) => setLang(l as Lang)}
         />
       </header>
 

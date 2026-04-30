@@ -1,11 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { AppNav, useTheme } from '@hujjah/ui';
+import { AppNav } from '@hujjah/ui';
 
 export default function AboutPage() {
   const [mounted, setMounted] = useState(false);
-  const { darkMode, toggleDarkMode } = useTheme();
+  const [darkMode, setDarkMode] = useState(false);
+  const [lang, setLang] = useState<'en' | 'bn'>('en');
+  const [fontSize, setFontSize] = useState('medium');
+  const [arabicFont, setArabicFont] = useState('uthmani');
 
   useEffect(() => {
     setMounted(true);
@@ -13,8 +16,21 @@ export default function AboutPage() {
       if (e.persisted) setMounted(true);
     };
     window.addEventListener('pageshow', onPageshow);
+    const savedDark = localStorage.getItem('hujjah-dark');
+    if (savedDark) setDarkMode(savedDark === 'true');
+    const savedFont = localStorage.getItem('hujjah-font-size');
+    if (savedFont) setFontSize(savedFont);
+    const scale = savedFont === 'small' ? '0.875' : savedFont === 'large' ? '1.125' : '1';
+    document.documentElement.style.setProperty('--font-scale', scale);
+    const savedArabicFont = localStorage.getItem('hujjah-arabic-font');
+    if (savedArabicFont) setArabicFont(savedArabicFont);
     return () => window.removeEventListener('pageshow', onPageshow);
   }, []);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', darkMode);
+    localStorage.setItem('hujjah-dark', String(darkMode));
+  }, [darkMode]);
 
   if (!mounted) return <div className="min-h-screen bg-white dark:bg-zinc-950" />;
 
@@ -22,10 +38,27 @@ export default function AboutPage() {
     <div className="min-h-screen bg-white dark:bg-zinc-950">
       <header className="bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800 sticky top-0 z-50">
         <AppNav
+          lang={lang}
+          onLangChange={(l) => setLang(l as 'en' | 'bn')}
+          langs={[{ code: 'en', label: 'EN' }, { code: 'bn', label: 'বাং' }]}
           icon={<img src="/hujjah.png" alt="Hujjah" className="w-5 h-5" />}
           darkMode={darkMode}
-          onDarkModeToggle={toggleDarkMode}
-          hiddenRoutes={['/chat']}
+          onDarkModeToggle={() => setDarkMode((d) => !d)}
+          hiddenRoutes={['/chat', '/settings', '/settings']}
+          showSettingsDropdown
+          fontSize={fontSize}
+          onFontSizeChange={(size) => {
+            setFontSize(size);
+            localStorage.setItem('hujjah-font-size', size);
+            document.documentElement.style.setProperty('--font-scale', size === 'small' ? '0.875' : size === 'large' ? '1.125' : '1');
+          }}
+          arabicFont={arabicFont}
+          onArabicFontChange={(font) => {
+            setArabicFont(font);
+            localStorage.setItem('hujjah-arabic-font', font);
+          }}
+          appLang={lang}
+          onAppLangChange={(l) => setLang(l as 'en' | 'bn')}
         />
       </header>
 
