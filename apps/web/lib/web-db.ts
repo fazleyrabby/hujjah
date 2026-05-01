@@ -36,11 +36,39 @@ function makeAdapter(file: string): DBLike {
 
 let quranDb: DBLike | null = null;
 let hadithDb: DBLike | null = null;
+let quranHealthy = false;
+let hadithHealthy = false;
 
 export function getWebQuranDB(): DBLike {
-  return (quranDb ??= makeAdapter('hujjah-quran.db'));
+  if (quranDb) return quranDb;
+  try {
+    quranDb = makeAdapter('hujjah-quran.db');
+    quranHealthy = true;
+    return quranDb;
+  } catch {
+    quranHealthy = false;
+    return makeFailingDb('Quran database unavailable');
+  }
 }
 
 export function getWebHadithDB(): DBLike {
-  return (hadithDb ??= makeAdapter('hujjah-hadith-core.db'));
+  if (hadithDb) return hadithDb;
+  try {
+    hadithDb = makeAdapter('hujjah-hadith-core.db');
+    hadithHealthy = true;
+    return hadithDb;
+  } catch {
+    hadithHealthy = false;
+    return makeFailingDb('Hadith database unavailable');
+  }
 }
+
+function makeFailingDb(msg: string): DBLike {
+  return {
+    select: async () => { throw new Error(msg); },
+    execute: async () => { throw new Error(msg); },
+  };
+}
+
+export function isQuranHealthy() { return quranHealthy; }
+export function isHadithHealthy() { return hadithHealthy; }

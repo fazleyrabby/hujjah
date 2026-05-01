@@ -202,7 +202,7 @@ export default function Home() {
         setLoading(false);
       }
     },
-    [isMobile],
+    [isMobile, lang],
   );
 
   const executeSearch = useCallback(
@@ -282,7 +282,7 @@ const handleLangChange = useCallback(
           .catch(console.error);
       }
     },
-    [query, selectedSurah, executeSearch, loadSurah, searchDomain],
+    [query, selectedSurah, executeSearch, loadSurah, searchDomain, lang],
   );
 
   useEffect(() => {

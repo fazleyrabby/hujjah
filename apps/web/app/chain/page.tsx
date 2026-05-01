@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { clsx } from 'clsx';
 import { AppNav, useTheme } from '@hujjah/ui';
 import type { NarratorNode, NarratorEdge } from '@hujjah/ui';
@@ -210,7 +210,7 @@ function cleanHadithText(text: string): string {
     .trim();
 }
 
-function ChainContent() {
+function ChainContent({ pathname }: { pathname: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [mounted, setMounted] = useState(false);
@@ -279,6 +279,24 @@ function ChainContent() {
     const savedLang2 = localStorage.getItem('hujjah-lang');
     if (savedLang2) setLang(savedLang2 as Lang);
   }, []);
+
+  // Clear state when navigating to /chain with no params
+  useEffect(() => {
+    if (mounted) {
+      const params = new URLSearchParams(window.location.search);
+      const nId = params.get('id');
+      const hId = params.get('hadith');
+      if (!nId && !hId) {
+        setSelectedNarrator(null);
+        setHadithChainData(null);
+        setSelectedEdge(null);
+        setEdgeHadith([]);
+        setSelectedFullHadith(null);
+        setQuery('');
+        setResults([]);
+      }
+    }
+  }, [mounted, window.location.search]);
 
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -455,15 +473,6 @@ function ChainContent() {
                       </div>
                     </div>
                   ))}
-                  {/* Prophet */}
-                  <div className="flex items-center gap-3 mt-4 pt-4 border-t border-gray-200 dark:border-zinc-700">
-                    <span className="text-xs font-mono text-gray-400 w-6 text-right">{hadithChainData.chain.length + 1}</span>
-                    <div className="flex-1 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
-                      <p className="font-medium text-emerald-800 dark:text-emerald-300">
-                        {lang === 'bn' ? 'রাসূলুল্লাহ সাল্লাল্লাহু আলাইহি ওয়াসাল্লাম' : 'Prophet Muhammad ﷺ'}
-                      </p>
-                    </div>
-                  </div>
                 </div>
               </div>
             </div>
@@ -484,13 +493,24 @@ function ChainContent() {
         <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
           {/* Narrator profile */}
           <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 dark:border-zinc-800">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-                {getNarratorName(selectedNarrator, lang)}
-              </h2>
-              {getNarratorLocalName(selectedNarrator, lang) && (
-                <p className="text-sm text-gray-500 mt-1">{getNarratorLocalName(selectedNarrator, lang)}</p>
-              )}
+            <div className="px-6 py-4 border-b border-gray-100 dark:border-zinc-800 flex items-center justify-between gap-4">
+              <div className="min-w-0 flex-1">
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white" dir="rtl">
+                  {getNarratorName(selectedNarrator, lang)}
+                  {selectedNarrator.name_ar && (
+                    <span className="text-sm font-normal text-gray-400 ml-2">({selectedNarrator.name_ar})</span>
+                  )}
+                </h2>
+                {getNarratorLocalName(selectedNarrator, lang) && (
+                  <p className="text-sm text-gray-500 mt-1">{getNarratorLocalName(selectedNarrator, lang)}</p>
+                )}
+              </div>
+              <button
+                onClick={handleShowGraph}
+                className="shrink-0 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-bold rounded-lg transition-colors whitespace-nowrap"
+              >
+                {t.showGraph}
+              </button>
             </div>
             <div className="p-6 grid grid-cols-2 md:grid-cols-4 gap-4">
               {selectedNarrator.death_year && (
@@ -626,16 +646,6 @@ function ChainContent() {
               </div>
             </div>
           )}
-
-          {/* Graph button */}
-          <div className="flex justify-center">
-            <button
-              onClick={handleShowGraph}
-              className="px-6 py-3 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl transition-colors"
-            >
-              {t.showGraph}
-            </button>
-          </div>
         </div>
       )}
 
@@ -745,13 +755,15 @@ function ChainContent() {
 }
 
 export default function ChainPage() {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   return (
     <Suspense fallback={
       <div className="min-h-screen flex items-center justify-center">
         <div className="w-8 h-8 border-3 border-teal-600 border-t-transparent rounded-full animate-spin" />
       </div>
     }>
-      <ChainContent />
+      <ChainContent key={searchParams.toString()} pathname={pathname} />
     </Suspense>
   );
 }

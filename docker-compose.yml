@@ -8,7 +8,7 @@ services:
     environment:
       - DB_DATA_DIR=${DB_DATA_DIR:-/data/hujjah}
     volumes:
-      - ${DB_DATA_DIR:-/data/hujjah}:${DB_DATA_DIR:-/data/hujjah}:ro
+      - ${DB_DATA_DIR:-/data/hujjah}:${DB_DATA_DIR:-/data/hujjah}
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:3000/api/health"]
       interval: 10s

@@ -445,7 +445,7 @@ export default function ChainGraphFlow({
           <span className="text-teal-600 dark:text-teal-400 font-medium">{centerTotalChildren} students</span>
         </div>
         <div className="text-[10px] text-gray-400 dark:text-gray-500">
-          Drag nodes to reposition · Click to explore
+          1-level view · drag to reposition · click to explore
         </div>
       </div>
     </div>
