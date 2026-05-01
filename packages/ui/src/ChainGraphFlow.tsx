@@ -31,6 +31,82 @@ const TABAQAH_LABELS: Record<number, string> = {
   4: 'Later Scholar',
 };
 
+/* ─── Name normalization ─── */
+function normalizeName(name: string): string {
+  if (!name) return '';
+  return name
+    .replace(/[\u064B-\u0652\u0670\u0640]/g, '') // remove diacritics
+    .replace(/[أإآٱ]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .replace(/abu\s+/i, '')
+    .replace(/abi\s+/i, '')
+    .trim()
+    .toLowerCase();
+}
+
+/* ─── Merge duplicate narrators (canonicalization) ─── */
+function mergeDuplicateNarrators(nodes: NarratorNode[]) {
+  const groups = new Map<string, NarratorNode[]>();
+  for (const n of nodes) {
+    const key = normalizeName(n.name_ar || '');
+    if (!key) continue;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(n);
+  }
+
+  const mergedNodes: NarratorNode[] = [];
+  const idMap = new Map<number, number>(); // old id → canonical id
+  const mergedCountMap = new Map<number, number>(); // canonical id → how many were merged
+
+  for (const [, group] of groups) {
+    // Canonical: prefer richer data
+    const canonical = group.reduce((best, n) => {
+      if (!best) return n;
+      if (n.reliability && !best.reliability) return n;
+      if (n.name_en && !best.name_en) return n;
+      if (n.tabaqah && !best.tabaqah) return n;
+      return best;
+    }, null as NarratorNode | null)!;
+
+    mergedNodes.push({ ...canonical });
+    mergedCountMap.set(Number(canonical.id), group.length);
+
+    for (const g of group) {
+      if (Number(g.id) !== Number(canonical.id)) {
+        idMap.set(Number(g.id), Number(canonical.id));
+      }
+    }
+  }
+
+  return { mergedNodes, idMap, mergedCountMap };
+}
+
+/* ─── Rebuild edges with remapped canonical IDs ─── */
+function rebuildEdges(edges: NarratorEdge[], idMap: Map<number, number>) {
+  const seen = new Set<string>();
+  const cleaned: NarratorEdge[] = [];
+
+  for (const e of edges) {
+    let from = Number(e.from_narrator_id);
+    let to = Number(e.to_narrator_id);
+
+    // Follow ID chain to canonical
+    while (idMap.has(from)) from = idMap.get(from)!;
+    while (idMap.has(to)) to = idMap.get(to)!;
+
+    if (from === to) continue; // self-loop
+
+    const key = `${from}->${to}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    cleaned.push({ ...e, from_narrator_id: from, to_narrator_id: to });
+  }
+
+  return cleaned;
+}
+
 /* ─── Adjacency helpers ─── */
 function buildAdjacency(edges: NarratorEdge[]) {
   const parents = new Map<number, number[]>();
@@ -58,9 +134,10 @@ function NarratorNodeComponent({ data }: NodeProps & {
     lang: 'en' | 'bn' | 'ar';
     totalParents: number;
     totalChildren: number;
+    mergedCount: number;
   };
 }) {
-  const { narrator, isCenter, isSelected, isHovered, darkMode: dm, lang: lng, totalParents, totalChildren } = data;
+  const { narrator, isCenter, isSelected, isHovered, darkMode: dm, lang: lng, totalParents, totalChildren, mergedCount } = data;
   const name = narrator.name_ar;
   const subname = lng === 'bn'
     ? (narrator.name_bn ?? narrator.name_en)
@@ -126,6 +203,11 @@ function NarratorNodeComponent({ data }: NodeProps & {
             name only
           </span>
         )}
+        {mergedCount > 1 && (
+          <span className="text-[7px] px-1 py-0.5 rounded mt-0.5 bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400 font-medium">
+            merged ({mergedCount})
+          </span>
+        )}
       </div>
 
       {/* Child handle (bottom) — student connection */}
@@ -158,17 +240,30 @@ export default function ChainGraphFlow({
   lang,
   onNodeClick,
 }: ChainGraphFlowProps) {
+  // Canonicalize: merge duplicate narrators before rendering
+  const { mergedNodes, idMap, mergedCountMap } = useMemo(() => mergeDuplicateNarrators(rawNodes), [rawNodes]);
+
+  // Remap centerId to canonical if it was merged
+  const canonicalCenterId = useMemo(() => {
+    let id = Number(centerId);
+    while (idMap.has(id)) id = idMap.get(id)!;
+    return id;
+  }, [centerId, idMap]);
+
+  // Rebuild edges with remapped canonical IDs
+  const cleanedEdges = useMemo(() => rebuildEdges(rawEdges, idMap), [rawEdges, idMap]);
+
   const nodeMap = useMemo(() => {
     const m = new Map<number, NarratorNode>();
-    for (const n of rawNodes) m.set(Number(n.id), n);
+    for (const n of mergedNodes) m.set(Number(n.id), n);
     return m;
-  }, [rawNodes]);
+  }, [mergedNodes]);
 
-  const { parents, children } = useMemo(() => buildAdjacency(rawEdges), [rawEdges]);
+  const { parents, children } = useMemo(() => buildAdjacency(cleanedEdges), [cleanedEdges]);
 
-  const centerNode = nodeMap.get(centerId);
-  const centerTotalParents = (parents.get(centerId) || []).length;
-  const centerTotalChildren = (children.get(centerId) || []).length;
+  const centerNode = nodeMap.get(canonicalCenterId);
+  const centerTotalParents = (parents.get(canonicalCenterId) || []).length;
+  const centerTotalChildren = (children.get(canonicalCenterId) || []).length;
 
   /* ─── Build initial React Flow nodes/edges ─── */
   const { initialNodes, initialEdges } = useMemo(() => {
@@ -181,8 +276,8 @@ export default function ChainGraphFlow({
 
     // Collect parents (teachers)
     {
-      const visited = new Set<number>([centerId]);
-      let current = [centerId];
+      const visited = new Set<number>([canonicalCenterId]);
+      let current = [canonicalCenterId];
       for (let d = 0; d < maxDepth; d++) {
         const next: number[] = [];
         for (const id of current) {
@@ -201,8 +296,8 @@ export default function ChainGraphFlow({
 
     // Collect children (students)
     {
-      const visited = new Set<number>([centerId]);
-      let current = [centerId];
+      const visited = new Set<number>([canonicalCenterId]);
+      let current = [canonicalCenterId];
       for (let d = 0; d < maxDepth; d++) {
         const next: number[] = [];
         for (const id of current) {
@@ -219,15 +314,15 @@ export default function ChainGraphFlow({
       }
     }
 
-    visible.add(centerId);
+    visible.add(canonicalCenterId);
 
     // Build node positions — vertical layout
     // Level 0 = parents (top), 1 = center, 2 = children (bottom)
     const levelMap = new Map<number, number>();
-    const parentArr = [...visible].filter(id => id !== centerId && nodeMap.has(id) && (parents.get(centerId) || []).includes(id));
-    const childArr = [...visible].filter(id => id !== centerId && nodeMap.has(id) && (children.get(centerId) || []).includes(id));
+    const parentArr = [...visible].filter(id => id !== canonicalCenterId && nodeMap.has(id) && (parents.get(canonicalCenterId) || []).includes(id));
+    const childArr = [...visible].filter(id => id !== canonicalCenterId && nodeMap.has(id) && (children.get(canonicalCenterId) || []).includes(id));
 
-    levelMap.set(centerId, 1);
+    levelMap.set(canonicalCenterId, 1);
     parentArr.forEach(id => levelMap.set(id, 0));
     childArr.forEach(id => levelMap.set(id, 2));
 
@@ -243,7 +338,7 @@ export default function ChainGraphFlow({
       const levelNodes = [...visible].filter(lid => levelMap.get(lid) === level);
       const idx = levelNodes.indexOf(id);
 
-      const isCenter = id === centerId;
+      const isCenter = id === canonicalCenterId;
       const totalP = (parents.get(id) || []).length;
       const totalC = (children.get(id) || []).length;
 
@@ -262,6 +357,7 @@ export default function ChainGraphFlow({
           lang,
           totalParents: totalP,
           totalChildren: totalC,
+          mergedCount: mergedCountMap.get(id) ?? 1,
         },
         draggable: true,
         type: 'narrator',
@@ -270,7 +366,7 @@ export default function ChainGraphFlow({
 
     // Build edges — only visible connections
     const seen = new Set<string>();
-    for (const e of rawEdges) {
+    for (const e of cleanedEdges) {
       const student = Number(e.from_narrator_id);
       const teacher = Number(e.to_narrator_id);
       if (!visible.has(student) || !visible.has(teacher)) continue;
@@ -298,7 +394,7 @@ export default function ChainGraphFlow({
     }
 
     return { initialNodes: cf, initialEdges: ef };
-  }, [centerId, nodeMap, parents, children, rawEdges, darkMode, lang]);
+  }, [canonicalCenterId, nodeMap, parents, children, cleanedEdges, darkMode, lang]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
