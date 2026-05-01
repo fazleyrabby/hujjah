@@ -283,9 +283,8 @@ function ChainContent({ pathname }: { pathname: string }) {
   // Clear state when navigating to /chain with no params
   useEffect(() => {
     if (mounted) {
-      const params = new URLSearchParams(window.location.search);
-      const nId = params.get('id');
-      const hId = params.get('hadith');
+      const nId = searchParams.get('id');
+      const hId = searchParams.get('hadith');
       if (!nId && !hId) {
         setSelectedNarrator(null);
         setHadithChainData(null);
@@ -296,7 +295,7 @@ function ChainContent({ pathname }: { pathname: string }) {
         setResults([]);
       }
     }
-  }, [mounted, window.location.search]);
+  }, [mounted, searchParams]);
 
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
