@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { clsx } from 'clsx';
-import { AppNav, useTheme, SanadExplorer } from '@hujjah/ui';
+import { AppNav, useTheme, ChainGraphFlow } from '@hujjah/ui';
 import type { NarratorNode, NarratorEdge } from '@hujjah/ui';
 import SettingsDropdown from '@/components/SettingsDropdown';
 
@@ -586,8 +586,8 @@ function GraphPage() {
   const views: ViewMode[] = ['tree', 'chain', 'radial'];
 
   return (
-    <div className={clsx('min-h-screen bg-base', darkMode && 'dark')}>
-      <header className="bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800 sticky top-0 z-50 overflow-visible">
+    <div className={clsx('h-screen overflow-hidden flex flex-col bg-base', darkMode && 'dark')}>
+      <header className="bg-white dark:bg-zinc-900 border-b border-gray-200 dark:border-zinc-800 shrink-0 z-50 overflow-visible">
         <div className="max-w-5xl mx-auto px-3 py-2 flex items-center justify-between">
           <AppNav
             lang={lang}
@@ -623,7 +623,7 @@ function GraphPage() {
       </header>
 
       {/* Sub-nav: back link + narrator info + view switcher */}
-      <div className="bg-white dark:bg-zinc-900 border-b border-gray-100 dark:border-zinc-800 px-4 py-2.5">
+      <div className="bg-white dark:bg-zinc-900 border-b border-gray-100 dark:border-zinc-800 px-4 py-2.5 shrink-0">
         <div className="max-w-7xl mx-auto flex items-center gap-3 flex-wrap">
           <button
             onClick={() => router.push('/chain')}
@@ -704,7 +704,7 @@ function GraphPage() {
             />
           )}
           {view === 'tree' && (
-            <SanadExplorer
+            <ChainGraphFlow
               nodes={graphData.nodes}
               edges={graphData.edges}
               centerId={narratorId!}

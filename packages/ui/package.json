@@ -16,6 +16,8 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@hujjah/ui": "workspace:*",
+    "@xyflow/react": "^12.10.2",
     "clsx": "^2.1.1",
     "framer-motion": "^12.38.0",
     "react-force-graph-2d": "^1.29.1",
