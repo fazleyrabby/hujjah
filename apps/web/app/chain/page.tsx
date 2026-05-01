@@ -757,14 +757,13 @@ function ChainContent({ pathname }: { pathname: string }) {
 
 export default function ChainPage() {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   return (
     <Suspense fallback={
       <div className="min-h-screen flex items-center justify-center">
         <div className="w-8 h-8 border-3 border-teal-600 border-t-transparent rounded-full animate-spin" />
       </div>
     }>
-      <ChainContent key={searchParams.toString()} pathname={pathname} />
+      <ChainContent pathname={pathname} />
     </Suspense>
   );
 }
