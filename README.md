@@ -211,7 +211,7 @@ Hadith authenticity is graded by sanad chain length (shorter = stronger):
 | `/about` | Data sources, privacy, links | All |
 | `/settings` | Appearance, layout, font size (web: minimal; desktop: DB stats, model status) | All |
 | `/chain` | Sanad chain explorer — search narrators, browse teachers/students, view hadith graphs | All |
-| `/chain/graph?id=X` | Interactive BFS layered sanad graph with per-node expansion | All |
+| `/chain/graph?id=X` | Interactive React Flow graph — draggable nodes, click/hover highlighting, 1-hop BFS from center narrator | All |
 
 ### Chain Visualization Components
 
@@ -220,12 +220,35 @@ Three complementary views for exploring hadith sanad chains:
 | Component | File | Purpose |
 |---|---|---|
 | **ChainPreview** | `packages/ui/src/ChainPreview.tsx` | Minimal preview: 1 level teachers + center + 1 level students. Navigation-based, no edges. |
-| **SanadExplorer** | `packages/ui/src/SanadExplorer.tsx` | BFS layered graph with per-node expansion, SVG connection lines, hover feedback. |
+| **ChainGraphFlow** | `packages/ui/src/ChainGraphFlow.tsx` | React Flow v12 interactive graph — draggable nodes, bezier edges, click/hover highlighting, 1-hop BFS from center narrator |
+| **SanadExplorer** | `packages/ui/src/SanadExplorer.tsx` | BFS layered graph with per-node expansion, SVG connection lines, hover feedback |
 | **RadialSanad** | `packages/ui/src/RadialSanad.tsx` | Radial/circular layout with concentric rings, quadratic edge curves, hover highlighting. |
-| **NarratorGraph** | `packages/ui/src/NarratorGraph.tsx` | Recursive tree view with CSS connectors, hover path highlighting, smooth expansion. |
-| `/hadith` | Hadith vault — browse all 6 books with translations and grading | All |
+| **NarratorGraph** | `packages/ui/src/NarratorGraph.tsx` | Recursive tree view with CSS connectors, hover path highlighting, smooth expansion |
+| **/hadith** | `apps/web/app/hadith/page.tsx` | Hadith vault — browse all 6 books with translations and grading |
 
 ## Docker Deploy (Web)
+
+Full deployment guide: [docs/DEPLOY.md](docs/DEPLOY.md)
+
+### Quick Deploy
+
+```bash
+# 1. Update DB on VPS (from repo root)
+sshpass -p 'PASSWORD' scp apps/tauri/src-tauri/resources/hujjah-hadith-core.db signalstack:/tmp/
+sshpass -p 'PASSWORD' ssh -t signalstack "sudo mv /tmp/hujjah-hadith-core.db /data/hujjah/"
+
+# 2. Build + deploy
+./scripts/deploy-web.sh
+```
+
+### Prerequisites on VPS
+
+```bash
+# DB directory ownership (run once by VPS admin)
+sudo chown -R 1001:1001 /data/hujjah
+```
+
+### Manual Steps
 
 ```bash
 # Build image (linux/amd64 for VPS)
@@ -235,19 +258,8 @@ docker buildx build --platform linux/amd64 --load -f apps/web/Dockerfile -t hujj
 docker save hujjah-web:latest | ssh signalstack "docker load"
 ssh signalstack "cd ~/hujjah-web && docker compose up -d --force-recreate"
 
-# Or use deploy script (requires SSH access to host)
-./scripts/deploy-web.sh [HOST]
-```
-
-### Prerequisites on Host
-
-The **DB files must exist on the host** before starting the container:
-
-```bash
-# On VPS
-sudo mkdir -p /data/hujjah
-sudo cp hujjah-quran.db hujjah-hadith-core.db /data/hujjah/
-sudo chown -R 1001:1001 /data/hujjah
+# Check health
+ssh signalstack "curl -sf http://localhost:3002/api/health"
 ```
 
 ### Docker Image Details

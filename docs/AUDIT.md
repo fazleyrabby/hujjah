@@ -41,4 +41,4 @@
 
 ## Resolved
 
-*(none yet)*
+- **ChainExplorer tree tab** — Replaced SanadExplorer with ChainGraphFlow (React Flow v12) for mobile responsiveness, draggable nodes, proper bezier edges, click/hover highlighting. Build now passes after fixing useSearchParams suspense boundary in chain/page.tsx.
