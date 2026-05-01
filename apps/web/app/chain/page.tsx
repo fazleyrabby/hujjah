@@ -494,19 +494,21 @@ function ChainContent({ pathname }: { pathname: string }) {
           <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 dark:border-zinc-800 flex items-center justify-between gap-4">
               <div className="min-w-0 flex-1">
-                <h2 className="text-xl font-bold text-gray-900 dark:text-white" dir="rtl">
-                  {getNarratorName(selectedNarrator, lang)}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-xl font-bold text-gray-900 dark:text-white" dir="rtl">
+                    {getNarratorName(selectedNarrator, lang)}
+                  </h2>
                   {selectedNarrator.name_ar && (
-                    <span className="text-sm font-normal text-gray-400 ml-2">({selectedNarrator.name_ar})</span>
+                    <span className="text-sm font-normal text-gray-400">({selectedNarrator.name_ar})</span>
                   )}
-                </h2>
+                </div>
                 {getNarratorLocalName(selectedNarrator, lang) && (
-                  <p className="text-sm text-gray-500 mt-1">{getNarratorLocalName(selectedNarrator, lang)}</p>
+                  <p className="text-sm text-gray-500 mt-0.5">{getNarratorLocalName(selectedNarrator, lang)}</p>
                 )}
               </div>
               <button
                 onClick={handleShowGraph}
-                className="shrink-0 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-bold rounded-lg transition-colors whitespace-nowrap"
+                className="shrink-0 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-lg transition-colors whitespace-nowrap"
               >
                 {t.showGraph}
               </button>
