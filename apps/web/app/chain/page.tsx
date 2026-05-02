@@ -256,7 +256,7 @@ function ChainContent({ pathname }: { pathname: string }) {
         .then(async (n) => {
           if (n) {
             setSelectedNarrator(n);
-            setQuery(n.name_ar ?? '');
+            if (!query) setQuery(n.name_ar ?? '');
             const res = await fetch(`/api/chain?action=edges&id=${n.id}`);
             setEdges(await res.json());
           }
