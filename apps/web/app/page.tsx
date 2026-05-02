@@ -195,7 +195,6 @@ export default function Home() {
         setTafsirLangs(Array.isArray(langs) ? langs : []);
         setTafsirSlugs(Array.isArray(slugs) ? slugs : []);
         setTafsirModalSlug(Array.isArray(slugs) ? slugs[0] ?? "" : "");
-        setTafsirModalLang("en");
       } catch (err: any) {
         setError(err.message);
       } finally {
@@ -264,6 +263,7 @@ const handleLangChange = useCallback(
       setSelectedTranslator("");
       setTafsirModalVerse(null);
       setTafsirModalData(null);
+      setTafsirModalLang(newLang);
       if (selectedSurah) {
         setSearchMode(false);
         // Don't pass old translator slug when changing language
@@ -1077,7 +1077,7 @@ const handleLangChange = useCallback(
                     </select>
                   )}
                 </div>
-                <div className="flex-1 overflow-y-auto p-6 min-h-[250px]">
+                <div className="flex-1 overflow-y-auto px-4 pb-6 min-h-[250px]">
                   {tafsirModalLoading ? (
                     <div className="space-y-3 animate-pulse" aria-hidden="true">
                       <div className="h-3 w-24 bg-gray-200 dark:bg-zinc-700 rounded" />
