@@ -36,11 +36,14 @@ function normalizeName(name: string): string {
   if (!name) return '';
   return name
     .replace(/[\u064B-\u0652\u0670\u0640]/g, '') // remove diacritics
-    .replace(/[أإآٱ]/g, 'ا')
-    .replace(/ى/g, 'ي')
-    .replace(/ة/g, 'ه')
-    .replace(/abu\s+/i, '')
-    .replace(/abi\s+/i, '')
+    .replace(/[أإآٱ]/g, 'ا')    // normalize alif variants
+    .replace(/ى/g, 'ي')          // Persian ya (ى) → Arabic ya
+    .replace(/ة/g, 'ه')          // ta marbuta → ha
+    .replace(/^اب(ي|ا|و)?\s*/i, '') // strip common اب/ابي/ابا/ابو prefix
+    .replace(/^ابي\s*/i, '')
+    .replace(/^ابا\s*/i, '')
+    .replace(/^ابو\s*/i, '')
+    .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
 }
@@ -529,7 +532,7 @@ export default function ChainGraphFlow({
         />
         <Controls
           showInteractive={false}
-          className="bg-white dark:bg-zinc-900 rounded-lg shadow-lg border border-gray-200 dark:border-zinc-700 [&>button]:bg-white dark:[&>button]:bg-zinc-900 [&>button]:border-gray-200 dark:[&>button]:border-zinc-700"
+          className="bg-white dark:bg-zinc-900 rounded-lg shadow-lg border border-gray-200 dark:border-zinc-700"
         />
       </ReactFlow>
 
