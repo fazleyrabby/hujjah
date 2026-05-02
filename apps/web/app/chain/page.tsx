@@ -155,7 +155,7 @@ const CITY_LABELS: Record<string, { en: string; bn: string; ar: string }> = {
 };
 
 const EXAMPLE_NARRATORS = [
-  { ar: 'أَبِي هُرَيْرَةَ',   en: 'Abu Hurayra',      bn: 'আবু হুরাইরা' },
+  { ar: 'أَبِي هُرَيْرَةَ',   en: 'Abu Hurayrah',      bn: 'আবু হুরাইরা' },
   { ar: 'عَائِشَةَ',          en: 'Aisha',            bn: 'আয়িশা' },
   { ar: 'الزُّهْرِيِّ',       en: 'al-Zuhri',         bn: 'আল-জুহরী' },
   { ar: 'شُعْبَةُ',           en: 'Shuba',            bn: 'শুবা' },
@@ -651,7 +651,7 @@ function ChainContent({ pathname }: { pathname: string }) {
       )}
 
       {/* ── Empty / Search state ── */}
-      {!hadithChainData && !selectedNarrator && !loading && (
+      {!hadithChainData && !selectedNarrator && (
         <div className="max-w-2xl mx-auto px-4 py-16 text-center">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">{t.heading}</h2>
           <p className="text-gray-500 dark:text-gray-400 mb-8">{t.subtitle}</p>
