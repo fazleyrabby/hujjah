@@ -533,6 +533,7 @@ export default function ChainGraphFlow({
         <Controls
           showInteractive={false}
           className="bg-white dark:bg-zinc-900 rounded-lg shadow-lg border border-gray-200 dark:border-zinc-700"
+          style={{ '--rd3c-controls-icon-color': '#71717a' } as React.CSSProperties}
         />
       </ReactFlow>
 
