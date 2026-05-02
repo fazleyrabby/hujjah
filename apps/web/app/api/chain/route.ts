@@ -82,7 +82,7 @@ export async function GET(req: NextRequest) {
           [ftsQuery, limit * 5]
         );
         if (rows.length > 0) {
-          return NextResponse.json(deduplicateNarrators(rows).slice(0, limit));
+          return NextResponse.json(rows.slice(0, limit));
         }
       } catch { /* fall through to LIKE */ }
 
@@ -100,7 +100,7 @@ export async function GET(req: NextRequest) {
          LIMIT ?`,
         [lQuery, lQuery, lQuery, lQuery, lQuery, limit * 5]
       );
-      return NextResponse.json(deduplicateNarrators(rows).slice(0, limit));
+      return NextResponse.json(rows.slice(0, limit));
     }
 
 if (action === 'narrator') {
