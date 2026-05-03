@@ -1,5 +1,7 @@
 # Hujjah
 
+![Hujjah Thumbnail](thumbnail.png)
+
 Privacy-first, offline-capable Islamic research engine. Search the Quran in English and Bengali, explore Kutub al-Sittah hadith with full sanad chains — 100% offline, zero external APIs.
 
 > **Monorepo**: `apps/tauri` (native desktop) + `apps/web` (browser) share `packages/ui`.
