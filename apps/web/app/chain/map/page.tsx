@@ -58,7 +58,7 @@ function MapPageContent() {
   };
 
   const handleNodeClick = (node: any) => {
-    router.push(`/chain?id=${node.id}`);
+    router.push(`/chain/map?id=${node.id}`);
   };
 
   if (!narratorId) {
@@ -160,7 +160,7 @@ function MapPageContent() {
       </div>
 
       {/* Map Canvas */}
-      <div className="flex-1 relative" style={{ height: 'calc(100vh - 120px)', minHeight: '500px' }}>
+      <div className="flex-1 relative" style={{ height: 'calc(100vh - 110px)', minHeight: '600px' }}>
         <ChainMapView
           initialNarratorId={narratorId}
           lang={lang}
