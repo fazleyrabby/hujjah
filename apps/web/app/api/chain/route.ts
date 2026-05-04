@@ -442,12 +442,14 @@ if (action === 'narrator') {
       if (depth >= 1) {
         const placeholders = Array.from(nodes.keys()).map(() => '?').join(',');
 
-        // Outgoing: current → students
-        const outEdges = await db.select<any[]>(
+        // Outgoing: current → students AND incoming: teacher → current
+        const edgeRows = await db.select<any[]>(
           `SELECT e.from_narrator_id, n.name_ar as from_name, n.name_en as from_name_en,
-                  n.name_bn as from_name_bn, n.death_year as from_death_year, n.tabaqah as from_tabaqah,
+                  n.name_bn as from_name_bn, n.death_year as from_death_year, 
+                  n.tabaqah as from_tabaqah, n.reliability as from_reliability, n.city as from_city,
                   e.to_narrator_id, nn.name_ar as to_name, nn.name_en as to_name_en,
-                  nn.name_bn as to_name_bn, nn.death_year as to_death_year, nn.tabaqah as to_tabaqah,
+                  nn.name_bn as to_name_bn, nn.death_year as to_death_year, 
+                  nn.tabaqah as to_tabaqah, nn.reliability as to_reliability, nn.city as to_city,
                   e.hadith_count
            FROM narrator_edges e
            JOIN narrators n ON n.id = e.from_narrator_id
@@ -457,7 +459,7 @@ if (action === 'narrator') {
           [...Array.from(nodes.keys()), ...Array.from(nodes.keys()), limit * 3]
         );
 
-        for (const e of outEdges) {
+        for (const e of edgeRows) {
           const key = `${e.from_narrator_id}-${e.to_narrator_id}`;
           if (edges.some(ex => `${ex.from_narrator_id}-${ex.to_narrator_id}` === key)) continue;
 
@@ -470,15 +472,15 @@ if (action === 'narrator') {
           if (!nodes.has(e.from_narrator_id)) {
             nodes.set(e.from_narrator_id, {
               id: e.from_narrator_id, name_ar: e.from_name, name_en: e.from_name_en,
-              name_bn: e.from_name_bn, tabaqah: e.from_tabaqah, reliability: e.from_reliability,
-              city: e.from_city, data_source: e.from_data_source,
+              name_bn: e.from_name_bn, death_year: e.from_death_year, tabaqah: e.from_tabaqah, 
+              reliability: e.from_reliability, city: e.from_city, data_source: e.from_data_source,
             });
           }
           if (!nodes.has(e.to_narrator_id)) {
             nodes.set(e.to_narrator_id, {
               id: e.to_narrator_id, name_ar: e.to_name, name_en: e.to_name_en,
-              name_bn: e.to_name_bn, tabaqah: e.to_tabaqah, reliability: e.to_reliability,
-              city: e.to_city, data_source: e.to_data_source,
+              name_bn: e.to_name_bn, death_year: e.to_death_year, tabaqah: e.to_tabaqah,
+              reliability: e.to_reliability, city: e.to_city, data_source: e.to_data_source,
             });
           }
         }

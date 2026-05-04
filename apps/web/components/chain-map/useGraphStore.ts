@@ -25,16 +25,7 @@ interface GraphStoreState {
 const MAX_NODES = 400;
 const NEIGHBOR_LIMIT = 15;
 
-function nodeKey(id: number) { return id; }
 function edgeKey(from: number, to: number) { return `${from}-${to}`; }
-
-function normalizeArabicQuery(text: string): string {
-  return text
-    .replace(/[\u064B-\u0652\u0670\u0640]/g, '')
-    .replace(/[أإآٱ]/g, 'ا')
-    .replace(/ى/g, 'ي')
-    .replace(/ة/g, 'ه');
-}
 
 function layoutNodesRadial(
   existingNodes: Map<number, GraphNode>,
@@ -44,26 +35,28 @@ function layoutNodesRadial(
   centerY: number,
 ): Map<number, GraphNode> {
   const result = new Map(existingNodes);
-  
-  // Find existing center position
-  const center = result.get(centerId);
-  if (!center) {
-    // First node - set as center
-    const firstNode = newNodes[0];
-    if (firstNode) {
-      result.set(firstNode.id, { ...firstNode, x: centerX, y: centerY });
+
+  // Ensure center exists with position
+  const existingCenter = result.get(centerId);
+  if (!existingCenter) {
+    // First load - add center node
+    const centerNode = newNodes.find(n => n.id === centerId);
+    if (centerNode) {
+      result.set(centerId, { ...centerNode, x: centerX, y: centerY });
     }
-    return result;
+  } else if (existingCenter.x === undefined) {
+    // Center exists but no position - update it
+    result.set(centerId, { ...existingCenter, x: centerX, y: centerY });
   }
 
-  // Get neighbors that need layout (not yet positioned)
-  const toLayout = newNodes.filter(n => !result.has(n.id));
+  // Get neighbors that need positioning
+  const toLayout = newNodes.filter(n => n.id !== centerId && !result.has(n.id));
   if (toLayout.length === 0) return result;
 
-  // Determine positions based on existing graph structure
-  const angleStep = (2 * Math.PI) / Math.max(toLayout.length, 6);
-  const radius = Math.max(150, toLayout.length * 50);
-  
+  // Position neighbors radially around center
+  const radius = Math.max(180, toLayout.length * 40);
+  const angleStep = (2 * Math.PI) / Math.max(toLayout.length, 1);
+
   toLayout.forEach((node, i) => {
     const angle = angleStep * i - Math.PI / 2;
     const x = centerX + radius * Math.cos(angle);
@@ -93,11 +86,8 @@ export function useGraphStore() {
     centerY: number = 0,
   ) => {
     setState(prev => {
-      let nodes = new Map(prev.nodes);
+      let nodes = layoutNodesRadial(prev.nodes, data.nodes, centerId, centerX, centerY);
       let edges = new Map(prev.edges);
-
-      // Layout new nodes radially around center
-      nodes = layoutNodesRadial(nodes, data.nodes, centerId, centerX, centerY);
 
       // Add edges (deduplicated)
       for (const e of data.edges) {
@@ -114,7 +104,6 @@ export function useGraphStore() {
       // Trim if over limit
       if (nodes.size > MAX_NODES) {
         const entries = Array.from(nodes.entries());
-        // Keep expanded nodes and focused, remove oldest
         const toRemove = entries
           .filter(([id]) => id !== prev.focusedNodeId && !prev.expandedNodes.has(id))
           .slice(0, nodes.size - MAX_NODES);
@@ -139,7 +128,6 @@ export function useGraphStore() {
     centerY: number = 0,
     depth: number = 1,
   ) => {
-    // Cancel any in-flight request
     if (fetchControllerRef.current) {
       fetchControllerRef.current.abort();
     }
@@ -147,13 +135,17 @@ export function useGraphStore() {
     fetchControllerRef.current = controller;
 
     setLoadingNodeIds(prev => new Set([...prev, nodeId]));
-    setLoading(true);
 
     try {
       const data = await fetchNeighbors(nodeId, depth, NEIGHBOR_LIMIT);
       if (controller.signal.aborted) return;
-      
-      mergeData(data, nodeId, centerX, centerY);
+
+      // Get current center position from state
+      const currentCenter = state.nodes.get(nodeId);
+      const posX = currentCenter?.x ?? centerX;
+      const posY = currentCenter?.y ?? centerY;
+
+      mergeData(data, nodeId, posX, posY);
 
       setState(prev => ({
         ...prev,
@@ -168,11 +160,9 @@ export function useGraphStore() {
         next.delete(nodeId);
         return next;
       });
-      setLoading(prev => !!(Array.from(state.nodes.keys()).length));
-      // Keep loading false properly
       setLoading(false);
     }
-  }, [mergeData]);
+  }, [mergeData, state.nodes]);
 
   const setHoveredNode = useCallback((id: number | null) => {
     setState(prev => ({ ...prev, hoveredNodeId: id }));
@@ -188,14 +178,24 @@ export function useGraphStore() {
     centerX: number = 0,
     centerY: number = 0,
   ) => {
+    // Initialize with center node at position
+    const initialNodes = new Map<number, GraphNode>();
+    initialNodes.set(centerNode.id, { ...centerNode, x: centerX, y: centerY });
+
+    const initialEdges = new Map<string, GraphEdge>();
+
     setState({
-      nodes: new Map([[centerNode.id, { ...centerNode, x: centerX, y: centerY }]]),
-      edges: new Map(),
+      nodes: initialNodes,
+      edges: initialEdges,
       expandedNodes: new Set(),
       hoveredNodeId: null,
       focusedNodeId: centerNode.id,
     });
-    mergeData(data, centerNode.id, centerX, centerY);
+
+    // Merge in neighbors data
+    if (data.nodes.length > 0 || data.edges.length > 0) {
+      mergeData(data, centerNode.id, centerX, centerY);
+    }
   }, [mergeData]);
 
   const clearGraph = useCallback(() => {
@@ -206,11 +206,6 @@ export function useGraphStore() {
       hoveredNodeId: null,
       focusedNodeId: null,
     });
-  }, []);
-
-  const searchToId = useCallback(async (query: string): Promise<NarratorNode | null> => {
-    const results = await searchNarrators(query, 1);
-    return results[0] ?? null;
   }, []);
 
   return {
@@ -226,6 +221,5 @@ export function useGraphStore() {
     setFocusedNode,
     initGraph,
     clearGraph,
-    searchToId,
   };
 }
