@@ -97,7 +97,17 @@ function GraphContent({ initialNarratorId, lang = 'en', darkMode = false, onNode
   const t = MAP_I18N[lang];
 
   // Load initial narrator and neighbors
-  const loadGraph = useCallback(async (narratorId: number) => {
+  const loadGraph = useCallback(async (narratorId: number, clearExisting: boolean = false) => {
+    // Clear existing graph when centering on a new node
+    if (clearExisting) {
+      setGraphState({
+        nodes: new Map(),
+        edges: new Map(),
+        loadingNodeIds: new Set(),
+        hoveredNodeId: null,
+      });
+    }
+
     setGraphState(prev => ({
       ...prev,
       loadingNodeIds: new Set([...prev.loadingNodeIds, narratorId]),
@@ -187,7 +197,7 @@ function GraphContent({ initialNarratorId, lang = 'en', darkMode = false, onNode
   useEffect(() => {
     const id = initialNarratorId ?? (searchParams.get('id') ? Number(searchParams.get('id')) : null);
     if (!id) return;
-    loadGraph(id);
+    loadGraph(id, true); // clearExisting = true for initial load
   }, [initialNarratorId, searchParams, loadGraph]);
 
   // Center on first load
@@ -288,7 +298,7 @@ function GraphContent({ initialNarratorId, lang = 'en', darkMode = false, onNode
   }, [centerId, graphState.hoveredNodeId, darkMode]);
 
   return (
-    <div className="w-full h-full min-h-[500px]" ref={reactFlowWrapper}>
+    <div className="w-full h-full" style={{ minHeight: '800px' }} ref={reactFlowWrapper}>
       <ReactFlow
         nodes={flowNodes}
         edges={flowEdges}
