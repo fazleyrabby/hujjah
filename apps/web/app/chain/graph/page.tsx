@@ -4,12 +4,11 @@ import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { clsx } from 'clsx';
 import { AppNav, useTheme, ChainGraphFlow } from '@hujjah/ui';
-import ChainMapView from '@/components/chain-map/ChainMapView';
 import type { NarratorNode, NarratorEdge } from '@hujjah/ui';
 import SettingsDropdown from '@/components/SettingsDropdown';
 
 type Lang = 'en' | 'bn' | 'ar';
-type ViewMode = 'tree' | 'chain' | 'radial' | 'map';
+type ViewMode = 'tree' | 'chain' | 'radial';
 
 const GRAPH_I18N = {
   en: {
@@ -17,7 +16,7 @@ const GRAPH_I18N = {
     loading: 'Loading sanad...',
     notFound: 'Narrator not found',
     notFoundDesc: 'Go back to search for a narrator.',
-    views: { tree: 'Tree', chain: 'Chain', radial: 'Radial', map: 'Map' },
+    views: { tree: 'Tree', chain: 'Chain', radial: 'Radial' },
     teachers: 'Teachers',
     students: 'Students',
     died: 'd.',
@@ -27,7 +26,7 @@ const GRAPH_I18N = {
     loading: 'সনদ লোড হচ্ছে...',
     notFound: 'রাবী পাওয়া যায়নি',
     notFoundDesc: 'ফিরে গিয়ে রাবী খুঁজুন।',
-    views: { tree: 'ট্রি', chain: 'চেইন', radial: 'রেডিয়াল', map: 'ম্যাপ' },
+    views: { tree: 'ট্রি', chain: 'চেইন', radial: 'রেডিয়াল' },
     teachers: 'শায়খগণ',
     students: 'ছাত্রগণ',
     died: 'মৃ.',
@@ -37,7 +36,7 @@ const GRAPH_I18N = {
     loading: 'جاري تحميل السند...',
     notFound: 'لم يتم العثور على الراوي',
     notFoundDesc: 'ارجع للبحث عن راوٍ.',
-    views: { tree: 'شجرة', chain: 'سلسلة', radial: 'شعاعي', map: 'خريطة' },
+    views: { tree: 'شجرة', chain: 'سلسلة', radial: 'شعاعي' },
     teachers: 'الشيوخ',
     students: 'التلاميذ',
     died: 'وف.',
@@ -545,7 +544,7 @@ function GraphPage() {
     const savedLang = localStorage.getItem('hujjah-lang') as Lang | null;
     if (savedLang && ['en', 'bn', 'ar'].includes(savedLang)) setLang(savedLang);
     const savedView = localStorage.getItem('hujjah-graph-view') as ViewMode | null;
-    if (savedView && ['tree', 'chain', 'radial', 'map'].includes(savedView)) setView(savedView);
+    if (savedView && ['tree', 'chain', 'radial'].includes(savedView)) setView(savedView);
   }, []);
 
   useEffect(() => {
@@ -584,7 +583,7 @@ function GraphPage() {
 
   if (!mounted) return null;
 
-  const views: ViewMode[] = ['tree', 'chain', 'radial', 'map'];
+  const views: ViewMode[] = ['tree', 'chain', 'radial'];
 
   return (
     <div className={clsx('h-screen overflow-hidden flex flex-col bg-base', darkMode && 'dark')}>
@@ -712,14 +711,6 @@ function GraphPage() {
               darkMode={darkMode}
               lang={lang}
               onNodeClick={handleNodeClick}
-            />
-          )}
-          {view === 'map' && (
-            <ChainMapView
-              initialNarratorId={narratorId!}
-              lang={lang}
-              darkMode={darkMode}
-              onNodeClick={(node: any) => router.push(`/chain?id=${node.id}`)}
             />
           )}
         </div>

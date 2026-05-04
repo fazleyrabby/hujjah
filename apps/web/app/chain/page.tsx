@@ -506,12 +506,20 @@ function ChainContent({ pathname }: { pathname: string }) {
                   <p className="text-sm text-gray-500 mt-0.5">{getNarratorLocalName(selectedNarrator, lang)}</p>
                 )}
               </div>
-              <button
-                onClick={handleShowGraph}
-                className="shrink-0 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-lg transition-colors whitespace-nowrap"
-              >
-                {t.showGraph}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleShowGraph}
+                  className="shrink-0 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-lg transition-colors whitespace-nowrap"
+                >
+                  {t.showGraph}
+                </button>
+                <a
+                  href={`/chain/map?id=${selectedNarrator.id}`}
+                  className="shrink-0 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition-colors whitespace-nowrap"
+                >
+                  Map View
+                </a>
+              </div>
             </div>
             <div className="p-6 grid grid-cols-2 md:grid-cols-4 gap-4">
               {selectedNarrator.death_year && (
