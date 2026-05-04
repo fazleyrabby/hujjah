@@ -42,32 +42,72 @@ const MAP_I18N = {
     noResults: 'No narrator found',
     expand: 'Double-click node to expand',
     spread: 'Spread',
-    zoom: 'Zoom',
-    levels: 'Levels',
+    directConnections: 'Showing direct connections only',
   },
   bn: {
     searchPlaceholder: 'রাবী খুঁজুন...',
     noResults: 'রাবী পাওয়া যায়নি',
     expand: 'প্রতিবেশী দেখতে নোডে ডাবল ক্লিক করুন',
     spread: 'স্প্রেড',
-    zoom: 'জুম',
-    levels: 'স্তর',
+    directConnections: 'শুধুমাত্র সরাসরি সংযোগগুলো দেখাচ্ছে',
   },
   ar: {
     searchPlaceholder: 'ابحث عن الراوي...',
     noResults: 'لم يُعثر على راوٍ',
     expand: 'انقر نقراً مزدوجاً لتوسيع الجيران',
     spread: 'الانتشار',
-    zoom: 'تكبير',
-    levels: 'مستويات',
+    directConnections: 'إظهار الاتصالات المباشرة فقط',
   },
 };
 
+// Tabaqah (generation) layers
+const TABAQAH_LAYERS: Record<number, { label: string; radius: number }> = {
+  1: { label: 'Sahaba', radius: 0 },         // Companions - center
+  2: { label: "Tabi'un", radius: 1 },      // Followers
+  3: { label: "Tabi' al-Tabi'in", radius: 2 }, // Followers of followers
+  4: { label: 'Later Scholars', radius: 3 }, // Later scholars
+};
+
+// Normalize Arabic name for comparison
+function normalizeArabicName(name: string): string {
+  if (!name) return '';
+  return name
+    .replace(/[\u064B-\u0652\u0670\u0640]/g, '') // Remove diacritics
+    .replace(/[أإآٱ]/g, 'ا') // Normalize alif
+    .replace(/ى/g, 'ي') // Persian ya to Arabic
+    .replace(/ة/g, 'ه') // Ta marbuta to ha
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+// Get tabaqah radius multiplier
+function getTabaqahRadius(tabaqah: number | null | undefined): number {
+  return TABAQAH_LAYERS[tabaqah ?? 4]?.radius ?? 3;
+}
+
+// Generate jitter for node position
+function addJitter(value: number, amount: number = 8): number {
+  return value + (Math.random() - 0.5) * amount * 2;
+}
+
 interface GraphState {
-  nodes: Map<number, { x: number; y: number; data: NarratorNode; level: number }>;
-  edges: Map<string, { source: number; target: number; data: NarratorEdge }>;
+  nodes: Map<number, { 
+    x: number; 
+    y: number; 
+    data: NarratorNode;
+    tabaqah: number;
+    normalizedName: string;
+  }>;
+  edges: Map<string, { 
+    source: number; 
+    target: number; 
+    data: NarratorEdge;
+    isTeacherEdge: boolean; // true if target is center narrator (teacher)
+  }>;
   loadingNodeIds: Set<number>;
   hoveredNodeId: number | null;
+  nameFrequency: Map<string, number>; // Track duplicate names
 }
 
 function GraphContent({ initialNarratorId, lang = 'en', darkMode = false, onNodeClick }: ChainMapViewProps) {
@@ -78,27 +118,28 @@ function GraphContent({ initialNarratorId, lang = 'en', darkMode = false, onNode
     edges: new Map(),
     loadingNodeIds: new Set(),
     hoveredNodeId: null,
+    nameFrequency: new Map(),
   });
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<NarratorNode[]>([]);
   const [searching, setSearching] = useState(false);
   const [centerId, setCenterId] = useState<number | null>(null);
-  const [spread, setSpread] = useState(1);
-  const [zoom, setZoom] = useState(1);
-  const [levels, setLevels] = useState(2);
+  const [spread, setSpread] = useState(2);
+  const spreadRef = useRef(2);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { fitView } = useReactFlow();
 
   const t = MAP_I18N[lang];
 
-  // Load graph with specified depth and limit
-  const loadGraph = useCallback(async (narratorId: number, clearExisting: boolean = false, depth: number = 2) => {
+  // Load graph with generational layering
+  const loadGraph = useCallback(async (narratorId: number, clearExisting: boolean = false) => {
     if (clearExisting) {
       setGraphState({
         nodes: new Map(),
         edges: new Map(),
         loadingNodeIds: new Set(),
         hoveredNodeId: null,
+        nameFrequency: new Map(),
       });
     }
 
@@ -110,7 +151,7 @@ function GraphContent({ initialNarratorId, lang = 'en', darkMode = false, onNode
     try {
       const [narratorRes, neighborsRes] = await Promise.all([
         fetch(`/api/chain?action=narrator&id=${narratorId}`),
-        fetch(`/api/chain?action=neighbors&id=${narratorId}&depth=${depth}&limit=20`),
+        fetch(`/api/chain?action=neighbors&id=${narratorId}&depth=1&limit=20`),
       ]);
 
       const narrator: NarratorNode = await narratorRes.json();
@@ -121,62 +162,109 @@ function GraphContent({ initialNarratorId, lang = 'en', darkMode = false, onNode
         return;
       }
 
-      const newNodes = new Map<number, { x: number; y: number; data: NarratorNode; level: number }>();
-      const newEdges = new Map<string, { source: number; target: number; data: NarratorEdge }>();
+      const newNodes = new Map<number, { x: number; y: number; data: NarratorNode; tabaqah: number; normalizedName: string }>();
+      const newEdges = new Map<string, { source: number; target: number; data: NarratorEdge; isTeacherEdge: boolean }>();
+      const nameFrequency = new Map<string, number>();
 
-      // Center node at (0, 0)
+      // Track name frequency for duplicate detection
+      const centerNormName = normalizeArabicName(narrator.name_ar || '');
+      nameFrequency.set(centerNormName, (nameFrequency.get(centerNormName) || 0) + 1);
+
+      // Position center node at (0, 0)
       const centerX = 0;
       const centerY = 0;
-      newNodes.set(narrator.id, { x: centerX, y: centerY, data: narrator, level: 0 });
+      const narratorTabaqah = narrator.tabaqah ?? 4;
+      newNodes.set(narrator.id, { 
+        x: centerX, 
+        y: centerY, 
+        data: narrator, 
+        tabaqah: narratorTabaqah,
+        normalizedName: centerNormName,
+      });
       setCenterId(narrator.id);
 
-      // Separate nodes by level
+      // Get neighbors grouped by tabaqah
       const neighborsToAdd = neighbors.nodes.filter(n => n.id !== narratorId);
       
-      // Level 1: direct neighbors
-      const teacherIds = new Set<number>();
-      const studentIds = new Set<number>();
-      for (const edge of neighbors.edges) {
-        if (edge.to_narrator_id === narratorId) teacherIds.add(edge.from_narrator_id);
-        if (edge.from_narrator_id === narratorId) studentIds.add(edge.to_narrator_id);
+      // Group neighbors by tabaqah for generational layout
+      const byTabaqah = new Map<number, typeof neighborsToAdd>();
+      for (const node of neighborsToAdd) {
+        const tabaqah = node.tabaqah ?? 4;
+        if (!byTabaqah.has(tabaqah)) byTabaqah.set(tabaqah, []);
+        byTabaqah.get(tabaqah)!.push(node);
+        
+        // Track name frequency
+        const normName = normalizeArabicName(node.name_ar || '');
+        nameFrequency.set(normName, (nameFrequency.get(normName) || 0) + 1);
       }
 
-      const level1Nodes = neighborsToAdd.filter(n => teacherIds.has(n.id) || studentIds.has(n.id));
-      const level2Nodes = neighborsToAdd.filter(n => !teacherIds.has(n.id) && !studentIds.has(n.id));
+      // Calculate base spacing - more spread out
+      const baseRingRadius = 150 * spread;
+      const ringSpacing = 80 * spread;
+      const baseAngleJitter = 0.05; // less jitter for cleaner layout
 
-      const baseRadius = 100 * spread;
+      // Position neighbors by tabaqah rings
+      for (const [tabaqah, nodes] of byTabaqah) {
+        const layerRadius = getTabaqahRadius(tabaqah);
+        const ringRadius = baseRingRadius + layerRadius * ringSpacing;
+        
+        nodes.forEach((node, i) => {
+          // Calculate angle with some jitter to reduce overlap
+          const baseAngle = (2 * Math.PI * i) / nodes.length - Math.PI / 2;
+          const angleJitter = (Math.random() - 0.5) * baseAngleJitter;
+          const angle = baseAngle + angleJitter;
+          
+          const x = centerX + ringRadius * Math.cos(angle) + addJitter(0, 5);
+          const y = centerY + ringRadius * Math.sin(angle) + addJitter(0, 5);
+          
+          newNodes.set(node.id, { 
+            x, 
+            y, 
+            data: node, 
+            tabaqah,
+            normalizedName: normalizeArabicName(node.name_ar || ''),
+          });
+        });
+      }
 
-      // Position level 1 nodes in inner ring
-      const l1Radius = baseRadius;
-      level1Nodes.forEach((node, i) => {
-        const angle = (2 * Math.PI * i) / level1Nodes.length - Math.PI / 2;
-        const x = centerX + l1Radius * Math.cos(angle);
-        const y = centerY + l1Radius * Math.sin(angle);
-        newNodes.set(node.id, { x, y, data: node, level: 1 });
-      });
+      // Calculate dynamic spread based on node count
+      const totalNodes = Array.from(newNodes.values()).length;
+      let dynamicSpread = spreadRef.current;
+      if (totalNodes > 30) dynamicSpread = 3.0;
+      else if (totalNodes > 20) dynamicSpread = 2.5;
+      else if (totalNodes > 12) dynamicSpread = 2.0;
+      else dynamicSpread = 1.5;
 
-      // Position level 2 nodes in outer ring
-      const l2Radius = baseRadius * 2;
-      level2Nodes.forEach((node, i) => {
-        const angle = (2 * Math.PI * i) / (level2Nodes.length || 1) - Math.PI / 2;
-        const x = centerX + l2Radius * Math.cos(angle);
-        const y = centerY + l2Radius * Math.sin(angle);
-        newNodes.set(node.id, { x, y, data: node, level: 2 });
-      });
+      // Recalculate positions with dynamic spread
+      if (dynamicSpread !== spreadRef.current) {
+        spreadRef.current = dynamicSpread;
+        for (const [id, node] of newNodes) {
+          const layerRadius = getTabaqahRadius(node.tabaqah);
+          const originalRadius = baseRingRadius / spreadRef.current + layerRadius * ringSpacing / spreadRef.current;
+          const newRadius = baseRingRadius / dynamicSpread + layerRadius * ringSpacing / dynamicSpread;
+          // Keep same angle
+          const angle = Math.atan2(node.y, node.x);
+          node.x = newRadius * Math.cos(angle);
+          node.y = newRadius * Math.sin(angle);
+        }
+      }
 
-      // Add edges
+      // Add edges with direction info
       for (const edge of neighbors.edges) {
         const key = `${edge.from_narrator_id}-${edge.to_narrator_id}`;
+        const isTeacherEdge = edge.to_narrator_id === narratorId; // teacher → narrator
         newEdges.set(key, {
           source: edge.from_narrator_id,
           target: edge.to_narrator_id,
           data: edge,
+          isTeacherEdge,
         });
       }
 
       setGraphState(prev => {
         const updatedNodes = new Map(prev.nodes);
         const updatedEdges = new Map(prev.edges);
+        const updatedFrequency = new Map([...prev.nameFrequency, ...nameFrequency]);
 
         for (const [id, node] of newNodes) {
           if (!updatedNodes.has(id)) {
@@ -198,6 +286,7 @@ function GraphContent({ initialNarratorId, lang = 'en', darkMode = false, onNode
           edges: updatedEdges,
           loadingNodeIds,
           hoveredNodeId: prev.hoveredNodeId,
+          nameFrequency: updatedFrequency,
         };
       });
     } catch (err) {
@@ -209,14 +298,14 @@ function GraphContent({ initialNarratorId, lang = 'en', darkMode = false, onNode
   useEffect(() => {
     const id = initialNarratorId ?? (searchParams.get('id') ? Number(searchParams.get('id')) : null);
     if (!id) return;
-    loadGraph(id, true, levels);
-  }, [initialNarratorId, searchParams, loadGraph, levels]);
+    loadGraph(id, true);
+  }, [initialNarratorId, searchParams, loadGraph]);
 
-  // Reload when levels or spread changes
+  // Reload when spread changes
   useEffect(() => {
     if (!centerId) return;
-    loadGraph(centerId, true, levels);
-  }, [levels, spread, centerId]);
+    loadGraph(centerId, true);
+  }, [spread, centerId]);
 
   // Center on first load
   useEffect(() => {
@@ -225,26 +314,43 @@ function GraphContent({ initialNarratorId, lang = 'en', darkMode = false, onNode
     }
   }, [graphState.nodes.size, fitView]);
 
+  // Get connected neighbor IDs (for hover focus effect)
+  const connectedNeighborIds = useMemo(() => {
+    if (!graphState.hoveredNodeId) return new Set<number>();
+    const connected = new Set<number>();
+    connected.add(graphState.hoveredNodeId);
+    for (const edge of graphState.edges.values()) {
+      if (edge.source === graphState.hoveredNodeId) connected.add(edge.target);
+      if (edge.target === graphState.hoveredNodeId) connected.add(edge.source);
+    }
+    return connected;
+  }, [graphState.hoveredNodeId, graphState.edges]);
+
   // Convert to React Flow format
   const flowNodes = useMemo((): Node[] => {
     return Array.from(graphState.nodes.entries()).map(([id, node]) => {
       const isHovered = graphState.hoveredNodeId === id;
       const isFocused = centerId === id;
       const isLoading = graphState.loadingNodeIds.has(id);
-
-      // Scale position by spread factor
-      const scaledX = node.x * spread;
-      const scaledY = node.y * spread;
+      const isDuplicate = (graphState.nameFrequency.get(node.normalizedName) || 0) > 1;
+      const isConnected = connectedNeighborIds.has(id);
+      const opacity = graphState.hoveredNodeId ? (isConnected ? 1 : 0.2) : 1;
 
       return {
         id: String(id),
-        position: { x: scaledX, y: scaledY },
+        position: { x: node.x, y: node.y },
+        style: {
+          zIndex: isHovered ? 9999 : isFocused ? 100 : 1,
+          opacity,
+        },
         data: {
           ...node.data,
           isHovered,
           isFocused,
           isLoading,
-          level: node.level,
+          isDuplicate,
+          tabaqah: node.tabaqah,
+          tabaqahLabel: TABAQAH_LAYERS[node.tabaqah]?.label || 'Later',
           lang,
           darkMode,
           onHover: (hoverId: number | null) => {
@@ -261,29 +367,38 @@ function GraphContent({ initialNarratorId, lang = 'en', darkMode = false, onNode
         type: 'mapNode',
       };
     });
-  }, [graphState, centerId, spread, lang, darkMode, onNodeClick, loadGraph]);
+  }, [graphState, centerId, lang, darkMode, onNodeClick, loadGraph]);
 
+  // Convert edges with arrows
   const flowEdges = useMemo((): Edge[] => {
     return Array.from(graphState.edges.values()).map(edge => {
       const isRelated = graphState.hoveredNodeId !== null && (
         edge.source === graphState.hoveredNodeId || edge.target === graphState.hoveredNodeId
       );
 
+      const isRelatedEdge = graphState.hoveredNodeId !== null && (
+        edge.source === graphState.hoveredNodeId || edge.target === graphState.hoveredNodeId
+      );
+      const edgeOpacity = graphState.hoveredNodeId ? (isRelatedEdge ? 1 : 0.15) : 0.7;
       return {
         id: `${edge.source}-${edge.target}`,
         source: String(edge.source),
         target: String(edge.target),
         type: 'mapEdge',
+        style: { opacity: edgeOpacity },
         data: {
           hadithCount: edge.data.hadith_count || 0,
-          isRelated,
+          isRelated: isRelatedEdge,
+          isTeacherEdge: edge.isTeacherEdge,
           darkMode,
         },
         markerEnd: {
           type: MarkerType.ArrowClosed,
-          width: 15,
-          height: 15,
-          color: darkMode ? '#52525b' : '#9ca3af',
+          width: 12,
+          height: 12,
+          color: edge.isTeacherEdge 
+            ? (darkMode ? '#f59e0b' : '#d97706')  // Amber for teacher edges
+            : (darkMode ? '#14b8a6' : '#0d9488'), // Teal for student edges
         },
       };
     });
@@ -307,8 +422,8 @@ function GraphContent({ initialNarratorId, lang = 'en', darkMode = false, onNode
     setSearchResults([]);
     setSearchQuery('');
     router.push(`/chain/map?id=${n.id}`);
-    loadGraph(n.id, true, levels);
-  }, [router, loadGraph, levels]);
+    loadGraph(n.id, true);
+  }, [router, loadGraph]);
 
   const nodeTypes: NodeTypes = useMemo(() => ({ mapNode: MapNode as any }), []);
   const edgeTypes: EdgeTypes = useMemo(() => ({ mapEdge: MapEdge as any }), []);
@@ -316,7 +431,6 @@ function GraphContent({ initialNarratorId, lang = 'en', darkMode = false, onNode
   const nodeColor = useCallback((node: any) => {
     if (node.id === String(centerId)) return darkMode ? '#0d9488' : '#14b8a6';
     if (node.id === String(graphState.hoveredNodeId)) return darkMode ? '#0f766e' : '#0d9488';
-    if (node.data?.level === 2) return darkMode ? '#6366f1' : '#818cf8'; // Level 2 nodes - indigo
     return darkMode ? '#3f3f46' : '#d1d5db';
   }, [centerId, graphState.hoveredNodeId, darkMode]);
 
@@ -385,17 +499,6 @@ function GraphContent({ initialNarratorId, lang = 'en', darkMode = false, onNode
         <Panel position="top-right" className="p-3">
           <div className={clsx('rounded-xl border shadow-lg p-3 space-y-3', darkMode ? 'bg-zinc-900 border-zinc-700' : 'bg-white border-gray-200')}>
             <div className="space-y-1">
-              <label className={clsx('text-xs font-medium', darkMode ? 'text-gray-400' : 'text-gray-500')}>{t.levels}: {levels}</label>
-              <input
-                type="range"
-                min="1"
-                max="3"
-                value={levels}
-                onChange={e => setLevels(Number(e.target.value))}
-                className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-teal-600"
-              />
-            </div>
-            <div className="space-y-1">
               <label className={clsx('text-xs font-medium', darkMode ? 'text-gray-400' : 'text-gray-500')}>{t.spread}: {spread.toFixed(1)}x</label>
               <input
                 type="range"
@@ -407,23 +510,8 @@ function GraphContent({ initialNarratorId, lang = 'en', darkMode = false, onNode
                 className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-teal-600"
               />
             </div>
-          </div>
-        </Panel>
-
-        {/* Legend */}
-        <Panel position="bottom-left" className="p-2">
-          <div className={clsx('text-[10px] space-y-1', darkMode ? 'text-gray-400' : 'text-gray-500')}>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-teal-500" />
-              <span>Center</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-gray-400" />
-              <span>Level 1</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-indigo-400" />
-              <span>Level 2</span>
+            <div className={clsx('text-[10px]', darkMode ? 'text-gray-500' : 'text-gray-400')}>
+              {t.directConnections}
             </div>
           </div>
         </Panel>

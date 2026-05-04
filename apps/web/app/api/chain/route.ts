@@ -394,7 +394,24 @@ if (action === 'narrator') {
            WHERE hn.hadith_id = ? ORDER BY hn.position`,
           [r.hadith_id]
         );
-        result.push({ ...r, chain });
+
+        // Compute chain_quality
+        const posRows = await db.select<{ position: number }[]>(
+          `SELECT position FROM hadith_narrators WHERE hadith_id = ? ORDER BY position`,
+          [r.hadith_id]
+        );
+        let chain_quality: 'complete' | 'partial' | 'none';
+        if (chain.length === 0) {
+          chain_quality = 'none';
+        } else {
+          const hasGaps = posRows.some((pr, i) => pr.position !== i);
+          const tooShort = chain.length < 3;
+          const lastNarrator = chain[chain.length - 1];
+          const endsAtSahabi = lastNarrator?.tabaqah === 1;
+          chain_quality = (hasGaps || tooShort || !endsAtSahabi) ? 'partial' : 'complete';
+        }
+
+        result.push({ ...r, chain, chain_quality });
       }
       return NextResponse.json(result);
     }
@@ -418,7 +435,23 @@ if (action === 'narrator') {
          WHERE hn.hadith_id = ? ORDER BY hn.position`,
         [hadithId]
       );
-      return NextResponse.json({ hadith: hadithRows[0] ?? null, chain });
+      const posRows = await db.select<{ position: number }[]>(
+        `SELECT position FROM hadith_narrators WHERE hadith_id = ? ORDER BY position`,
+        [hadithId]
+      );
+
+      let chain_quality: 'complete' | 'partial' | 'none';
+      if (chain.length === 0) {
+        chain_quality = 'none';
+      } else {
+        const hasGaps = posRows.some((r, i) => r.position !== i);
+        const tooShort = chain.length < 3;
+        const lastNarrator = chain[chain.length - 1];
+        const endsAtSahabi = lastNarrator?.tabaqah === 1;
+        chain_quality = (hasGaps || tooShort || !endsAtSahabi) ? 'partial' : 'complete';
+      }
+
+      return NextResponse.json({ hadith: hadithRows[0] ?? null, chain, chain_quality });
     }
 
     // Lazy-load neighbors for infinite canvas map
@@ -438,11 +471,11 @@ if (action === 'narrator') {
       if (!centerRows[0]) return NextResponse.json({ nodes: [], edges: [] });
       nodes.set(id, { ...centerRows[0] });
 
-      // Get 1-hop neighbors based on depth
-      if (depth >= 1) {
-        const placeholders = Array.from(nodes.keys()).map(() => '?').join(',');
+      // Fetch neighbors iteratively for each depth level
+      for (let currentDepth = 1; currentDepth <= depth; currentDepth++) {
+        const currentIds = Array.from(nodes.keys());
+        const placeholders = currentIds.map(() => '?').join(',');
 
-        // Outgoing: current → students AND incoming: teacher → current
         const edgeRows = await db.select<any[]>(
           `SELECT e.from_narrator_id, n.name_ar as from_name, n.name_en as from_name_en,
                   n.name_bn as from_name_bn, n.death_year as from_death_year, 
@@ -456,13 +489,13 @@ if (action === 'narrator') {
            JOIN narrators nn ON nn.id = e.to_narrator_id
            WHERE e.from_narrator_id IN (${placeholders}) OR e.to_narrator_id IN (${placeholders})
            ORDER BY e.hadith_count DESC LIMIT ?`,
-          [...Array.from(nodes.keys()), ...Array.from(nodes.keys()), limit * 3]
+          [...currentIds, ...currentIds, limit * (currentDepth + 2)]
         );
+
 
         for (const e of edgeRows) {
           const key = `${e.from_narrator_id}-${e.to_narrator_id}`;
           if (edges.some(ex => `${ex.from_narrator_id}-${ex.to_narrator_id}` === key)) continue;
-
           // Chronological filter
           const student = { id: e.from_narrator_id, name_en: e.from_name_en, name_ar: e.from_name, death_year: e.from_death_year };
           const teacher = { id: e.to_narrator_id, name_en: e.to_name_en, name_ar: e.to_name, death_year: e.to_death_year };

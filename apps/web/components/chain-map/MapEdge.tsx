@@ -7,12 +7,13 @@ import { clsx } from 'clsx';
 interface MapEdgeData {
   hadithCount?: number;
   isRelated: boolean;
+  isTeacherEdge: boolean; // true if going TO center (teacher edge)
   darkMode: boolean;
 }
 
 function MapEdgeComponent(props: EdgeProps) {
   const data = props.data as MapEdgeData | undefined;
-  const { hadithCount, isRelated, darkMode } = data ?? {};
+  const { hadithCount, isRelated, isTeacherEdge, darkMode } = data ?? {};
 
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX: props.sourceX,
@@ -21,14 +22,22 @@ function MapEdgeComponent(props: EdgeProps) {
     targetX: props.targetX,
     targetY: props.targetY,
     targetPosition: props.targetPosition,
-    curvature: 0.3,
+    curvature: 0.2,
   });
 
-  const strokeColor = isRelated
-    ? (darkMode ? '#2dd4bf' : '#14b8a6')
-    : (darkMode ? 'rgba(63,63,70,0.8)' : 'rgba(156,163,175,0.6)');
+  // Color based on edge type and hover state
+  const getStrokeColor = () => {
+    if (!isRelated) {
+      return darkMode ? 'rgba(63,63,70,0.5)' : 'rgba(156,163,175,0.4)';
+    }
+    // Highlighted edges
+    return isTeacherEdge 
+      ? (darkMode ? '#fbbf24' : '#f59e0b')  // Amber for teacher edges
+      : (darkMode ? '#2dd4bf' : '#14b8a6'); // Teal for student edges
+  };
 
-  const strokeWidth = isRelated ? 2.5 : 1;
+  const strokeColor = getStrokeColor();
+  const strokeWidth = isRelated ? 2.5 : 1.5;
 
   return (
     <>
@@ -41,19 +50,19 @@ function MapEdgeComponent(props: EdgeProps) {
         fill="none"
         style={{
           transition: 'stroke 0.15s ease, stroke-width 0.15s ease',
-          opacity: isRelated ? 1 : 0.5,
+          opacity: isRelated ? 1 : 0.4,
         }}
       />
+      {/* Hadith count label */}
       {hadithCount && hadithCount > 1 && (
         <g transform={`translate(${labelX}, ${labelY})`}>
           <text
             className={clsx(
-              'text-[9px] fill-current pointer-events-none',
+              'text-[9px] fill-current pointer-events-none font-medium',
               darkMode ? 'text-gray-400' : 'text-gray-500'
             )}
             textAnchor="middle"
             dominantBaseline="middle"
-            style={{ fontSize: '9px' }}
           >
             {hadithCount}
           </text>

@@ -19,6 +19,7 @@ interface HadithChain {
   matn_en: string | null;
   matn_bn: string | null;
   chain: NarratorNode[];
+  chain_quality?: 'complete' | 'partial' | 'none';
 }
 
 const CHAIN_I18N = {
@@ -47,6 +48,10 @@ const CHAIN_I18N = {
       'Hit "View Network" for a full-screen 2-hop graph',
     ],
     tryTitle: 'Try these narrators',
+    chainQuality: {
+      partial: 'Chain data for this hadith is incomplete — some narrators may be missing.',
+      none: 'No chain data available for this hadith.',
+    },
   },
   bn: {
     pageTitle: 'সনদ এক্সপ্লোরার',
@@ -73,6 +78,10 @@ const CHAIN_I18N = {
       '"নেটওয়ার্ক দেখুন" বাটনে চাপলে ফুল-স্ক্রিন গ্রাফ আসবে',
     ],
     tryTitle: 'এই রাবীদের দিয়ে শুরু করুন',
+    chainQuality: {
+      partial: 'এই হাদিসের সনদ তথ্য অসম্পূর্ণ — কিছু রাবী অনুপস্থিত থাকতে পারে।',
+      none: 'এই হাদিসের সনদ তথ্য পাওয়া যায়নি।',
+    },
   },
   ar: {
     pageTitle: 'مستكشف الإسناد',
@@ -99,6 +108,10 @@ const CHAIN_I18N = {
       'انقر "عرض الشبكة" لرؤية رسم بياني كامل الشاشة',
     ],
     tryTitle: 'جرّب هؤلاء الرواة',
+    chainQuality: {
+      partial: 'بيانات الإسناد لهذا الحديث غير مكتملة — قد تكون بعض الرواة مفقودة.',
+      none: 'لا توجد بيانات إسناد لهذا الحديث.',
+    },
   },
 };
 
@@ -223,7 +236,7 @@ function ChainContent({ pathname }: { pathname: string }) {
   const { darkMode, toggleDarkMode, fontSize, setFontSize } = useTheme();
   const [selectedEdge, setSelectedEdge] = useState<NarratorEdge | null>(null);
   const [edgeHadith, setEdgeHadith] = useState<HadithChain[]>([]);
-  const [hadithChainData, setHadithChainData] = useState<{ hadith: any; chain: NarratorNode[] } | null>(null);
+  const [hadithChainData, setHadithChainData] = useState<{ hadith: any; chain: NarratorNode[]; chain_quality?: 'complete' | 'partial' | 'none' } | null>(null);
   const [selectedFullHadith, setSelectedFullHadith] = useState<any | null>(null);
   const [showAllTeachers, setShowAllTeachers] = useState(false);
   const [showAllStudents, setShowAllStudents] = useState(false);
@@ -431,6 +444,17 @@ function ChainContent({ pathname }: { pathname: string }) {
             </div>
           </div>
 
+          {/* Chain quality banner */}
+          {hadithChainData.chain_quality !== 'complete' && (
+            <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-xl p-4 text-center">
+              <p className="text-amber-800 dark:text-amber-300 text-sm">
+                {hadithChainData.chain_quality === 'none'
+                  ? t.chainQuality.none
+                  : t.chainQuality.partial}
+              </p>
+            </div>
+          )}
+
           {/* Chain */}
           {hadithChainData.chain.length > 0 && (
             <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 overflow-hidden">
@@ -442,7 +466,7 @@ function ChainContent({ pathname }: { pathname: string }) {
               <div className="p-6">
                 <div className="space-y-2">
                   {hadithChainData.chain.map((n: NarratorNode, i: number) => (
-                    <div key={n.id} className="flex items-center gap-3">
+                    <div key={`${n.id}-${i}`} className="flex items-center gap-3">
                       <span className="text-xs font-mono text-gray-400 w-6 text-right">{i + 1}</span>
                       <div className="flex-1 flex items-center gap-3 p-3 rounded-xl bg-gray-50 dark:bg-zinc-800/50 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors">
                         <div className="flex-1">
@@ -643,12 +667,23 @@ function ChainContent({ pathname }: { pathname: string }) {
                     className="w-full px-6 py-4 text-left hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors"
                   >
                     <div className="flex items-start gap-3">
-                      <span className="text-xs font-bold text-teal-600 bg-teal-50 dark:bg-teal-900/20 px-2 py-0.5 rounded whitespace-nowrap">
-                        {h.book_name_en || h.book_name_ar} #{h.num_in_book}
-                      </span>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 flex-1">
-                        {cleanHadithText(h.matn_en || h.matn_bn || h.matn_ar)}
-                      </p>
+                      {h.chain_quality && h.chain_quality !== 'complete' && (
+                        <span
+                          className={clsx(
+                            'mt-0.5 w-2 h-2 rounded-full shrink-0',
+                            h.chain_quality === 'none' ? 'bg-gray-400' : 'bg-amber-400'
+                          )}
+                          title={h.chain_quality === 'none' ? t.chainQuality.none : t.chainQuality.partial}
+                        />
+                      )}
+                      <div className="flex items-start gap-3 flex-1">
+                        <span className="text-xs font-bold text-teal-600 bg-teal-50 dark:bg-teal-900/20 px-2 py-0.5 rounded whitespace-nowrap">
+                          {h.book_name_en || h.book_name_ar} #{h.num_in_book}
+                        </span>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 flex-1">
+                          {cleanHadithText(h.matn_en || h.matn_bn || h.matn_ar)}
+                        </p>
+                      </div>
                     </div>
                   </button>
                 ))}
