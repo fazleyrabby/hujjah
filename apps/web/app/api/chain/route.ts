@@ -421,6 +421,75 @@ if (action === 'narrator') {
       return NextResponse.json({ hadith: hadithRows[0] ?? null, chain });
     }
 
+    // Lazy-load neighbors for infinite canvas map
+    if (action === 'neighbors') {
+      const id = Number(searchParams.get('id'));
+      const depth = Math.min(Number(searchParams.get('depth') ?? '1'), 2);
+      const limit = Math.min(Number(searchParams.get('limit') ?? '20'), 20);
+
+      const nodes = new Map<number, any>();
+      const edges: any[] = [];
+
+      // Get center node
+      const centerRows = await db.select<any[]>(
+        `SELECT id, name_ar, name_en, name_bn, birth_year, death_year, tabaqah, reliability, city, data_source
+         FROM narrators WHERE id = ?`, [id]
+      );
+      if (!centerRows[0]) return NextResponse.json({ nodes: [], edges: [] });
+      nodes.set(id, { ...centerRows[0] });
+
+      // Get 1-hop neighbors based on depth
+      if (depth >= 1) {
+        const placeholders = Array.from(nodes.keys()).map(() => '?').join(',');
+
+        // Outgoing: current → students
+        const outEdges = await db.select<any[]>(
+          `SELECT e.from_narrator_id, n.name_ar as from_name, n.name_en as from_name_en,
+                  n.name_bn as from_name_bn, n.death_year as from_death_year, n.tabaqah as from_tabaqah,
+                  e.to_narrator_id, nn.name_ar as to_name, nn.name_en as to_name_en,
+                  nn.name_bn as to_name_bn, nn.death_year as to_death_year, nn.tabaqah as to_tabaqah,
+                  e.hadith_count
+           FROM narrator_edges e
+           JOIN narrators n ON n.id = e.from_narrator_id
+           JOIN narrators nn ON nn.id = e.to_narrator_id
+           WHERE e.from_narrator_id IN (${placeholders}) OR e.to_narrator_id IN (${placeholders})
+           ORDER BY e.hadith_count DESC LIMIT ?`,
+          [...Array.from(nodes.keys()), ...Array.from(nodes.keys()), limit * 3]
+        );
+
+        for (const e of outEdges) {
+          const key = `${e.from_narrator_id}-${e.to_narrator_id}`;
+          if (edges.some(ex => `${ex.from_narrator_id}-${ex.to_narrator_id}` === key)) continue;
+
+          // Chronological filter
+          const student = { id: e.from_narrator_id, name_en: e.from_name_en, name_ar: e.from_name, death_year: e.from_death_year };
+          const teacher = { id: e.to_narrator_id, name_en: e.to_name_en, name_ar: e.to_name, death_year: e.to_death_year };
+          if (isChronologicallyImpossible(student, teacher)) continue;
+
+          edges.push(e);
+          if (!nodes.has(e.from_narrator_id)) {
+            nodes.set(e.from_narrator_id, {
+              id: e.from_narrator_id, name_ar: e.from_name, name_en: e.from_name_en,
+              name_bn: e.from_name_bn, tabaqah: e.from_tabaqah, reliability: e.from_reliability,
+              city: e.from_city, data_source: e.from_data_source,
+            });
+          }
+          if (!nodes.has(e.to_narrator_id)) {
+            nodes.set(e.to_narrator_id, {
+              id: e.to_narrator_id, name_ar: e.to_name, name_en: e.to_name_en,
+              name_bn: e.to_name_bn, tabaqah: e.to_tabaqah, reliability: e.to_reliability,
+              city: e.to_city, data_source: e.to_data_source,
+            });
+          }
+        }
+      }
+
+      return NextResponse.json({
+        nodes: Array.from(nodes.values()),
+        edges,
+      });
+    }
+
     return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
   } catch (err: any) {
     console.error('[API/chain]', err);
