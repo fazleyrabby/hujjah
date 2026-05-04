@@ -186,8 +186,6 @@ function GraphContent({ initialNarratorId, lang = 'en', darkMode = false, onNode
         newNodes.set(node.id, { x, y, data: node });
       });
 
-      });
-
       // Add edges
       for (const edge of neighbors.edges) {
         const key = `${edge.from_narrator_id}-${edge.to_narrator_id}`;
