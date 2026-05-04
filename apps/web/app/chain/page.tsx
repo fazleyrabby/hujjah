@@ -733,7 +733,7 @@ function ChainContent({ pathname }: { pathname: string }) {
                   {(selectedFullHadith.matn_en || selectedFullHadith.matn_bn) && (
                     <div className="bg-teal-50/30 dark:bg-teal-900/5 p-4 rounded-xl border border-teal-100/50 dark:border-teal-900/10">
                       <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed">
-                        {selectedFullHadith.matn_en || selectedFullHadith.matn_bn}
+                        {lang === 'bn' ? (selectedFullHadith.matn_bn || selectedFullHadith.matn_en) : (selectedFullHadith.matn_en || selectedFullHadith.matn_bn)}
                       </p>
                     </div>
                   )}
@@ -745,7 +745,7 @@ function ChainContent({ pathname }: { pathname: string }) {
                 onClick={() => setSelectedFullHadith(null)}
                 className="px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-black text-xs font-bold rounded-lg hover:opacity-90 transition-opacity"
               >
-                Close
+                {lang === 'bn' ? 'বন্ধ করুন' : 'Close'}
               </button>
             </div>
           </div>

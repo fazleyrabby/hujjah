@@ -1372,7 +1372,7 @@ export default function Home() {
                 </div>
 
                 {/* Modal Content */}
-                <div className="flex-1 overflow-y-auto p-6 min-h-[250px]">
+                <div className="flex-1 overflow-y-auto px-4 pb-6 min-h-[250px]">
                   {tafsirModalLoading ? (
                     <div className="space-y-3 animate-pulse" aria-hidden="true">
                       <div className="h-3 w-24 bg-gray-200 dark:bg-zinc-700 rounded" />

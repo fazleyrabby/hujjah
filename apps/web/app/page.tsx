@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { AppNav, LinkedVerseText, useTheme } from "@hujjah/ui";
 import { useQuranAudio } from "@/contexts/AudioContext";
 import { RECITERS } from "@/lib/reciters";
@@ -100,6 +101,7 @@ export default function Home() {
     reciter,
     setReciter,
   } = useQuranAudio();
+  const router = useRouter();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { darkMode, toggleDarkMode } = useTheme();
 
@@ -533,7 +535,10 @@ const handleLangChange = useCallback(
                 darkMode={darkMode}
                 onDarkModeToggle={toggleDarkMode}
                 setIsOpen={setSettingsOpen}
-                onMoreSettingsClick={() => setSettingsOpen(false)}
+                onMoreSettingsClick={() => {
+                  setSettingsOpen(false);
+                  router.push("/settings");
+                }}
               />
             </div>
           </header>

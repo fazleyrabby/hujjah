@@ -49,6 +49,7 @@ next-env.d.ts
 
 # Dev notes / agent handover (local only)
 AGENTS.md
+AGENT-NOTES.md
 CLAUDE.md
 DATAIMPORT.md
 dist/

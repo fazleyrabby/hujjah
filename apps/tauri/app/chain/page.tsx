@@ -137,7 +137,7 @@ const CITY_LABELS: Record<string, { en: string; bn: string; ar: string }> = {
 // ─── Example narrators for quick-start chips ─────────────────────────────────
 
 const EXAMPLE_NARRATORS = [
-  { ar: 'أَبِي هُرَيْرَةَ',   en: 'Abu Hurayra',      bn: 'আবু হুরাইরা' },
+  { ar: 'أَبِي هُرَيْرَةَ',   en: 'Abu Hurayrah',      bn: 'আবু হুরাইরা' },
   { ar: 'عَائِشَةَ',          en: 'Aisha',            bn: 'আয়িশা' },
   { ar: 'الزُّهْرِيِّ',       en: 'al-Zuhri',         bn: 'আল-জুহরী' },
   { ar: 'شُعْبَةُ',           en: 'Shuba',            bn: 'শুবা' },
