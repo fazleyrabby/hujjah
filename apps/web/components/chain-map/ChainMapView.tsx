@@ -128,11 +128,9 @@ function GraphContent({ initialNarratorId, lang = 'en', darkMode = false, onNode
         return;
       }
 
-      // Position nodes radially around center (0, 0)
+      // Position nodes with teachers above, students below
       const centerX = 0;
       const centerY = 0;
-      const centerRadius = 200;
-      const neighborRadius = 350;
 
       const newNodes = new Map<number, { x: number; y: number; data: NarratorNode }>();
       const newEdges = new Map<string, { source: number; target: number; data: NarratorEdge }>();
@@ -141,13 +139,53 @@ function GraphContent({ initialNarratorId, lang = 'en', darkMode = false, onNode
       newNodes.set(narrator.id, { x: centerX, y: centerY, data: narrator });
       setCenterId(narrator.id);
 
-      // Position neighbors radially
+      // Separate teachers (who narrated TO this narrator) and students (who narrated FROM this narrator)
       const neighborsToAdd = neighbors.nodes.filter(n => n.id !== narratorId);
-      neighborsToAdd.forEach((node, i) => {
-        const angle = (2 * Math.PI * i) / neighborsToAdd.length - Math.PI / 2;
-        const x = centerX + neighborRadius * Math.cos(angle);
-        const y = centerY + neighborRadius * Math.sin(angle);
+      
+      // Find teachers and students from edges
+      const teacherIds = new Set<number>();
+      const studentIds = new Set<number>();
+      for (const edge of neighbors.edges) {
+        if (edge.to_narrator_id === narratorId) {
+          teacherIds.add(edge.from_narrator_id);
+        }
+        if (edge.from_narrator_id === narratorId) {
+          studentIds.add(edge.to_narrator_id);
+        }
+      }
+
+      const teachers = neighborsToAdd.filter(n => teacherIds.has(n.id));
+      const students = neighborsToAdd.filter(n => studentIds.has(n.id));
+      const others = neighborsToAdd.filter(n => !teacherIds.has(n.id) && !studentIds.has(n.id));
+
+      const horizontalSpread = 150;
+      const verticalSpread = 180;
+
+      // Position teachers in upper row
+      teachers.forEach((node, i) => {
+        const count = teachers.length;
+        const x = centerX + horizontalSpread * (i - (count - 1) / 2);
+        const y = centerY - verticalSpread;
         newNodes.set(node.id, { x, y, data: node });
+      });
+
+      // Position students in lower row  
+      students.forEach((node, i) => {
+        const count = students.length;
+        const x = centerX + horizontalSpread * (i - (count - 1) / 2);
+        const y = centerY + verticalSpread;
+        newNodes.set(node.id, { x, y, data: node });
+      });
+
+      // Position other neighbors on sides
+      others.forEach((node, i) => {
+        const side = i % 2 === 0 ? -1 : 1;
+        const row = Math.floor(i / 2);
+        const x = centerX + side * horizontalSpread * 2;
+        const y = centerY + (row * verticalSpread * 0.6 - verticalSpread * 0.3);
+        newNodes.set(node.id, { x, y, data: node });
+      });
+
       });
 
       // Add edges

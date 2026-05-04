@@ -162,6 +162,7 @@ function MapPageContent() {
       {/* Map Canvas */}
       <div className="flex-1 relative" style={{ height: 'calc(100vh - 110px)', minHeight: '600px' }}>
         <ChainMapView
+          key={narratorId}
           initialNarratorId={narratorId}
           lang={lang}
           darkMode={darkMode}
