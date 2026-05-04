@@ -15,13 +15,14 @@ import {
   type EdgeTypes,
   type Node,
   type Edge,
+  MarkerType,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import { clsx } from 'clsx';
 
-import { useGraphStore } from './useGraphStore';
 import { MapNode } from './MapNode';
 import { MapEdge } from './MapEdge';
-import type { NarratorNode } from '@hujjah/ui';
+import type { NarratorNode, NarratorEdge } from '@hujjah/ui';
 
 interface ChainMapViewProps {
   initialNarratorId?: number;
@@ -30,149 +31,230 @@ interface ChainMapViewProps {
   onNodeClick?: (node: NarratorNode) => void;
 }
 
+interface GraphNodeData extends NarratorNode {
+  isHovered: boolean;
+  isFocused: boolean;
+  isLoading: boolean;
+  lang: 'en' | 'bn' | 'ar';
+  darkMode: boolean;
+  onHover: (id: number | null) => void;
+  onClick: () => void;
+  onExpand: () => void;
+}
+
+interface GraphEdgeData {
+  hadithCount: number;
+  isRelated: boolean;
+  darkMode: boolean;
+}
+
+interface GraphNeighborResponse {
+  nodes: NarratorNode[];
+  edges: NarratorEdge[];
+}
+
 const MAP_I18N = {
   en: {
     searchPlaceholder: 'Search narrator...',
-    searching: 'Searching...',
     noResults: 'No narrator found',
-    expand: 'Click node to expand neighbors',
-    teachers: 'Teachers',
-    students: 'Students',
+    expand: 'Double-click node to expand',
   },
   bn: {
     searchPlaceholder: 'রাবী খুঁজুন...',
-    searching: 'খুঁজছি...',
     noResults: 'রাবী পাওয়া যায়নি',
-    expand: 'প্রতিবেশী দেখতে নোডে ক্লিক করুন',
-    teachers: 'শায়খগণ',
-    students: 'ছাত্রগণ',
+    expand: 'প্রতিবেশী দেখতে নোডে ডাবল ক্লিক করুন',
   },
   ar: {
     searchPlaceholder: 'ابحث عن الراوي...',
-    searching: 'جارٍ البحث...',
     noResults: 'لم يُعثر على راوٍ',
-    expand: 'انقر على العقدة لتوسيع الجيران',
-    teachers: 'الشيوخ',
-    students: 'التلاميذ',
+    expand: 'انقر نقراً مزدوجاً لتوسيع الجيران',
   },
 };
+
+interface GraphState {
+  nodes: Map<number, { x: number; y: number; data: NarratorNode }>;
+  edges: Map<string, { source: number; target: number; data: NarratorEdge }>;
+  loadingNodeIds: Set<number>;
+  hoveredNodeId: number | null;
+}
 
 function GraphContent({ initialNarratorId, lang = 'en', darkMode = false, onNodeClick }: ChainMapViewProps) {
   const router = useRouter();
   const searchParams = useNextSearchParams();
-  const [narratorId, setNarratorId] = useState<number | null>(null);
-  const [centerNode, setCenterNode] = useState<NarratorNode | null>(null);
+  const [graphState, setGraphState] = useState<GraphState>({
+    nodes: new Map(),
+    edges: new Map(),
+    loadingNodeIds: new Set(),
+    hoveredNodeId: null,
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<NarratorNode[]>([]);
   const [searching, setSearching] = useState(false);
+  const [centerId, setCenterId] = useState<number | null>(null);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  const { fitView, setCenter, getViewport } = useReactFlow();
-
-  const {
-    nodes: storeNodes,
-    edges: storeEdges,
-    loading,
-    loadingNodeIds,
-    hoveredNodeId,
-    focusedNodeId,
-    expandedNodes,
-    loadNeighbors,
-    setHoveredNode,
-    setFocusedNode,
-    initGraph,
-    clearGraph,
-  } = useGraphStore();
+  const { fitView, setCenter } = useReactFlow();
 
   const t = MAP_I18N[lang];
 
-  // Convert store nodes/edges to React Flow format
+  // Load initial narrator and neighbors
+  const loadGraph = useCallback(async (narratorId: number) => {
+    setGraphState(prev => ({
+      ...prev,
+      loadingNodeIds: new Set([...prev.loadingNodeIds, narratorId]),
+    }));
+
+    try {
+      // Fetch narrator and neighbors in parallel
+      const [narratorRes, neighborsRes] = await Promise.all([
+        fetch(`/api/chain?action=narrator&id=${narratorId}`),
+        fetch(`/api/chain?action=neighbors&id=${narratorId}&depth=1&limit=15`),
+      ]);
+
+      const narrator: NarratorNode = await narratorRes.json();
+      const neighbors: GraphNeighborResponse = await neighborsRes.json();
+
+      if (!narrator) {
+        console.error('Narrator not found:', narratorId);
+        return;
+      }
+
+      // Position nodes radially around center (0, 0)
+      const centerX = 0;
+      const centerY = 0;
+      const centerRadius = 200;
+      const neighborRadius = 350;
+
+      const newNodes = new Map<number, { x: number; y: number; data: NarratorNode }>();
+      const newEdges = new Map<string, { source: number; target: number; data: NarratorEdge }>();
+
+      // Add center node
+      newNodes.set(narrator.id, { x: centerX, y: centerY, data: narrator });
+      setCenterId(narrator.id);
+
+      // Position neighbors radially
+      const neighborsToAdd = neighbors.nodes.filter(n => n.id !== narratorId);
+      neighborsToAdd.forEach((node, i) => {
+        const angle = (2 * Math.PI * i) / neighborsToAdd.length - Math.PI / 2;
+        const x = centerX + neighborRadius * Math.cos(angle);
+        const y = centerY + neighborRadius * Math.sin(angle);
+        newNodes.set(node.id, { x, y, data: node });
+      });
+
+      // Add edges
+      for (const edge of neighbors.edges) {
+        const key = `${edge.from_narrator_id}-${edge.to_narrator_id}`;
+        newEdges.set(key, {
+          source: edge.from_narrator_id,
+          target: edge.to_narrator_id,
+          data: edge,
+        });
+      }
+
+      setGraphState(prev => {
+        const updatedNodes = new Map(prev.nodes);
+        const updatedEdges = new Map(prev.edges);
+
+        // Merge new nodes
+        for (const [id, node] of newNodes) {
+          if (!updatedNodes.has(id)) {
+            updatedNodes.set(id, node);
+          }
+        }
+
+        // Merge new edges
+        for (const [key, edge] of newEdges) {
+          if (!updatedEdges.has(key)) {
+            updatedEdges.set(key, edge);
+          }
+        }
+
+        const loadingNodeIds = new Set(prev.loadingNodeIds);
+        loadingNodeIds.delete(narratorId);
+
+        return {
+          nodes: updatedNodes,
+          edges: updatedEdges,
+          loadingNodeIds,
+          hoveredNodeId: prev.hoveredNodeId,
+        };
+      });
+    } catch (err) {
+      console.error('Failed to load graph:', err);
+    }
+  }, []);
+
+  // Load initial narrator
+  useEffect(() => {
+    const id = initialNarratorId ?? (searchParams.get('id') ? Number(searchParams.get('id')) : null);
+    if (!id) return;
+    loadGraph(id);
+  }, [initialNarratorId, searchParams, loadGraph]);
+
+  // Center on first load
+  useEffect(() => {
+    if (graphState.nodes.size > 0) {
+      setTimeout(() => fitView({ padding: 0.2, duration: 500 }), 100);
+    }
+  }, [graphState.nodes.size, fitView]);
+
+  // Convert to React Flow format
   const flowNodes = useMemo((): Node[] => {
-    return Array.from(storeNodes.values()).map(n => {
-      const isHovered = hoveredNodeId === n.id;
-      const isFocused = focusedNodeId === n.id;
-      const isLoading = loadingNodeIds.has(n.id);
-      const isExpanded = expandedNodes.has(n.id);
+    return Array.from(graphState.nodes.entries()).map(([id, node]) => {
+      const isHovered = graphState.hoveredNodeId === id;
+      const isFocused = centerId === id;
+      const isLoading = graphState.loadingNodeIds.has(id);
 
       return {
-        id: String(n.id),
-        position: { x: n.x ?? 0, y: n.y ?? 0 },
+        id: String(id),
+        position: { x: node.x, y: node.y },
         data: {
-          ...n,
+          ...node.data,
           isHovered,
           isFocused,
           isLoading,
-          isExpanded,
           lang,
           darkMode,
-          onHover: setHoveredNode,
-          onClick: () => {
-            setFocusedNode(n.id);
-            onNodeClick?.(n);
+          onHover: (hoverId: number | null) => {
+            setGraphState(prev => ({ ...prev, hoveredNodeId: hoverId }));
           },
-          onExpand: async () => {
-            if (!expandedNodes.has(n.id) && !loadingNodeIds.has(n.id)) {
-              const pos = { x: n.x ?? 0, y: n.y ?? 0 };
-              await loadNeighbors(n.id, pos.x, pos.y, 1);
-            }
+          onClick: () => {
+            onNodeClick?.(node.data);
+          },
+          onExpand: () => {
+            loadGraph(id);
           },
         },
         draggable: true,
         type: 'mapNode',
       };
     });
-  }, [storeNodes, hoveredNodeId, focusedNodeId, loadingNodeIds, expandedNodes, lang, darkMode, setHoveredNode, setFocusedNode, loadNeighbors, onNodeClick]);
+  }, [graphState, centerId, lang, darkMode, onNodeClick, loadGraph]);
 
   const flowEdges = useMemo((): Edge[] => {
-    return Array.from(storeEdges.values()).map(e => {
-      const isRelated = hoveredNodeId !== null && (
-        e.source === hoveredNodeId || e.target === hoveredNodeId
+    return Array.from(graphState.edges.values()).map(edge => {
+      const isRelated = graphState.hoveredNodeId !== null && (
+        edge.source === graphState.hoveredNodeId || edge.target === graphState.hoveredNodeId
       );
 
       return {
-        id: `${e.source}-${e.target}`,
-        source: String(e.source),
-        target: String(e.target),
+        id: `${edge.source}-${edge.target}`,
+        source: String(edge.source),
+        target: String(edge.target),
         type: 'mapEdge',
         data: {
-          hadithCount: e.hadith_count,
+          hadithCount: edge.data.hadith_count || 0,
           isRelated,
           darkMode,
         },
-        animated: false,
-        style: {
-          strokeWidth: isRelated ? 2.5 : 1,
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          width: 15,
+          height: 15,
+          color: darkMode ? '#52525b' : '#9ca3af',
         },
       };
     });
-  }, [storeEdges, hoveredNodeId, darkMode]);
-
-  // Load initial narrator
-  useEffect(() => {
-    const id = initialNarratorId ?? (searchParams.get('id') ? Number(searchParams.get('id')) : null);
-    if (!id) return;
-    setNarratorId(id);
-
-    fetch(`/api/chain?action=narrator&id=${id}`)
-      .then(r => r.json())
-      .then(async (n: NarratorNode) => {
-        if (!n) return;
-        setCenterNode(n);
-
-        // Load neighbors
-        const data = await fetch(`/api/chain?action=neighbors&id=${id}&depth=1&limit=15`).then(r => r.json());
-        initGraph(n, data, 0, 0);
-      })
-      .catch(console.error);
-  }, [initialNarratorId, searchParams, initGraph]);
-
-  // Center on focused node
-  useEffect(() => {
-    if (!focusedNodeId) return;
-    const node = storeNodes.get(focusedNodeId);
-    if (!node || !reactFlowWrapper.current) return;
-
-    setCenter(node.x ?? 0, node.y ?? 0, { zoom: 1, duration: 500 });
-  }, [focusedNodeId, storeNodes, setCenter]);
+  }, [graphState, darkMode]);
 
   // Handle search
   const handleSearch = useCallback(async (q: string) => {
@@ -190,37 +272,36 @@ function GraphContent({ initialNarratorId, lang = 'en', darkMode = false, onNode
   }, []);
 
   const handleSelectSearchResult = useCallback(async (n: NarratorNode) => {
-    setCenterNode(n);
-    setNarratorId(n.id);
     setSearchResults([]);
     setSearchQuery('');
     router.push(`/chain/map?id=${n.id}`);
+    loadGraph(n.id);
+  }, [router, loadGraph]);
 
-    // Load neighbors for new narrator
-    const data = await fetch(`/api/chain?action=neighbors&id=${n.id}&depth=1&limit=15`).then(r => r.json());
-    clearGraph();
-    initGraph(n, data, 0, 0);
-    
-    setTimeout(() => fitView({ padding: 0.2, duration: 500 }), 100);
-  }, [router, initGraph, clearGraph, fitView]);
+  const nodeTypes: NodeTypes = useMemo(() => ({ mapNode: MapNode as any }), []);
+  const edgeTypes: EdgeTypes = useMemo(() => ({ mapEdge: MapEdge as any }), []);
 
-  const nodeTypes: NodeTypes = useMemo(() => ({ mapNode: MapNode as unknown as NodeTypes['mapNode'] }), []);
-  const edgeTypes: EdgeTypes = useMemo(() => ({ mapEdge: MapEdge as unknown as EdgeTypes['mapEdge'] }), []);
+  const nodeColor = useCallback((node: any) => {
+    if (node.id === String(centerId)) return darkMode ? '#0d9488' : '#14b8a6';
+    if (node.id === String(graphState.hoveredNodeId)) return darkMode ? '#0f766e' : '#0d9488';
+    return darkMode ? '#3f3f46' : '#d1d5db';
+  }, [centerId, graphState.hoveredNodeId, darkMode]);
 
   return (
-    <div className="w-full h-full relative" ref={reactFlowWrapper}>
+    <div className="w-full h-full min-h-[500px]" ref={reactFlowWrapper}>
       <ReactFlow
         nodes={flowNodes}
         edges={flowEdges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         fitView
-        fitViewOptions={{ padding: 0.2 }}
-        minZoom={0.3}
+        fitViewOptions={{ padding: 0.3 }}
+        minZoom={0.2}
         maxZoom={2}
-        defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+        defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
         proOptions={{ hideAttribution: true }}
         className={darkMode ? 'dark' : ''}
+        style={{ width: '100%', height: '100%' }}
       >
         <Background
           variant={BackgroundVariant.Dots}
@@ -231,11 +312,7 @@ function GraphContent({ initialNarratorId, lang = 'en', darkMode = false, onNode
         <Controls className="!rounded-lg !shadow-lg border border-gray-200 dark:border-zinc-700" />
         <MiniMap
           className="!rounded-lg !shadow-lg border border-gray-200 dark:border-zinc-700"
-          nodeColor={(n) => {
-            if (n.id === String(focusedNodeId)) return darkMode ? '#0d9488' : '#14b8a6';
-            if (n.id === String(hoveredNodeId)) return darkMode ? '#0f766e' : '#0d9488';
-            return darkMode ? '#3f3f46' : '#d1d5db';
-          }}
+          nodeColor={nodeColor}
           maskColor={darkMode ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.1)'}
         />
 
@@ -247,14 +324,19 @@ function GraphContent({ initialNarratorId, lang = 'en', darkMode = false, onNode
               value={searchQuery}
               onChange={e => handleSearch(e.target.value)}
               placeholder={t.searchPlaceholder}
-              className={`w-full px-4 py-2.5 pl-10 rounded-xl border text-sm shadow-lg
-                ${darkMode
+              className={clsx(
+                'w-full px-4 py-2.5 pl-10 rounded-xl border text-sm shadow-lg',
+                'focus:outline-none focus:ring-2 focus:ring-teal-500',
+                darkMode
                   ? 'bg-zinc-900 border-zinc-700 text-white placeholder-gray-500'
                   : 'bg-white border-gray-200 text-gray-900 placeholder-gray-400'
-                } focus:outline-none focus:ring-2 focus:ring-teal-500`}
+              )}
             />
             <svg
-              className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}
+              className={clsx(
+                'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4',
+                darkMode ? 'text-gray-500' : 'text-gray-400'
+              )}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -262,26 +344,30 @@ function GraphContent({ initialNarratorId, lang = 'en', darkMode = false, onNode
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
             {searching && (
-              <div className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-teal-600 border-t-transparent rounded-full animate-spin`} />
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
             )}
           </div>
 
           {/* Search results dropdown */}
           {searchResults.length > 0 && (
-            <div className={`mt-1 rounded-xl border shadow-xl overflow-hidden ${
+            <div className={clsx(
+              'mt-1 rounded-xl border shadow-xl overflow-hidden',
               darkMode ? 'bg-zinc-900 border-zinc-700' : 'bg-white border-gray-200'
-            }`}>
+            )}>
               {searchResults.map(n => (
                 <button
                   key={n.id}
                   onClick={() => handleSelectSearchResult(n)}
-                  className={`w-full px-4 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors border-b border-gray-100 dark:border-zinc-800 last:border-0 ${
+                  className={clsx(
+                    'w-full px-4 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors border-b border-gray-100 dark:border-zinc-800 last:border-0',
                     darkMode ? 'text-white' : 'text-gray-900'
-                  }`}
+                  )}
                 >
                   <p className="font-medium text-sm" dir="rtl">{n.name_ar}</p>
                   {(n as any).name_en && (
-                    <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{(n as any).name_en}</p>
+                    <p className={clsx('text-xs', darkMode ? 'text-gray-400' : 'text-gray-500')}>
+                      {(n as any).name_en}
+                    </p>
                   )}
                 </button>
               ))}
@@ -291,18 +377,30 @@ function GraphContent({ initialNarratorId, lang = 'en', darkMode = false, onNode
 
         {/* Legend / Hint */}
         <Panel position="bottom-left" className="p-2">
-          <div className={`text-[10px] ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+          <div className={clsx('text-[10px]', darkMode ? 'text-gray-400' : 'text-gray-500')}>
             {t.expand}
           </div>
         </Panel>
       </ReactFlow>
+
+      {/* Loading overlay */}
+      {graphState.loadingNodeIds.size > 0 && (
+        <div className="absolute top-4 right-4 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-teal-600 text-white text-xs">
+          <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+          Loading...
+        </div>
+      )}
     </div>
   );
 }
 
 function GraphContentWrapper(props: ChainMapViewProps) {
   return (
-    <Suspense fallback={<div className="w-full h-full flex items-center justify-center"><div className="w-6 h-6 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" /></div>}>
+    <Suspense fallback={
+      <div className="w-full h-full flex items-center justify-center">
+        <div className="w-8 h-8 border-3 border-teal-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    }>
       <GraphContent {...props} />
     </Suspense>
   );
